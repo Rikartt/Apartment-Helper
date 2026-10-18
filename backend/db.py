@@ -114,7 +114,7 @@ def upsert_listing(ad: dict) -> bool:
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
                  listed_at, fit_score, reply_score, kind, last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -134,7 +134,7 @@ def upsert_listing(ad: dict) -> bool:
                 reply_score = CASE WHEN listings.extracted IS NOT NULL
                                    THEN listings.reply_score ELSE excluded.reply_score END,
                 kind        = excluded.kind,
-                last_seen_at = datetime('now'),
+                last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 gone_at      = NULL
                 -- status / extracted / seen / created_at are deliberately untouched
         """, (
@@ -279,7 +279,7 @@ def get_stats() -> dict:
 def utc_now() -> str:
     """UTC timestamp in the same format as SQLite's datetime('now')."""
     from datetime import datetime, timezone
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
 
 
 GONE_MIN_RATIO = 0.5

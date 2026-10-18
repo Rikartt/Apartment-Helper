@@ -61,7 +61,11 @@ def _tracked_ingest(sources: list[str], trigger: str = "manual",
     try:
         _ingest_state.update(running=True, sources_done=[], sources_total=len(sources),
                              count=0, new=0)
-        run_id = start_run(trigger)
+        try:
+            run_id = start_run(trigger)
+        except Exception as e:  # logging must never block an ingest
+            print(f"[ingest] could not log run start: {e}")
+            run_id = None
         total = new = gone = 0
         per_source: dict = {}
         errors: list[str] = []
@@ -87,7 +91,8 @@ def _tracked_ingest(sources: list[str], trigger: str = "manual",
         finally:
             ok = any(i.get("ok") for i in per_source.values())
             try:
-                finish_run(run_id, ok, total, new, gone, per_source, errors)
+                if run_id is not None:
+                    finish_run(run_id, ok, total, new, gone, per_source, errors)
             except Exception as e:
                 print(f"[ingest] could not log run: {e}")
             _ingest_state.update(running=False, gone=gone,
