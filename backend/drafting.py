@@ -1,9 +1,9 @@
 """Phase 5: draft a first message to a WG poster, for the user to review and send."""
 import json
-import os
-import anthropic
 
-MODEL = "claude-sonnet-5-5"
+from . import llm
+
+MODEL = llm.DRAFT_MODEL
 
 LANG_NAMES = {"de": "German", "en": "English"}
 
@@ -20,19 +20,13 @@ their move-in date and how long they want to stay, and a clear ask to view the r
 - Include anything the ad explicitly asked applicants to state.
 - If the profile has a message_template, treat it as the applicant's own voice: keep its tone, \
 facts and sign-off, but rewrite it to fit this ad (translate if needed) and drop parts that don't apply.
+- Sign off with the applicant's name only if it appears in the profile or message_template; \
+never invent a name, and never use placeholders like [Name].
+- If the EXTRACTED fields list a hard requirement the applicant does not meet according to the \
+profile, do not claim to meet it.
 - Output only the message text — no subject line, no notes, no quotes around it."""
 
-_client: anthropic.Anthropic | None = None
-
-
-def _get_client() -> anthropic.Anthropic:
-    global _client
-    if _client is None:
-        _client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    return _client
-
-
-class DraftError(Exception):
+class DraftError(llm.LLMError):
     pass
 
 
@@ -58,9 +52,9 @@ EXTRACTED:
 {json.dumps(ext, ensure_ascii=False, indent=2) if ext else "(not extracted yet)"}"""
 
     try:
-        msg = _get_client().beta.messages.create(
+        msg = llm.get_client().beta.messages.create(
             model=MODEL,
-            max_tokens=2000,
+            max_tokens=4000,
             output_config={"effort": "medium"},
             system=SYSTEM_PROMPT.format(language=language),
             messages=[{"role": "user", "content": user_prompt}],
@@ -68,12 +62,15 @@ EXTRACTED:
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
         )
-    except anthropic.APIError as e:
-        raise DraftError(f"Claude API error: {e}") from e
+    except Exception as e:
+        err = llm.translate_error(e)
+        raise DraftError(str(err), err.status, err.fatal) from e
 
+    if msg.stop_reason == "max_tokens" and not llm.message_text(msg):
+        raise DraftError("Draft ran out of tokens; try again.", 502)
     if msg.stop_reason == "refusal":
-        raise DraftError("Claude declined to draft this message.")
+        raise DraftError("Claude declined to draft this message.", 502)
     text = "".join(b.text for b in msg.content if b.type == "text").strip()
     if not text:
-        raise DraftError("Claude returned an empty draft.")
+        raise DraftError("Claude returned an empty draft.", 502)
     return text

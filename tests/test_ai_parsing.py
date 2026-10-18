@@ -4,7 +4,7 @@ from types import SimpleNamespace
 import anthropic
 import pytest
 
-from backend import extraction, drafting
+from backend import extraction, drafting, llm
 
 
 def fake_client(text=None, exc=None, stop_reason="end_turn", blocks=None, beta=False):
@@ -23,7 +23,7 @@ def fake_client(text=None, exc=None, stop_reason="end_turn", blocks=None, beta=F
 def patch_extract(monkeypatch):
     def _p(**kw):
         c, create = fake_client(**kw)
-        monkeypatch.setattr(extraction, "_get_client", lambda: c)
+        monkeypatch.setattr(llm, "get_client", lambda: c)
         return create
     return _p
 
@@ -32,28 +32,32 @@ def patch_extract(monkeypatch):
 def patch_draft(monkeypatch):
     def _p(**kw):
         c, create = fake_client(**kw)
-        monkeypatch.setattr(drafting, "_get_client", lambda: c)
+        monkeypatch.setattr(llm, "get_client", lambda: c)
         return create
     return _p
 
 
 # ---- extraction ----
-def test_strip_fence_variants():
-    f = extraction._strip_json_fence
-    assert f('{"a":1}') == '{"a":1}'
-    assert f('```json\n{"a":1}\n```') == '{"a":1}'
-    assert f('```\n{"a":1}\n```') == '{"a":1}'
-    assert f('  ```json\n{"a":1}\n```  ') == '{"a":1}'
+def test_parse_json_variants():
+    f = llm.parse_json
+    assert f('{"a":1}') == {"a": 1}
+    assert f('```json\n{"a":1}\n```') == {"a": 1}
+    assert f('```\n{"a":1}\n```') == {"a": 1}
+    assert f('  ```json\n{"a":1}\n```  ') == {"a": 1}
+    assert f('Here you go: {"a": 1} hope it helps') == {"a": 1}
+    with pytest.raises(ValueError):
+        f("no json")
 
 
 def test_extract_plain_json(patch_extract):
     patch_extract(text='{"language":"de","red_flags":[]}')
-    assert extraction.extract("some ad") == {"language": "de", "red_flags": []}
+    r = extraction.extract("some ad")
+    assert r["language"] == "de" and r["red_flags"] == [] and r["rent_chf"] is None
 
 
 def test_extract_fenced_json(patch_extract):
     patch_extract(text='```json\n{"language":"en"}\n```')
-    assert extraction.extract("ad") == {"language": "en"}
+    assert extraction.extract("ad")["language"] == "en"
 
 
 def test_extract_invalid_json_returns_none(patch_extract):
@@ -61,9 +65,10 @@ def test_extract_invalid_json_returns_none(patch_extract):
     assert extraction.extract("ad") is None
 
 
-def test_extract_api_error_returns_none(patch_extract):
+def test_extract_api_error_raises_llmerror(patch_extract):
     patch_extract(exc=RuntimeError("boom"))
-    assert extraction.extract("ad") is None
+    with pytest.raises(llm.LLMError):
+        extraction.extract("ad")
 
 
 @pytest.mark.parametrize("t", ["", "   ", None])
@@ -79,12 +84,12 @@ def test_extract_truncates_long_ads(patch_extract):
     assert "x" * 4001 not in create.calls[0]["messages"][0]["content"]
 
 
-def test_extract_missing_api_key_returns_none(monkeypatch):
-    monkeypatch.setattr(extraction, "_client", None)
-    assert extraction.extract("ad") is None  # KeyError swallowed
+def test_extract_missing_api_key_raises_clean_error(monkeypatch):
+    with pytest.raises(llm.LLMError) as ei:
+        extraction.extract("ad")
+    assert ei.value.status == 503
 
 
-@pytest.mark.xfail(reason="BUG: extract() accepts any valid JSON (e.g. a list or string) and returns it; callers/scoring expect a dict (extraction.py return json.loads(...))", strict=True)
 def test_extract_non_dict_json_rejected(patch_extract):
     patch_extract(text='["a","b"]')
     assert extraction.extract("ad") is None

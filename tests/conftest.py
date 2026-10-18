@@ -25,8 +25,8 @@ def _forbid_live_anthropic(monkeypatch):
         raise AssertionError("live Anthropic client constructed in a test (zero live API calls allowed)")
     monkeypatch.setattr(anthropic, "Anthropic", boom)
     import backend.extraction as e, backend.drafting as d
-    monkeypatch.setattr(e, "_client", None)
-    monkeypatch.setattr(d, "_client", None)
+    from backend import llm
+    monkeypatch.setattr(llm, "_client", None)
 
 
 @pytest.fixture
@@ -57,7 +57,9 @@ def profile_path(tmp_path, monkeypatch):
     import backend.main as m
     p = tmp_path / "profile.json"
     p.write_text(json.dumps({"budget_chf": {"max": 1000}, "languages": [], "traits": [], "wants": []}))
+    import backend.scoring as sc
     monkeypatch.setattr(m, "PROFILE_PATH", p)
+    monkeypatch.setattr(sc, "PROFILE_PATH", p)
     return p
 
 

@@ -156,7 +156,7 @@ def get_listings_needing_extraction(
     """Un-extracted listings that pass cheap prefilters, newest first.
     Already-extracted listings are never returned (no re-extraction / no re-spend);
     listings that failed MAX_EXTRACT_ATTEMPTS times are skipped."""
-    sql = ("SELECT * FROM listings WHERE extracted IS NULL AND length(raw_text) >= 40 "
+    sql = ("SELECT * FROM listings WHERE extracted IS NULL AND length(raw_text) >= 10 "
            "AND extract_attempts < ?")
     params: list = [MAX_EXTRACT_ATTEMPTS]
     if max_rent:

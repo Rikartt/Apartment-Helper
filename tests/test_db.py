@@ -46,7 +46,6 @@ def test_upsert_returns_true_for_new(db, ad_factory):
     assert db.upsert_listing(ad_factory()) is True
 
 
-@pytest.mark.xfail(reason="BUG: upsert_listing returns True on UPDATE too (SELECT changes() counts the upsert), so run_ingest 'new' count is wrong", strict=True)
 def test_upsert_returns_false_for_existing(db, ad_factory):
     db.upsert_listing(ad_factory())
     assert db.upsert_listing(ad_factory()) is False
@@ -60,7 +59,6 @@ def test_reingest_preserves_extraction_json(db, ad_factory):
     assert db.get_listing(lid)["extracted"] == {"language": "de", "red_flags": []}
 
 
-@pytest.mark.xfail(reason="BUG: re-ingest overwrites fit_score/reply_score with the extraction-less values computed by run_ingest (or NULL), discarding scores derived from extraction", strict=True)
 def test_reingest_preserves_extraction_scores(db, ad_factory):
     db.upsert_listing(ad_factory())
     lid = db.get_all_listings()[0]["id"]
@@ -90,7 +88,6 @@ def test_get_listing_missing(db):
     assert db.get_listing(999) is None
 
 
-@pytest.mark.xfail(reason="BUG: get_listing() does not convert seen/sent/replied to bool unlike get_all_listings() (db.py get_listing)", strict=True)
 def test_get_listing_bool_consistency(db, ad_factory):
     db.upsert_listing(ad_factory())
     assert db.get_listing(1)["sent"] is False

@@ -115,7 +115,57 @@ def test_german_ad_beats_other_language():
     assert de > other
 
 
-@pytest.mark.xfail(reason="BUG: rent_chf==0 (unknown) hits `rent <= 800` branch and is treated as a cheap room (-10)", strict=True)
 def test_unknown_rent_not_treated_as_cheap():
     assert reply_likelihood({"rent_chf": 0}) == reply_likelihood({"rent_chf": 850}) + 0 or \
         reply_likelihood({"rent_chf": 0}) >= 50
+
+
+# ---- profile-driven scoring / dealbreakers / chips ----
+from datetime import date as _date
+
+from backend import scoring as _sc
+
+_P = {"status": "ETH student", "gender": "male", "age": 20, "smoker": False,
+      "move_in_earliest": "2026-09-01", "budget_chf": {"max": 1000},
+      "languages": [{"lang": "German", "level": "B1"}, {"lang": "English", "level": "native"}],
+      "traits": ["tidy", "social"], "wants": ["long-term room"], "duration": "permanent"}
+_T = _date(2026, 10, 18)
+
+
+def _l(**kw):
+    base = {"rent_chf": 800, "available_from": "2026-10-20", "transit_zentrum_min": 12,
+            "listed_at": "2026-10-17"}
+    base.update(kw)
+    return base
+
+
+def test_past_move_in_is_asap_not_penalised():
+    d = _sc.score_detail(_l(available_from="2026-10-25"), _P, _T)
+    assert not d["dealbreakers"] and "Move-in fits" in d["reasons"]
+
+
+def test_dealbreakers_from_hard_requirements():
+    for req in ["Frauen only", "women only", "berufstätig", "Deutsch auf B2+ Niveau"]:
+        d = _sc.score_detail(_l(extracted={"hard_requirements": [req]}), _P, _T)
+        assert d["fit"] == 0 and d["dealbreakers"], req
+    ok = _sc.score_detail(_l(extracted={"hard_requirements": ["non-smoker"]}), _P, _T)
+    assert ok["fit"] > 0 and not ok["dealbreakers"]
+
+
+def test_over_budget_and_sublet_vs_permanent():
+    assert _sc.score_detail(_l(rent_chf=1200), _P, _T)["fit"] == 0
+    assert _sc.score_detail(_l(extracted={"duration": "sublet"}), _P, _T)["dealbreakers"]
+
+
+def test_recency_decay_and_chips():
+    fresh = _sc.score_detail(_l(), _P, _T)["fit"]
+    old = _sc.score_detail(_l(listed_at="2026-08-01"), _P, _T)["fit"]
+    assert fresh > old
+    d = _sc.score_detail(_l(extracted={"vibe": ["social", "tidy"], "preferences": []}), _P, _T)
+    assert "Social household" in d["reasons"] and "Tidy / clean" in d["reasons"]
+
+
+def test_red_flags_subtract():
+    a = _sc.score_detail(_l(extracted={"red_flags": []}), _P, _T)["fit"]
+    b = _sc.score_detail(_l(extracted={"red_flags": ["deposit before viewing"]}), _P, _T)["fit"]
+    assert b < a
