@@ -96,3 +96,15 @@ frontend/
   index.html           Map UI, served at "/"
 profile.json            Your applicant profile (edited via the UI)
 ```
+
+## Freshness
+
+- The server re-ingests in the background every `WGP_INGEST_INTERVAL_MIN` minutes
+  (default 45, jittered +-15%, `0` = off). On startup it only ingests if the last
+  successful run is older than that interval. Runs are logged in the `ingest_runs`
+  table; the last 5 appear in `GET /ingest/status`.
+- Listings a source stops returning are marked gone (hidden unless
+  `GET /listings?include_gone=1`), but only when that run returned at least 50% of
+  the source's previous count. Your sent/replied status is never changed.
+- The UI badges listings first seen since your last visit as NEW, has a "New only"
+  toggle, and shows a notice when a background ingest adds listings.
