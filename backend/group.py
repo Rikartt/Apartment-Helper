@@ -233,7 +233,7 @@ the writer's name and real facts, not its solo-room framing.
 - Landlords in Switzerland often decline flat-shares in regular apartments. Address this honestly and briefly: \
 say plainly that it is a group of {size} people who want to live together, and offer to discuss the tenancy \
 arrangement (for example that all tenants sign the lease) and to provide proof of funds or references on request. \
-Only state that proof or references EXIST if the profile's "has" list says so; otherwise phrase it as a \
+Do not mention any other document (for example a debt-collection extract / Betreibungsauszug) unless it is in the profile. If the ad gives its own start date, say they are available immediately and can take over from that date, in one clear clause. Only state that proof or references EXIST if the profile's "has" list says so; otherwise phrase it as a \
 willingness to discuss, never as a claim.
 - 4-7 sentences. State when they can move in using the applicant profile's "move_in" field: if it says available immediately, write "available immediately" / "from now" and never quote a past calendar date. Include a clear ask to view the apartment.
 - Include anything the ad explicitly asks applicants to state.
