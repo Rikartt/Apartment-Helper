@@ -1014,13 +1014,15 @@ function renderAll(listings) {
 
   // map: diff against what is already in the cluster
   const want = new Map(listings.map(l => [l.id, l]));
+  // keep the open listing's marker (markercluster leaks a moveend listener if a marker is removed mid zoomToShowLayer)
+  if (selectedId != null && byId[selectedId] && !want.has(selectedId)) want.set(selectedId, byId[selectedId]);
   const toRemove = [], toAdd = [];
   shown.forEach(id => { if (!want.has(id)) { toRemove.push(markers[id]); shown.delete(id); } });
   want.forEach((l, id) => {
     const m = getMarker(l);
     if (!shown.has(id)) { toAdd.push(m); shown.add(id); }
   });
-  if (toRemove.length) cluster.removeLayers(toRemove);
+  if (toRemove.length) { if (map._popup && toRemove.includes(map._popup._source)) map.closePopup(); cluster.removeLayers(toRemove); }
   if (toAdd.length) cluster.addLayers(toAdd);
 
   // sidebar
@@ -1093,7 +1095,7 @@ function selectListing(id) {
   map.setView([l.lat, l.lng], Math.max(map.getZoom(), 15), { animate: false });
   if (m && shown.has(id)) {
     m.setZIndexOffset(1000);
-    cluster.zoomToShowLayer(m, () => { markerEl(id)?.classList.add('selected'); if (!mq.matches) m.openPopup(); });
+    cluster.zoomToShowLayer(m, () => { if (selectedId !== id || !shown.has(id)) return; markerEl(id)?.classList.add('selected'); if (!mq.matches) { try { m.openPopup(); } catch (_) {} } });
   }
   showDetail(l);
 }
