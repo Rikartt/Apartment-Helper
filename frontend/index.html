@@ -74,6 +74,11 @@
   .badge i { font-style:normal; font-size:.55rem; opacity:.7; margin-right:3px; letter-spacing:.05em; }
   .score-high { background:#1a3a1a; color:#4caf50; } .score-mid { background:#1a2a3a; color:#2196f3; } .score-low { background:#2a2a1a; color:#999; }
   .reply-high { background:#241a00; color:var(--amber); } .reply-mid { background:#1e1400; color:#a07820; } .reply-low { background:#1e1a1a; color:#666; }
+  .newbadge { font-size:.56rem; font-weight:700; letter-spacing:.1em; padding:1px 4px; border-radius:2px; background:var(--amber); color:#111; }
+  #newnotice { display:none; background:#2a2208; border-bottom:1px solid #5a4a10; color:var(--amber); font-size:.72rem; letter-spacing:.04em; padding:5px 16px; flex-shrink:0; align-items:center; gap:10px; }
+  #newnotice.on { display:flex; }
+  #newnotice button { background:none; border:1px solid var(--amber); color:var(--amber); font:inherit; font-size:.68rem; padding:1px 8px; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
+  #newnotice button:hover { background:var(--amber); color:#111; }
   .stbadge { margin-left:auto; font-size:.58rem; text-transform:uppercase; letter-spacing:.08em; padding:1px 5px; border:1px solid; border-radius:2px; }
   .stbadge.sent { color:#64b5f6; border-color:#1565c0; } .stbadge.replied { color:#81c784; border-color:#2e7d32; } .stbadge.rejected { color:#777; border-color:#444; }
   .card-title { font-size:.74rem; color:#ccc; margin-top:2px; line-height:1.3; }
@@ -288,6 +293,8 @@
   </div>
 </div>
 
+<div id="newnotice" role="status" aria-live="polite"><span id="newnotice-text"></span><button onclick="showNewArrivals()">Show</button></div>
+
 <div id="filters">
   <div class="filter-group">
     <label for="maxRent">Max Rent</label>
@@ -338,6 +345,10 @@
       <button data-v="replied" onclick="setShow('replied')">Replied</button>
       <button data-v="rejected" onclick="setShow('rejected')">Skipped</button>
     </div>
+  </div>
+  <div class="filter-group">
+    <label>New</label>
+    <div class="seg"><button id="btn-new-only" onclick="setNewOnly(!newOnly)" title="Only listings first seen since your last visit">New only</button></div>
   </div>
   <div class="filter-group">
     <label>Sort</label>
@@ -584,11 +595,33 @@ function setMode(m)   { mode = m;   seg([['btn-transit','transit'],['btn-bike','
 function setKind(k)   { kindFilter = k; seg([['btn-kind-wg','wg'],['btn-kind-studio','studio'],['btn-kind-all','all']], k); applyFilters(); }
 function setPoster(p) { posterFilter = p; seg([['btn-poster-all','all'],['btn-poster-private','private'],['btn-poster-agency','agency']], p); applyFilters(); }
 function setSort(s)   { sortMode = s; seg([['btn-sort-relevance','relevance'],['btn-sort-match','match'],['btn-sort-reply','reply'],['btn-sort-commute','commute'],['btn-sort-rent','rent']], s); applyFilters(); }
+// ── Freshness: NEW since last visit (localStorage, best-effort) ──────────────
+const LAST_VISIT_KEY = 'wgp_last_visit';
+let visitCutoff = null;   // ms; listings first seen after this are NEW (null = first visit)
+let newOnly = false;
+(function initVisit() {
+  try {
+    // sessionStorage keeps the cutoff across reloads of this tab, so NEW badges
+    // don't vanish on refresh; localStorage carries it between visits.
+    const keep = sessionStorage.getItem('wgp_visit_cutoff');
+    const prev = keep ?? localStorage.getItem(LAST_VISIT_KEY);
+    if (prev) visitCutoff = Number(prev) || null;
+    if (keep == null && prev) sessionStorage.setItem('wgp_visit_cutoff', prev);
+    localStorage.setItem(LAST_VISIT_KEY, String(Date.now()));
+  } catch (e) { /* storage unavailable: no NEW badges */ }
+})();
+function seenMs(l) {
+  const t = Date.parse(String(l.created_at || '').replace(' ', 'T') + 'Z');
+  return isNaN(t) ? null : t;
+}
+function isNew(l) { const t = seenMs(l); return visitCutoff != null && t != null && t > visitCutoff; }
+function setNewOnly(v) { newOnly = !!v; $('btn-new-only').classList.toggle('active', newOnly); applyFilters(); }
+
 function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
 function resetFilters() {
   $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
   $('maxCommute').value = 60; $('hideDeal').checked = false;
-  setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance');
+  setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance'); setNewOnly(false);
 }
 function toggleFilters() {
   const f = $('filters'); const c = f.classList.toggle('collapsed');
@@ -611,6 +644,7 @@ function passes(l, f) {
     if (posterFilter === 'private' && pt === 'agency') return false;
     if (posterFilter === 'agency' && pt !== 'agency') return false;
   }
+  if (newOnly && !isNew(l)) return false;
   const st = l.status ?? null;
   if (showFilter === 'todo' && st !== null) return false;
   if (showFilter !== 'all' && showFilter !== 'todo' && st !== showFilter) return false;
@@ -698,7 +732,7 @@ function cardHtml(l) {
       <div class="card-top">
         <span class="card-dot" style="background:${deal.length ? '#777' : tier.color}" title="${tier.label}"></span>
         <span class="card-rent">${l.rent_chf}<small>CHF</small></span>
-        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}
+        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
         ${l.status ? `<span class="stbadge ${l.status}">${STATUS_LABEL[l.status]}</span>` : ''}
       </div>
       <div class="card-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
@@ -933,6 +967,37 @@ function pollIngest() {
     }
   }, 6000);
 }
+
+// ── Live notice when the periodic ingest adds listings while the page is open ─
+let _pendingNew = null, _lastIngestSeen = null;
+async function checkNewArrivals() {
+  try {
+    const st = await fetch('/ingest/status').then(r => r.ok ? r.json() : null);
+    if (!st) return;
+    const fin = st.last_finished_at;
+    if (_lastIngestSeen === null) { _lastIngestSeen = fin; return; }   // baseline on first poll
+    if (st.running || fin === _lastIngestSeen) return;
+    _lastIngestSeen = fin;
+    const data = await fetch('/listings').then(r => r.ok ? r.json() : null);
+    if (!data) return;
+    const fresh = data.filter(l => !byId[l.id]);
+    if (!fresh.length) return;
+    _pendingNew = data;
+    $('newnotice-text').textContent = `${fresh.length} new listing${fresh.length === 1 ? '' : 's'}`;
+    $('newnotice').classList.add('on');
+  } catch (e) { /* offline: try again next tick */ }
+}
+function showNewArrivals() {
+  if (_pendingNew) {
+    const keep = {}; allListings.forEach(l => keep[l.id] = l.status);
+    indexListings(_pendingNew); _pendingNew.forEach(l => { if (l.status == null && keep[l.id]) l.status = keep[l.id]; });
+    _pendingNew = null;
+  }
+  $('newnotice').classList.remove('on');
+  if (visitCutoff != null) setNewOnly(true); else applyFilters();
+}
+setInterval(checkNewArrivals, 60000);
+checkNewArrivals();
 
 // ── Profile panel ────────────────────────────────────────────────────────────
 async function loadProfileBasics() {
