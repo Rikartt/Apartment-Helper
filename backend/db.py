@@ -17,6 +17,8 @@ NEW_COLUMNS = [
     ("extract_attempts", "INTEGER NOT NULL DEFAULT 0"),
     ("extracted_at", "TEXT"),
     ("kind", "TEXT NOT NULL DEFAULT 'wg_room'"),  # wg_room | studio | apartment
+    ("last_seen_at", "TEXT"),   # UTC; last ingest run that still returned this ad
+    ("gone_at", "TEXT"),        # UTC; set when a healthy run no longer returns it
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -25,6 +27,7 @@ INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status)",
     "CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_listings_rent ON listings(rent_chf)",
+    "CREATE INDEX IF NOT EXISTS idx_listings_gone ON listings(gone_at)",
     "CREATE INDEX IF NOT EXISTS idx_listings_extract "
     "ON listings(extracted IS NULL, extract_attempts)",
 ]
@@ -79,6 +82,20 @@ def init_db():
                                     status_updated_at = datetime('now')
                 WHERE sent = 1 OR replied = 1
             """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ingest_runs (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                trigger     TEXT NOT NULL DEFAULT 'manual',   -- startup | periodic | manual
+                started_at  TEXT NOT NULL,
+                finished_at TEXT,
+                ok          INTEGER NOT NULL DEFAULT 0,
+                total       INTEGER NOT NULL DEFAULT 0,
+                new         INTEGER NOT NULL DEFAULT 0,
+                gone        INTEGER NOT NULL DEFAULT 0,
+                sources     TEXT NOT NULL DEFAULT '{}',       -- JSON {name: {...}}
+                errors      TEXT NOT NULL DEFAULT '[]'        -- JSON [str]
+            )
+        """)
         for stmt in INDEXES:
             conn.execute(stmt)
         conn.commit()
@@ -96,8 +113,8 @@ def upsert_listing(ad: dict) -> bool:
                  available_from, raw_text, url,
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
-                 listed_at, fit_score, reply_score, kind)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 listed_at, fit_score, reply_score, kind, last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,datetime('now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -116,7 +133,9 @@ def upsert_listing(ad: dict) -> bool:
                                    THEN listings.fit_score ELSE excluded.fit_score END,
                 reply_score = CASE WHEN listings.extracted IS NOT NULL
                                    THEN listings.reply_score ELSE excluded.reply_score END,
-                kind        = excluded.kind
+                kind        = excluded.kind,
+                last_seen_at = datetime('now'),
+                gone_at      = NULL
                 -- status / extracted / seen / created_at are deliberately untouched
         """, (
             ad["source"], ad["external_id"], ad["title"], ad["address"],
@@ -194,10 +213,14 @@ def _row_to_dict(row, include_raw: bool = True) -> dict:
     return d
 
 
-def get_all_listings(include_raw: bool = True) -> list[dict]:
-    """One query, no per-row work beyond JSON decoding."""
+def get_all_listings(include_raw: bool = True, include_gone: bool = False) -> list[dict]:
+    """One query, no per-row work beyond JSON decoding. Listings that vanished
+    from their source (gone_at set) are hidden unless include_gone."""
+    sql = "SELECT * FROM listings"
+    if not include_gone:
+        sql += " WHERE gone_at IS NULL"
     with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM listings ORDER BY id").fetchall()
+        rows = conn.execute(sql + " ORDER BY id").fetchall()
     return [_row_to_dict(r, include_raw) for r in rows]
 
 
@@ -249,3 +272,82 @@ def get_stats() -> dict:
         "reply_rate": round(counts["replied"] / contacted, 3) if contacted else None,
         "by_source": by_source,
     }
+
+
+# ── freshness: gone listings + ingest run log ───────────────────────────────
+
+def utc_now() -> str:
+    """UTC timestamp in the same format as SQLite's datetime('now')."""
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+GONE_MIN_RATIO = 0.5
+
+
+def mark_gone(source: str, run_started_at: str) -> int:
+    """Mark a source's listings that the run starting at run_started_at did not
+    see as gone. Only touches gone_at -- user status is never changed."""
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE listings SET gone_at = datetime('now') "
+            "WHERE source = ? AND gone_at IS NULL "
+            "AND (last_seen_at IS NULL OR last_seen_at < ?)",
+            (source, run_started_at))
+        return cur.rowcount
+
+
+def start_run(trigger: str) -> int:
+    with get_conn() as conn:
+        cur = conn.execute(
+            "INSERT INTO ingest_runs (trigger, started_at) VALUES (?, ?)",
+            (trigger, utc_now()))
+        return cur.lastrowid
+
+
+def finish_run(run_id: int, ok: bool, total: int, new: int, gone: int,
+               sources: dict, errors: list):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE ingest_runs SET finished_at = ?, ok = ?, total = ?, new = ?, "
+            "gone = ?, sources = ?, errors = ? WHERE id = ?",
+            (utc_now(), 1 if ok else 0, total, new, gone,
+             json.dumps(sources), json.dumps(errors), run_id))
+
+
+def _run_row(r) -> dict:
+    d = dict(r)
+    d["ok"] = bool(d["ok"])
+    d["sources"] = json.loads(d["sources"] or "{}")
+    d["errors"] = json.loads(d["errors"] or "[]")
+    return d
+
+
+def recent_runs(limit: int = 5) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM ingest_runs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+    return [_run_row(r) for r in rows]
+
+
+def last_ok_run_age_seconds() -> float | None:
+    """Seconds since the last successful run finished (None if there never was one)."""
+    with get_conn() as conn:
+        row = conn.execute(
+            "SELECT (julianday('now') - julianday(finished_at)) * 86400.0 "
+            "FROM ingest_runs WHERE ok = 1 AND finished_at IS NOT NULL "
+            "ORDER BY id DESC LIMIT 1").fetchone()
+    return row[0] if row else None
+
+
+def last_source_count(source: str) -> int | None:
+    """Fetched count for `source` in its most recent healthy run (None if unknown)."""
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT sources FROM ingest_runs WHERE finished_at IS NOT NULL "
+            "ORDER BY id DESC LIMIT 30").fetchall()
+    for (raw,) in rows:
+        info = (json.loads(raw or "{}")).get(source)
+        if info and info.get("ok") and info.get("fetched"):
+            return int(info["fetched"])
+    return None

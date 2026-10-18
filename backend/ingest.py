@@ -1,6 +1,7 @@
 import re
 
-from .db import upsert_listing, get_all_listings
+from .db import (upsert_listing, get_all_listings, mark_gone, last_source_count,
+                 utc_now, GONE_MIN_RATIO)
 from .commute import commute_times
 from .scoring import score, reply_likelihood
 from .ingestion.mock_adapter import MockAdapter
@@ -33,10 +34,11 @@ def dedupe_key(ad: dict) -> tuple | None:
 def run_ingest(sources: list[str] | None = None) -> dict:
     to_run = sources if sources else list(ADAPTERS.keys())
 
-    total, new, dupes = 0, 0, 0
+    total, new, dupes, gone = 0, 0, 0, 0
+    per_source: dict = {}
     try:
         seen_keys = {}
-        for row in get_all_listings():
+        for row in get_all_listings(include_gone=True):
             k = dedupe_key(row)
             if k:
                 seen_keys.setdefault(k, row["source"])
@@ -47,12 +49,16 @@ def run_ingest(sources: list[str] | None = None) -> dict:
             print(f"[ingest] unknown source: {name}")
             continue
         print(f"[ingest] running {name} adapter...")
+        run_started = utc_now()
         try:
             ads = ADAPTERS[name]().fetch()
         except Exception as e:
             print(f"[ingest] {name} failed: {e}")
+            per_source[name] = {"ok": False, "fetched": 0, "new": 0, "gone": 0,
+                                "error": f"{type(e).__name__}: {e}"[:300]}
             continue
 
+        src_new = 0
         for ad in ads:
             total += 1
             k = dedupe_key(ad)
@@ -66,7 +72,22 @@ def run_ingest(sources: list[str] | None = None) -> dict:
             inserted = upsert_listing(ad)
             if inserted:
                 new += 1
+                src_new += 1
+
+        # Gone detection: only trust a run that returned a plausible number of ads,
+        # so a blocked/partial scrape can't mass-hide a source's listings.
+        prev = last_source_count(name)
+        healthy = len(ads) > 0 and (prev is None or len(ads) >= GONE_MIN_RATIO * prev)
+        src_gone = 0
+        if healthy and prev is not None:
+            src_gone = mark_gone(name, run_started)
+            gone += src_gone
+        info = {"ok": healthy, "fetched": len(ads), "new": src_new, "gone": src_gone}
+        if not healthy:
+            info["error"] = ("no listings returned" if not ads else
+                             f"only {len(ads)} listings vs {prev} before; gone-check skipped")
+        per_source[name] = info
 
     if dupes:
         print(f"[ingest] skipped {dupes} cross-source duplicates")
-    return {"total": total, "new": new}
+    return {"total": total, "new": new, "gone": gone, "sources": per_source}

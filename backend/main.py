@@ -1,5 +1,6 @@
 import json
 import os
+import random
 import threading
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -18,6 +19,7 @@ load_dotenv()
 from . import llm  # noqa: E402  (after load_dotenv so model env overrides apply)
 from .db import (  # noqa: E402
     init_db, get_all_listings, get_listing, set_status, get_stats, update_scores,
+    start_run, finish_run, recent_runs, last_ok_run_age_seconds,
 )
 from .drafting import draft, DraftError  # noqa: E402
 from .extraction import extract_batch  # noqa: E402
@@ -35,53 +37,131 @@ AUTO_EXTRACT_LIMIT = int(os.environ.get("WGP_AUTO_EXTRACT_LIMIT", "25"))
 _ingest_state = {"running": False, "sources_done": [], "sources_total": 0, "count": 0,
                  "new": 0, "last_finished_at": None}
 _ingest_lock = threading.Lock()
+_stop_event = threading.Event()
+DEFAULT_INGEST_INTERVAL_MIN = 45
+JITTER = 0.15   # periodic runs are spread over interval * (1 +- JITTER)
 
 
-def _tracked_ingest(sources: list[str]) -> dict:
-    """Run sources one by one so /ingest/status can report real progress."""
-    with _ingest_lock:  # one ingest at a time
+def ingest_interval_min() -> float:
+    """WGP_INGEST_INTERVAL_MIN: minutes between background ingests (0 = off)."""
+    try:
+        return max(0.0, float(os.environ.get("WGP_INGEST_INTERVAL_MIN",
+                                             DEFAULT_INGEST_INTERVAL_MIN)))
+    except ValueError:
+        return float(DEFAULT_INGEST_INTERVAL_MIN)
+
+
+def _tracked_ingest(sources: list[str], trigger: str = "manual",
+                    blocking: bool = True) -> dict | None:
+    """Run sources one by one so /ingest/status can report real progress, and
+    log the run in ingest_runs. Returns None if blocking=False and another
+    ingest holds the lock (runs never overlap)."""
+    if not _ingest_lock.acquire(blocking=blocking):
+        return None
+    try:
         _ingest_state.update(running=True, sources_done=[], sources_total=len(sources),
                              count=0, new=0)
-        total = new = 0
+        run_id = start_run(trigger)
+        total = new = gone = 0
+        per_source: dict = {}
+        errors: list[str] = []
         try:
             for name in sources:
                 try:
                     r = run_ingest([name])
                     total += r.get("total", 0)
                     new += r.get("new", 0)
+                    gone += r.get("gone", 0)
+                    info = (r.get("sources") or {}).get(name) or {
+                        "ok": True, "fetched": r.get("total", 0), "new": r.get("new", 0)}
+                    per_source[name] = info
+                    if info.get("error"):
+                        errors.append(f"{name}: {info['error']}")
                 except Exception as e:
                     print(f"[ingest] {name} failed: {e}")
+                    per_source[name] = {"ok": False, "fetched": 0, "new": 0, "gone": 0,
+                                        "error": f"{type(e).__name__}: {e}"[:300]}
+                    errors.append(f"{name}: {e}")
                 _ingest_state.update(count=total, new=new)
                 _ingest_state["sources_done"].append(name)
         finally:
-            _ingest_state.update(running=False, last_finished_at=datetime.now().isoformat())
+            ok = any(i.get("ok") for i in per_source.values())
+            try:
+                finish_run(run_id, ok, total, new, gone, per_source, errors)
+            except Exception as e:
+                print(f"[ingest] could not log run: {e}")
+            _ingest_state.update(running=False, gone=gone,
+                                 last_finished_at=datetime.now().isoformat())
         return {"total": total, "new": new}
+    finally:
+        _ingest_lock.release()
+
+
+def _maybe_extract(tag: str):
+    if AUTO_EXTRACT and llm.has_key():
+        try:
+            print(f"[{tag}] extraction: {extract_batch(limit=AUTO_EXTRACT_LIMIT)}")
+        except Exception as e:
+            print(f"[{tag}] extraction failed: {e}")
 
 
 def _startup_ingest():
+    """Ingest at startup only if the last successful run is older than the
+    interval, so restarting the server does not re-scrape everything."""
+    interval = ingest_interval_min() or DEFAULT_INGEST_INTERVAL_MIN
     try:
-        _tracked_ingest(STARTUP_SOURCES)
+        age = last_ok_run_age_seconds()
+    except Exception:
+        age = None
+    if age is not None and age < interval * 60:
+        print(f"[startup] last successful ingest {age/60:.0f} min ago; skipping")
+        return
+    try:
+        _tracked_ingest(STARTUP_SOURCES, trigger="startup")
     except Exception as e:  # never let a scraper crash bring the server down
         print(f"[startup] ingest failed: {e}")
-    if AUTO_EXTRACT and llm.has_key():
+    _maybe_extract("startup")
+
+
+def _next_delay_s(interval_min: float) -> float:
+    return interval_min * 60 * random.uniform(1 - JITTER, 1 + JITTER)
+
+
+def _periodic_loop(stop: threading.Event):
+    """Background ingest every WGP_INGEST_INTERVAL_MIN (jittered). Skips a tick
+    if an ingest is already running."""
+    while not stop.is_set():
+        interval = ingest_interval_min()
+        if interval <= 0:
+            return
+        if stop.wait(_next_delay_s(interval)):
+            return
         try:
-            print(f"[startup] extraction: {extract_batch(limit=AUTO_EXTRACT_LIMIT)}")
+            r = _tracked_ingest(STARTUP_SOURCES, trigger="periodic", blocking=False)
+            if r is not None and r.get("new"):
+                _maybe_extract("periodic")
         except Exception as e:
-            print(f"[startup] extraction failed: {e}")
+            print(f"[periodic] ingest failed: {e}")
+
+
+def _scheduler(stop: threading.Event):
+    _startup_ingest()
+    _periodic_loop(stop)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    # Run the first ingest on a worker thread. It makes blocking network calls
-    # and drives Playwright's *sync* API, and neither can run on the asyncio
-    # event loop (Playwright raises "Sync API inside the asyncio loop"). Running
-    # it off-thread also lets the server answer requests while that first ingest
-    # (a minute or two) is still in progress.
+    # Run ingests on a worker thread. They make blocking network calls and
+    # drive Playwright's *sync* API, and neither can run on the asyncio event
+    # loop (Playwright raises "Sync API inside the asyncio loop"). Running them
+    # off-thread also lets the server answer requests while one is in progress.
+    stop = threading.Event()
     threading.Thread(
-        target=_startup_ingest, name="startup-ingest", daemon=True
+        target=_scheduler, args=(stop,), name="ingest-scheduler", daemon=True
     ).start()
     yield
+    stop.set()
 
 
 app = FastAPI(title="WGPendler", lifespan=lifespan)
@@ -108,11 +188,13 @@ def _decorate(l: dict, profile: dict) -> dict:
 
 
 @app.get("/listings")
-def listings(include_raw: bool = Query(False)):
+def listings(include_raw: bool = Query(False), include_gone: bool = Query(False)):
     """All listings with live scores. raw_text is omitted unless ?include_raw=1
-    (about 1.3 kB per ad and not needed to render the map)."""
+    (about 1.3 kB per ad and not needed to render the map). Listings that
+    vanished from their source are hidden unless ?include_gone=1."""
     profile = _load_profile()
-    return JSONResponse([_decorate(l, profile) for l in get_all_listings(include_raw)])
+    return JSONResponse([_decorate(l, profile)
+                         for l in get_all_listings(include_raw, include_gone)])
 
 
 @app.get("/listings/{listing_id}")
@@ -155,7 +237,7 @@ async def put_profile(request: Request):
         return JSONResponse({"error": "profile must be a JSON object"}, status_code=422)
     PROFILE_PATH.write_text(json.dumps(body, indent=2, ensure_ascii=False))
     profile = _load_profile()
-    rows = get_all_listings(include_raw=False)
+    rows = get_all_listings(include_raw=False, include_gone=True)
     scored = []
     for r in rows:
         d = score_detail(r, profile)
@@ -289,7 +371,13 @@ def ingest(sources: list[str] = Query(default=None)):
 
 @app.get("/ingest/status")
 def ingest_status():
-    return JSONResponse(dict(_ingest_state))
+    interval = ingest_interval_min()
+    try:
+        runs = recent_runs(5)
+    except Exception:
+        runs = []
+    return JSONResponse({**_ingest_state, "interval_min": interval,
+                         "periodic": interval > 0, "recent_runs": runs})
 
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
