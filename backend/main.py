@@ -184,6 +184,7 @@ def _decorate(l: dict, profile: dict) -> dict:
     current; commute minutes come from the DB, never recomputed."""
     d = score_detail(l, profile)
     l["fit_score"] = d["fit"]
+    l["fit_precise"] = d["fit_precise"]      # unrounded fit, for tie-breaking the sort
     l["reply_score"] = d["reply"]
     l["match_reasons"] = d["reasons"]
     l["fit_reasons"] = d["reasons"]          # alias of match_reasons

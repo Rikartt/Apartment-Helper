@@ -126,12 +126,43 @@ _NON_SMOKER_OK = re.compile(r"non[- ]?smok|nichtraucher|rauchfrei|no smok|kein\w
 _SMOKER_REQ = re.compile(r"\b(smoker|raucher)\b")
 
 
+PRICE_WRONG_MSG = "Price looks wrong, check the ad"
+MIN_ROOM_RENT = 200        # a WG room / studio below this is a typo, parking or storage
+MIN_APARTMENT_RENT = 600   # a whole flat below this is a typo, parking or storage
+MIN_APARTMENT_PER_ROOM = 250
+MIN_RENT_PER_M2 = 10       # CHF/m2/month; below this the ad is not a real rental price
+
+
+def price_implausible(listing: dict) -> str | None:
+    """Reason string if the rent cannot be a real monthly price for this kind of
+    listing (rent 0 = unknown, handled elsewhere). Flagged, never deleted."""
+    rent = listing.get("rent_chf") or 0
+    if rent <= 0:
+        return None
+    kind = listing.get("kind") or "wg_room"
+    if kind == "apartment":
+        if rent < MIN_APARTMENT_RENT:
+            return f"{PRICE_WRONG_MSG} (whole flat at CHF {rent})"
+        rooms = listing.get("rooms")
+        if isinstance(rooms, (int, float)) and rooms > 0 and rent / rooms < MIN_APARTMENT_PER_ROOM:
+            return f"{PRICE_WRONG_MSG} (CHF {rent} for {rooms:g} rooms)"
+    elif rent < MIN_ROOM_RENT:
+        return f"{PRICE_WRONG_MSG} (CHF {rent})"
+    area = listing.get("living_area_m2")
+    if isinstance(area, (int, float)) and area >= 15 and rent / area < MIN_RENT_PER_M2:
+        return f"{PRICE_WRONG_MSG} (CHF {rent} for {area:g} m2)"
+    return None
+
+
 def dealbreakers(listing: dict, profile: dict, today: date | None = None) -> list[str]:
     today = today or date.today()
     out: list[str] = []
     budget = _budget_max(profile)
     rent = listing.get("rent_chf") or 0
-    if rent > budget:
+    bad_price = price_implausible(listing)
+    if bad_price:
+        out.append(bad_price)
+    if rent > budget and not bad_price:
         out.append(f"Over budget (CHF {rent} > {budget})")
 
     ref = _ref_move_in(profile, today)
@@ -244,10 +275,57 @@ def _age_days(listing: dict, today: date) -> int | None:
     return max(0, (today - d).days) if d else None
 
 
+def _age_days_f(listing: dict, today: date) -> float | None:
+    """Fractional age (hours resolution when the source gives a timestamp), used only
+    for the smooth recency term so same-day listings still order."""
+    for key in ("listed_at", "created_at"):
+        raw = str(listing.get(key) or "")
+        if not raw:
+            continue
+        try:
+            dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        d = dt.date()
+        frac = (dt.hour * 60 + dt.minute) / 1440
+        return max(0.0, (today - d).days + (1 - frac) - 0.5)
+    return None
+
+
 def _best_transit(listing: dict) -> int | None:
     vals = [v for v in (listing.get("transit_zentrum_min"),
                         listing.get("transit_hoenggerberg_min")) if v is not None]
     return min(vals) if vals else None
+
+
+FIT_FLOOR = 30      # lowest score a listing without dealbreakers can get
+FIT_SPAN = 68       # floor + span = 98, the asymptotic ceiling
+_RAW_ZERO = 28.0    # raw points mapped to the floor
+_RAW_SCALE = 72.0
+_KNEE = 0.85
+
+
+def squash(raw: float) -> int:
+    """Map raw points (roughly 20..120) to FIT_FLOOR..98. Linear (so order is
+    preserved) up to _KNEE, then a soft shoulder that approaches 98 without ever
+    being clipped, so strong listings keep a distinct order instead of piling up
+    at 100."""
+    return int(round(squash_f(raw)))
+
+
+def squash_f(raw: float) -> float:
+    x = max(0.0, raw - _RAW_ZERO) / _RAW_SCALE
+    if x > _KNEE:
+        x = _KNEE + (1 - _KNEE) * (1 - math.exp(-(x - _KNEE) / (1 - _KNEE)))
+    return FIT_FLOOR + FIT_SPAN * x
+
+
+def _vibe_overlap(ext: dict, profile: dict) -> int:
+    """Count distinct profile keywords echoed by the ad's vibe/preferences (finer than tags)."""
+    ptext = _profile_text(profile)
+    words = {w for w in re.findall(r"[a-zäöüß]{5,}", ptext)}
+    adtext = " ".join(_as_list(ext.get("vibe")) + _as_list(ext.get("preferences"))).lower()
+    return sum(1 for w in words if w in adtext)
 
 
 def score_detail(listing: dict, profile: dict | None = None,
@@ -259,39 +337,45 @@ def score_detail(listing: dict, profile: dict | None = None,
     budget = _budget_max(profile)
     rent = listing.get("rent_chf") or 0
 
-    # budget bonus: up to +15, scaling with headroom
+    # rent headroom: up to +14, smooth in the headroom (cheap rooms are not rewarded
+    # past ~45% under budget; the reply score handles the crowd effect)
     if rent <= 0:
         s -= 5
     elif rent <= budget:
-        s += min(15.0, (budget - rent) / budget * 40)
+        s += 14 * min(1.0, (budget - rent) / (0.45 * budget))
         if rent <= budget * 0.85:
             reasons.append(f"CHF {rent}, under budget")
 
-    # commute: up to +20
+    # commute: up to +18, continuous
     t = _best_transit(listing)
     if t is not None:
-        s += max(0.0, 20 - max(0, t - 5) * 0.5) if t <= 45 else 0
+        s += max(0.0, 18 - max(0, t - 5) * 0.45) if t <= 45 else 0
         if t <= 25:
             reasons.append(f"{t} min to ETH")
 
-    # recency: up to +15, half-life ~6 days
+    # recency: up to +12, half-life ~6 days
     age = _age_days(listing, today)
+    agef = _age_days_f(listing, today)
     if age is not None:
-        s += 15 * math.pow(0.5, age / 6)
+        s += 12 * math.pow(0.5, (agef if agef is not None else age) / 6)
         if age <= 3:
             reasons.append("Fresh listing" if age else "Posted today")
 
     ext = _extracted(listing)
     if ext:
         tags = _matched_tags(ext, profile)
-        s += min(20, 5 * len(tags))
+        s += min(14, 4 * len(tags)) + min(6, 1.5 * _vibe_overlap(ext, profile))
         reasons += tags[:4]
         flags = _as_list(ext.get("red_flags"))
         s -= min(45, 15 * len(flags))
         if ext.get("poster_type") == "agency":
             s -= 5
+        elif ext.get("poster_type") == "private":
+            s += 3   # flatmates choose their new flatmate; agencies run formal queues
+            reasons.append("Posted by the flatmates")
         lang = ext.get("language")
         if lang in ("de", "en") and _lang_level(profile, lang) >= 4:
+            s += 2
             reasons.append("Ad language you speak")
         if ext.get("duration") == "permanent":
             s += 3
@@ -301,14 +385,15 @@ def score_detail(listing: dict, profile: dict | None = None,
     if avail:
         d = (avail - _ref_move_in(profile, today)).days
         if d <= 14:
-            s += 5
+            s += 4
             reasons.append("Move-in fits")
         elif d > 60:
             s -= 5
 
     db = dealbreakers(listing, profile, today)
-    fit = 0 if db else int(max(0, min(100, round(s))))
-    return {"fit": fit, "reply": _reply(listing, ext, profile, today, bool(db)),
+    fit = 0 if db else squash(s)
+    return {"fit": fit, "fit_precise": 0.0 if db else round(squash_f(s), 2),
+            "reply": _reply(listing, ext, profile, today, bool(db)),
             "reasons": list(dict.fromkeys(reasons)), "dealbreakers": db}
 
 
