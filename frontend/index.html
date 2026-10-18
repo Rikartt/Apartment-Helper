@@ -249,6 +249,7 @@
     .draft-actions button { padding:8px 12px; }
     #toasts { bottom:8px; }
   }
+.kind-badge { font-size: .55rem; letter-spacing: .08em; color: #f0a020; border: 1px solid #f0a020; padding: 0 4px; margin-right: 4px; vertical-align: 2px; }
 </style>
 </head>
 <body>
@@ -310,6 +311,14 @@
     <div class="seg mode">
       <button id="btn-transit" class="active" onclick="setMode('transit')">Transit</button>
       <button id="btn-bike" onclick="setMode('bike')">Bike</button>
+    </div>
+  </div>
+  <div class="filter-group">
+    <label>Type</label>
+    <div class="seg kind">
+      <button id="btn-kind-wg" class="active" onclick="setKind('wg')" title="Rooms in shared flats only">WG rooms</button>
+      <button id="btn-kind-studio" onclick="setKind('studio')" title="WG rooms plus small studios">+ Studios</button>
+      <button id="btn-kind-all" onclick="setKind('all')" title="Everything, including whole apartments">All</button>
     </div>
   </div>
   <div class="filter-group">
@@ -431,7 +440,7 @@ let byId = {};
 let markers = {};          // id -> L.Marker (cached)
 let shown = new Set();     // ids currently in the cluster
 let selectedId = null;
-let campus = 'zentrum', mode = 'transit', sortMode = 'relevance', posterFilter = 'all', showFilter = 'todo';
+let campus = 'zentrum', mode = 'transit', sortMode = 'relevance', posterFilter = 'all', showFilter = 'todo', kindFilter = 'wg';
 let loadState = 'loading'; // loading | ok | error
 let _profile = {};
 let budget = 1000, moveIn = '2026-09-01';
@@ -443,6 +452,10 @@ const BLOCKERS = ['woman only', 'frauen', 'nur frauen', 'weiblich', 'berufstäti
 
 function cleanTitle(l) {
   return (l.title || 'Room').replace(/\s*[–-]\s*\d[\d'’ ]*\s*CHF\s*$/i, '').replace(/^1\.0-Zimmer\s+/i, '').trim() || 'Room';
+}
+function kindBadge(l) {
+  const k = l.kind || 'wg_room';
+  return k === 'wg_room' ? '' : `<span class="kind-badge">${k === 'studio' ? 'STUDIO' : 'WHOLE FLAT'}</span> `;
 }
 function ext(l) { return (l.extracted && typeof l.extracted === 'object') ? l.extracted : {}; }
 
@@ -568,13 +581,14 @@ async function api(url, opts) {
 function seg(ids, active) { ids.forEach(([id, v]) => $(id).classList.toggle('active', v === active)); }
 function setCampus(c) { campus = c; seg([['btn-zentrum','zentrum'],['btn-hoenggerberg','hoenggerberg']], c); applyFilters(); }
 function setMode(m)   { mode = m;   seg([['btn-transit','transit'],['btn-bike','bike']], m); applyFilters(); }
+function setKind(k)   { kindFilter = k; seg([['btn-kind-wg','wg'],['btn-kind-studio','studio'],['btn-kind-all','all']], k); applyFilters(); }
 function setPoster(p) { posterFilter = p; seg([['btn-poster-all','all'],['btn-poster-private','private'],['btn-poster-agency','agency']], p); applyFilters(); }
 function setSort(s)   { sortMode = s; seg([['btn-sort-relevance','relevance'],['btn-sort-match','match'],['btn-sort-reply','reply'],['btn-sort-commute','commute'],['btn-sort-rent','rent']], s); applyFilters(); }
 function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
 function resetFilters() {
   $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
   $('maxCommute').value = 60; $('hideDeal').checked = false;
-  setPoster('all'); setShow('todo'); setSort('relevance');
+  setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance');
 }
 function toggleFilters() {
   const f = $('filters'); const c = f.classList.toggle('collapsed');
@@ -589,6 +603,9 @@ mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
 function passes(l, f) {
   if (l.rent_chf > f.maxRent) return false;
   if (f.filterCommute && commuteMin(l) > f.maxCommute) return false;
+  const kind = l.kind || 'wg_room';
+  if (kindFilter === 'wg' && kind !== 'wg_room') return false;
+  if (kindFilter === 'studio' && kind === 'apartment') return false;
   if (posterFilter !== 'all') {
     const pt = ext(l).poster_type ?? null;
     if (posterFilter === 'private' && pt === 'agency') return false;
@@ -684,7 +701,7 @@ function cardHtml(l) {
         ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}
         ${l.status ? `<span class="stbadge ${l.status}">${STATUS_LABEL[l.status]}</span>` : ''}
       </div>
-      <div class="card-title">${esc(cleanTitle(l))}</div>
+      <div class="card-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
       <div class="card-address">${esc(l.address)}</div>
       ${commuteGrid(l)}
       ${chips ? `<div class="chips">${chips}</div>` : ''}
@@ -833,7 +850,7 @@ function showDetail(l) {
 
   $('detail-body').innerHTML = `
     <div class="detail-rent">${l.rent_chf} CHF <span style="font-size:.6rem;color:#777">/ month</span></div>
-    <div class="detail-title">${esc(cleanTitle(l))}</div>
+    <div class="detail-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
     <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
     ${commuteGrid(l)}
     <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)}</div>
