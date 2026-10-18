@@ -170,3 +170,14 @@ def test_homegate_fetch_paginates_and_dedupes(monkeypatch):
     ads = HomegateAdapter().fetch()
     ids = [a["external_id"] for a in ads]
     assert len(ids) == len(set(ids)) and "4001234567" in ids
+
+
+def test_ronorp_empty_state_detection():
+    assert ronorp_adapter._is_empty_state("x Es sind noch keine Inhalte vorhanden y")
+    assert not ronorp_adapter._is_empty_state("WG Zimmer 800 CHF")
+
+
+def test_ronorp_off_by_default_in_startup_sources():
+    import backend.main as m
+    assert "ronorp" not in m.STARTUP_SOURCES
+    assert "flatfox" in m.STARTUP_SOURCES

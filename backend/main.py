@@ -31,7 +31,10 @@ BASE_DIR     = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
 # wgzimmer is reCAPTCHA-blocked (fetch is a no-op), so it is left out of the defaults.
-STARTUP_SOURCES = [n for n in ADAPTERS if n not in ("mock", "wgzimmer")]
+# ronorp's Zürich WG-room category is empty on the site (verified 2026-10-18), so it is off
+# by default; set WGP_ENABLE_RONORP=1 to include it again (it returns [] quickly if still empty).
+_DEFAULT_OFF = {"mock", "wgzimmer"} | (set() if os.environ.get("WGP_ENABLE_RONORP") == "1" else {"ronorp"})
+STARTUP_SOURCES = [n for n in ADAPTERS if n not in _DEFAULT_OFF]
 AUTO_EXTRACT = os.environ.get("WGP_AUTO_EXTRACT", "1") != "0"
 AUTO_EXTRACT_LIMIT = int(os.environ.get("WGP_AUTO_EXTRACT_LIMIT", "25"))
 

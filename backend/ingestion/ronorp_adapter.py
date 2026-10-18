@@ -77,10 +77,17 @@ class RonorpAdapter(BaseAdapter):
                     url = SEARCH_URL if page_num == 1 else f"{SEARCH_URL}?page={page_num}"
                     try:
                         page.goto(url, timeout=30_000, wait_until="networkidle")
-                        # Wait for listing cards to appear
-                        page.wait_for_selector("a[href*='/market/posts/']", timeout=8_000)
+                        # Wait for either listing cards or the explicit empty-state text
+                        page.wait_for_function(
+                            "document.querySelector(\"a[href*='/market/posts/']\")"
+                            " || /Es sind noch keine Inhalte vorhanden/.test(document.body.innerText)",
+                            timeout=8_000)
                     except Exception as e:
                         print(f"[ronorp] page {page_num} timed out: {e}")
+                        break
+                    if _is_empty_state(page.inner_text("body")):
+                        print("[ronorp] category is empty on the site right now "
+                              "(\"Es sind noch keine Inhalte vorhanden\"); returning 0 listings")
                         break
 
                     soup = BeautifulSoup(page.content(), "lxml")
@@ -239,6 +246,12 @@ def _extract_address(soup: BeautifulSoup, text: str) -> str | None:
             return ht[:100]
 
     return None
+
+
+def _is_empty_state(body_text: str) -> bool:
+    """True if Ronorp's category page says it has no posts (checked 2026-10-18:
+    its API returned total_count 0 for Zürich zimmer-wg; not a block)."""
+    return "keine Inhalte vorhanden" in body_text
 
 
 def _is_zurich(address: str, text: str) -> bool:
