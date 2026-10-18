@@ -12,7 +12,7 @@ import backend.main as m
 def seeded(db, ad_factory):
     for i, rent in enumerate([500, 700, 900, 1200, 0, 650, 800, 950]):
         db.upsert_listing(ad_factory(external_id=f"e{i}", rent_chf=rent, fit_score=50 + i, reply_score=40 + i,
-                                     raw_text=f"ad {i}"))
+                                     raw_text=f"ad number {i} text"))
     return db
 
 
@@ -22,16 +22,16 @@ def test_startup_does_not_ingest_or_extract(db, profile_path, monkeypatch):
     from fastapi.testclient import TestClient
     calls = []
     monkeypatch.setattr(m, "run_ingest", lambda s: calls.append(s) or {"total": 0, "new": 0})
-    monkeypatch.setattr(m, "extract", lambda *a, **k: calls.append("EXTRACT") or None)
+    monkeypatch.setattr(m, "extract_batch", lambda *a, **k: calls.append("EXTRACT") or {})
     import time
     with TestClient(m.app) as c:
-        for _ in range(50):
-            if calls:
+        for _ in range(100):
+            if len(calls) >= len(m.STARTUP_SOURCES):
                 break
             time.sleep(0.02)
         assert c.get("/listings").status_code == 200
     assert "EXTRACT" not in calls
-    assert calls == [m.STARTUP_SOURCES]
+    assert calls == [[s] for s in m.STARTUP_SOURCES]
 
 
 def test_startup_ingest_exception_is_swallowed(monkeypatch):
@@ -66,28 +66,102 @@ def test_profile_get_missing_file(client, profile_path):
     assert client.get("/profile").json() == {}
 
 
-@pytest.mark.xfail(reason="BUG: PUT /profile with invalid JSON / non-object body returns 500 instead of 4xx (main.py put_profile: request.json() unguarded, no dict check) and a list body would overwrite profile.json", strict=True)
 def test_profile_put_invalid_body(client):
     r = client.put("/profile", content=b"{nope", headers={"content-type": "application/json"})
     assert 400 <= r.status_code < 500
 
 
 def test_extract_with_mock(client, seeded, monkeypatch):
-    monkeypatch.setattr(m, "extract", lambda t: {"language": "de", "red_flags": []})
+    import backend.extraction as ex
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(ex, "extract", lambda t: {"language": "de", "red_flags": []})
     r = client.post("/extract").json()
-    assert r == {"total": 8, "extracted": 8}
-    assert all(x["extracted"] for x in client.get("/listings").json())
-    assert client.post("/extract").json() == {"total": 0, "extracted": 0}
+    # 1200 CHF is over budget -> prefiltered out, never sent to the model
+    assert r["candidates"] == 7 and r["extracted"] == 7 and r["total"] == 7
+    assert client.post("/extract").json()["candidates"] == 0  # no re-extraction
+
+
+def test_extract_respects_limit(client, seeded, monkeypatch):
+    import backend.extraction as ex
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(ex, "extract", lambda t: {"language": "de", "red_flags": []})
+    assert client.post("/extract?limit=3").json()["extracted"] == 3
 
 
 def test_extract_failures_counted(client, seeded, monkeypatch):
-    monkeypatch.setattr(m, "extract", lambda t: None)
-    assert client.post("/extract").json() == {"total": 8, "extracted": 0}
+    import backend.extraction as ex
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(ex, "extract", lambda t: None)
+    r = client.post("/extract").json()
+    assert r["extracted"] == 0 and r["failed"] == 7
 
 
-def test_extract_no_key_never_creates_client(client, seeded):
-    # real extract(); no key -> KeyError swallowed, forbidden-client guard never hit
-    assert client.post("/extract").json()["extracted"] == 0
+def test_extract_billing_error_is_clean(client, seeded, monkeypatch):
+    import backend.extraction as ex
+    from backend import llm
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    def boom(t): raise llm.LLMError("Anthropic credit balance is exhausted.", 402, True)
+    monkeypatch.setattr(ex, "extract", boom)
+    r = client.post("/extract")
+    assert r.status_code == 402 and "credit" in r.json()["error"]
+
+
+def test_extract_no_key_clean_error(client, seeded):
+    r = client.post("/extract")
+    assert r.status_code == 503 and "ANTHROPIC_API_KEY" in r.json()["error"]
+
+
+def test_draft_billing_error_is_clean(client, seeded, monkeypatch):
+    from backend import llm
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    def bad(l, p): raise m.DraftError("Anthropic credit balance is exhausted.", 402, True)
+    monkeypatch.setattr(m, "draft", bad)
+    r = client.post("/draft/1")
+    assert r.status_code == 402 and "credit" in r.json()["error"]
+
+
+# ---- outcome logging (Phase 6) ----
+def test_status_set_clear_and_listing_fields(client, seeded):
+    l0 = client.get("/listings").json()[0]
+    assert l0["status"] is None and "status_updated_at" in l0
+    r = client.post("/listings/1/status", json={"status": "sent"})
+    assert r.status_code == 200 and r.json()["status"] == "sent" and r.json()["sent"] is True
+    assert r.json()["status_updated_at"]
+    r = client.post("/listings/1/status", json={"status": "replied"}).json()
+    assert r["status"] == "replied" and r["replied"] is True
+    r = client.post("/listings/1/status", json={"status": None}).json()
+    assert r["status"] is None and r["sent"] is False and r["replied"] is False
+
+
+def test_status_404_and_422(client, seeded):
+    assert client.post("/listings/9999/status", json={"status": "sent"}).status_code == 404
+    assert client.post("/listings/1/status", json={"status": "maybe"}).status_code == 422
+    assert client.post("/listings/1/status", json={}).status_code == 422
+
+
+def test_status_survives_reingest(client, seeded, ad_factory):
+    client.post("/listings/1/status", json={"status": "replied"})
+    seeded.upsert_listing(ad_factory(external_id="e0", rent_chf=500, title="changed"))
+    row = [x for x in client.get("/listings").json() if x["id"] == 1][0]
+    assert row["status"] == "replied" and row["title"] == "changed"
+
+
+def test_stats(client, seeded):
+    assert client.get("/stats").json()["reply_rate"] is None
+    client.post("/listings/1/status", json={"status": "sent"})
+    client.post("/listings/2/status", json={"status": "replied"})
+    client.post("/listings/3/status", json={"status": "rejected"})
+    s = client.get("/stats").json()
+    assert s["counts"] == {"sent": 1, "replied": 1, "rejected": 1, "none": 5}
+    assert s["contacted"] == 3 and s["reply_rate"] == round(1 / 3, 3)
+
+
+def test_listings_have_chips_and_dealbreakers(client, seeded):
+    rows = {x["rent_chf"]: x for x in client.get("/listings").json()}
+    assert rows[1200]["is_dealbreaker"] and rows[1200]["fit_score"] == 0
+    assert isinstance(rows[500]["match_reasons"], list)
+    assert "raw_text" not in rows[500]
+    assert "raw_text" in client.get("/listings?include_raw=1").json()[0]
 
 
 def test_best_without_key_returns_top5_by_combined_score(client, seeded):
@@ -104,10 +178,11 @@ def test_best_empty(client):
 
 
 def _fake_anthropic(monkeypatch, text):
-    import anthropic
-    create = lambda **kw: SimpleNamespace(content=[SimpleNamespace(text=text)])
-    fake = lambda **kw: SimpleNamespace(messages=SimpleNamespace(create=create))
-    monkeypatch.setattr(anthropic, "Anthropic", fake)
+    from backend import llm
+    m._best_cache.clear()
+    create = lambda **kw: SimpleNamespace(content=[SimpleNamespace(type="text", text=text)])
+    fake = SimpleNamespace(messages=SimpleNamespace(create=create))
+    monkeypatch.setattr(llm, "get_client", lambda: fake)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
 
 
@@ -133,7 +208,7 @@ def test_draft_404_and_ok_and_502(client, seeded, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     assert client.post("/draft/9999").status_code == 404
     monkeypatch.setattr(m, "draft", lambda l, p: "Hi!")
-    assert client.post("/draft/1").json() == {"id": 1, "draft": "Hi!"}
+    assert client.post("/draft/1").json()["draft"] == "Hi!"
     def bad(l, p): raise m.DraftError("nope")
     monkeypatch.setattr(m, "draft", bad)
     assert client.post("/draft/1").status_code == 502
@@ -158,7 +233,6 @@ def test_ingest_unknown_source_and_adapter_crash(client, monkeypatch):
     assert client.post("/ingest?sources=nope&sources=mock").json() == {"total": 0, "new": 0}
 
 
-@pytest.mark.xfail(reason="BUG: re-running ingest reports already-known rows as 'new' (db.upsert_listing returns True on update)", strict=True)
 def test_ingest_twice_new_count(client, db, monkeypatch, ad_factory):
     import backend.ingest as ing
     class A:
@@ -173,3 +247,17 @@ def test_commute_values(db):
     t = commute_times(*ETH_ZENTRUM)
     assert t["bike_zentrum_min"] == 1 and t["transit_zentrum_min"] == 1
     assert commute_times(47.45, 8.45)["bike_zentrum_min"] > 5
+
+
+def test_listing_detail_and_ingest_status(client, seeded):
+    d = client.get("/listings/1").json()
+    assert d["id"] == 1 and "raw_text" in d and "fit_reasons" in d
+    assert client.get("/listings/9999").status_code == 404
+    s = client.get("/ingest/status").json()
+    assert set(["running", "sources_done", "count"]) <= set(s)
+
+
+def test_draft_returns_language(client, seeded, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(m, "draft", lambda l, p: "Hi!")
+    assert "language" in client.post("/draft/1").json()
