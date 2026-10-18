@@ -18,7 +18,7 @@ python3 -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 pip install -r requirements.txt
-playwright install chromium      # needed by the Ronorp adapter
+playwright install chromium      # only needed if you enable the Ronorp adapter
 
 cp .env.example .env
 # edit .env and set ANTHROPIC_API_KEY=sk-ant-...   (.env is git-ignored; never put the key in .env.example)
@@ -82,6 +82,20 @@ Press `?` in the app for the list.
 | `?` | Show shortcuts |
 | `Esc` | Close panel / detail |
 
+### Use it on your phone (PWA)
+
+The app is installable and works well on a phone. On the same Wi-Fi as your Mac:
+
+1. Start the server so it listens on the network, not just localhost: `.venv/bin/uvicorn backend.main:app --host 0.0.0.0`
+2. Find the Mac's LAN IP: `ipconfig getifaddr en0` (Wi-Fi; try `en1` if empty), or System Settings > Wi-Fi > Details.
+3. On the phone open `http://<that-ip>:8000`, then **Add to Home Screen** (Safari: Share menu; Chrome: menu > Install app). It opens full screen with the red-on-black WG icon.
+
+Notes:
+- The service worker caches only the app shell (page and Leaflet files). Listings and all other API data are always fetched live and never cached, so you never see stale listings; offline you get a red "OFFLINE" banner instead. Some browsers only allow installing from HTTPS or localhost; Android Chrome may offer "Add to Home screen" as a plain shortcut over http, which still works.
+- **Security:** with `--host 0.0.0.0` anyone on that network can open the app, read your profile and trigger actions (including Claude calls that spend your credit). Only do this on a network you trust, not on public or shared Wi-Fi.
+- Optional guard: set `WGP_ACCESS_TOKEN=some-long-random-string` in `.env`. Every request then needs it: open `http://<ip>:8000/?token=some-long-random-string` once on the phone; the server sets a cookie and redirects, and you are in. It is off by default. This is a simple shared secret over plain HTTP, not real authentication; use a VPN or HTTPS if you need more.
+- Regenerate the icons with `python tools/make_icons.py` (standard library only).
+
 ### Phone alerts (optional)
 After each ingest, the app can send one digest (max 5 listings) of new listings whose fit is at or above `WGP_NOTIFY_MIN_FIT`. Alerts go only to you, never to landlords. Nothing is sent unless you configure a channel.
 
@@ -109,6 +123,8 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | `WGP_EXTRACT_MODEL` | `claude-haiku-5-5` | Model for extraction |
 | `WGP_BEST_MODEL` | same as extract model | Model for Top 5 |
 | `WGP_DRAFT_MODEL` | `claude-sonnet-5-5` | Model for drafts |
+| `WGP_ACCESS_TOKEN` | none (off) | Shared secret for phone/LAN access, see "Use it on your phone" |
+| `WGP_ENABLE_RONORP` | `0` | `1` adds Ronorp back to the default sources |
 | `WGP_INGEST_INTERVAL_MIN` | `45` | Minutes between background ingests; `0` = off |
 | `WGPENDLER_INCLUDE_APARTMENTS` | `1` | `0` stops Flatfox/Homegate from collecting whole flats (needed for group mode) |
 | `WGPENDLER_GEOCACHE` | `geocache.sqlite` in repo root | Path of the address-to-coordinates cache |
@@ -126,7 +142,7 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | Flatfox | Used (public API, tiled to get past its result cap) |
 | Homegate | Used (up to 40 result pages per run) |
 | WOKO | Used (student housing cooperative; few listings) |
-| Ronorp | Used, first results page only (its robots.txt disallows paging) |
+| Ronorp | Off by default: as of 2026-10-18 its Zürich WG-room category is genuinely empty ("Es sind noch keine Inhalte vorhanden", its API reports 0 posts), so there is nothing to fetch. The adapter detects this and returns nothing in a few seconds. Set `WGP_ENABLE_RONORP=1` to try it again later. First results page only (robots.txt disallows paging) |
 | WGZimmer | Not usable: search is behind reCAPTCHA, which we don't bypass. The adapter is present but returns nothing, and logs "no listings returned" |
 | students.ch and others | Not implemented: no permitted automated access (login/captcha walls or terms of service). The app only reads what robots.txt and the site allow, at about 1 request per second |
 
@@ -156,7 +172,7 @@ RUN_E2E=1 WGP_LIVE_API=1 python tests/smoke_e2e.py   # also exercises Claude (co
 
 - **`ModuleNotFoundError: No module named 'fastapi'`**: the venv is not active, see Running.
 - **Empty list right after first start**: the first ingest takes several minutes; check `curl localhost:8000/ingest/status`.
-- **Ronorp returns nothing**: run `playwright install chromium`. WGZimmer always returns nothing, by design.
+- **Ronorp returns nothing**: expected, the category is empty on the site and Ronorp is off by default (see Sources). If you enabled it and it should have listings, run `playwright install chromium`. WGZimmer always returns nothing, by design.
 - **"credit balance exhausted" / auth errors**: top up billing or fix `ANTHROPIC_API_KEY` in `.env`, then restart.
 - **Address already in use**: another server is on port 8000; use `--port`.
 - **Map tiles missing**: tiles come from Esri; check your connection.

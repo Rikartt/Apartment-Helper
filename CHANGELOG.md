@@ -3,6 +3,7 @@
 ## 2026-10-18 overnight
 
 ### New
+- **Phone / PWA**: installable (manifest, icons, service worker for the app shell, never caches listings, offline banner), phone access docs, optional `WGP_ACCESS_TOKEN` guard.
 - **Group mode**: a Solo | Group toggle. Group mode finds whole flats, scores them per person (worst-case commute across campuses), and drafts a first message from the group's members and notes.
 - **Fresh listings**: background re-ingest every 45 minutes, NEW badges, a "New only" toggle, a live notice when new listings arrive, and gone-listing detection (hidden, your Sent/Replied marks kept).
 - **Phone alerts** (opt-in): ntfy or Telegram digest of new high-fit listings, with a fit threshold and quiet hours. `GET /notify/status`, `POST /notify/test`.
@@ -11,6 +12,7 @@
 - Ingest progress and history in `/ingest/status`; Sent / Replied / Skipped tracking with stats.
 
 ### Improved
+- Ronorp is off by default: its Zürich WG-room category is empty on the site. The adapter now detects that and returns quickly (`WGP_ENABLE_RONORP=1` to re-enable).
 - Fit scores recalibrated so good listings no longer all saturate at 100; implausible prices are flagged as dealbreakers.
 - Drafts: a move-in date in the past reads as "available immediately"; group drafts never invent documents.
 - Extraction is bounded (prefilters, per-run cap), failures show clear messages (for example exhausted credit), and concurrent extractions are single-flight.
