@@ -1,12 +1,13 @@
 """Phase 3: structured extraction of WG ads with Claude Haiku (PROMPT 1 in the brief)."""
 import json
 import os
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from . import llm
 from .db import (get_listings_needing_extraction, record_extraction_failure,
                  save_extraction)
-from .scoring import load_profile, score_detail
+from .scoring import load_profile, score_detail, _budget_max
 
 SYSTEM_PROMPT = """You extract structured facts from a shared-flat (WG) rental ad. Return ONLY valid JSON \
 matching the schema the user provides — no prose, no markdown fences. If a field isn't \
@@ -40,6 +41,7 @@ HARD_MAX_PER_RUN = 200
 MAX_TRANSIT_MIN = int(os.environ.get("WGP_EXTRACT_MAX_TRANSIT_MIN", "50"))
 MAX_AD_CHARS = 4000
 WORKERS = 4
+_batch_lock = threading.Lock()   # one batch at a time: overlapping batches pick the same rows and double the spend
 
 
 def normalize(d: dict) -> dict:
@@ -109,9 +111,19 @@ def extract_batch(limit: int | None = None, max_rent: int | None = None,
     """Extract un-extracted listings that pass cheap prefilters (rent within budget,
     commute not absurd), newest first, capped at `limit` per run. Already-extracted
     listings are never re-sent. Stops early if the key / billing is broken."""
+    if not _batch_lock.acquire(blocking=False):
+        return {"candidates": 0, "extracted": 0, "failed": 0, "limit": limit or 0,
+                "error": "an extraction batch is already running", "error_status": 409}
+    try:
+        return _extract_batch(limit, max_rent, max_transit_min)
+    finally:
+        _batch_lock.release()
+
+
+def _extract_batch(limit, max_rent, max_transit_min) -> dict:
     profile = load_profile()
     limit = max(1, min(limit or DEFAULT_MAX_PER_RUN, HARD_MAX_PER_RUN))
-    budget = int((profile.get("budget_chf") or {}).get("max") or 1000)
+    budget = _budget_max(profile)
     rows = get_listings_needing_extraction(
         max_rent=max_rent if max_rent is not None else budget,
         max_transit_min=max_transit_min if max_transit_min is not None else MAX_TRANSIT_MIN,

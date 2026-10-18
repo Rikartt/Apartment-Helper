@@ -38,7 +38,7 @@ def run_ingest(sources: list[str] | None = None) -> dict:
     per_source: dict = {}
     try:
         seen_keys = {}
-        for row in get_all_listings(include_gone=True):
+        for row in get_all_listings(include_raw=False):
             k = dedupe_key(row)
             if k:
                 seen_keys.setdefault(k, row["source"])

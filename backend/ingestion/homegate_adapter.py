@@ -253,7 +253,9 @@ class HomegateAdapter(BaseAdapter):
         # Geocode the address
         lat, lng = _geocode(address)
         if lat is None or lng is None:
-            lat, lng = 47.3769, 8.5481  # Zürich centre fallback
+            # Never invent a location: the Zürich-centre fallback made unplaceable ads
+            # look like a 5-minute commute and rank at the top.
+            return None
 
         raw_text = f"{title}\n{card.get('desc', '')}".strip()[:3000]
 

@@ -196,13 +196,17 @@ def _decorate(l: dict, profile: dict) -> dict:
 
 
 @app.get("/listings")
-def listings(include_raw: bool = Query(False), include_gone: bool = Query(False)):
+def listings(include_raw: bool = Query(False), include_gone: bool = Query(False),
+             kind: Optional[str] = Query(None)):
     """All listings with live scores. raw_text is omitted unless ?include_raw=1
     (about 1.3 kB per ad and not needed to render the map). Listings that
     vanished from their source are hidden unless ?include_gone=1."""
     profile = _load_profile()
-    return JSONResponse([_decorate(l, profile)
-                         for l in get_all_listings(include_raw, include_gone)])
+    rows = get_all_listings(include_raw, include_gone)
+    if kind:   # optional comma list, e.g. kind=wg_room,studio (default: everything)
+        want = {k.strip() for k in kind.split(",") if k.strip()}
+        rows = [l for l in rows if (l.get("kind") or "wg_room") in want]
+    return JSONResponse([_decorate(l, profile) for l in rows])
 
 
 @app.get("/listings/{listing_id}")
@@ -248,7 +252,11 @@ async def put_profile(request: Request):
         if gerr:
             return JSONResponse({"error": gerr}, status_code=422)
         body["group"] = grp
-    PROFILE_PATH.write_text(json.dumps(body, indent=2, ensure_ascii=False))
+    # atomic replace: a concurrent reader (scoring on another thread) must never see a
+    # half-written file
+    tmp = PROFILE_PATH.with_name(PROFILE_PATH.name + ".tmp")
+    tmp.write_text(json.dumps(body, indent=2, ensure_ascii=False))
+    os.replace(tmp, PROFILE_PATH)
     profile = _load_profile()
     rows = get_all_listings(include_raw=False, include_gone=True)
     scored = []
@@ -282,7 +290,9 @@ def best_listings():
     """Top 5 listings by relevance with Claude-generated strengths/weaknesses.
     The Claude call is cached per set of top-5 ids so page reloads cost nothing."""
     profile = _load_profile()
-    eligible = [l for l in (_decorate(l, profile) for l in get_all_listings(False))
+    # whole flats belong to group mode: never suggest them as a WG room
+    eligible = [l for l in (_decorate(l, profile) for l in get_all_listings(False)
+                            if (l.get("kind") or "wg_room") != "apartment")
                 if not l["is_dealbreaker"] and l["rent_chf"] > 0]
     eligible.sort(key=lambda r: (r["fit_score"] + r["reply_score"]) / 2, reverse=True)
     top5 = eligible[:5]
@@ -376,10 +386,16 @@ def draft_message(listing_id: int):
 def ingest(sources: list[str] = Query(default=None)):
     from .ingest import ADAPTERS
     names = [x for x in (sources or list(ADAPTERS)) if x in ADAPTERS]
-    if _ingest_state["running"]:
+    if not names:
+        return JSONResponse({"error": "no valid sources", "valid": list(ADAPTERS)},
+                            status_code=400)
+    # non-blocking: if the periodic thread grabbed the lock between a check and the
+    # call, answer 409 instead of hanging this request for the whole run
+    result = _tracked_ingest(names, blocking=False)
+    if result is None:
         return JSONResponse({"error": "an ingest is already running", **_ingest_state},
                             status_code=409)
-    return JSONResponse(_tracked_ingest(names))
+    return JSONResponse(result)
 
 
 @app.get("/ingest/status")

@@ -84,3 +84,97 @@ def test_solo_and_group_prompts_use_immediate_move_in():
     assert "2020-01-01" not in user and "available immediately" in user
     assert "never quote a past calendar date" in system or "past calendar date" in system
     assert "past" in drafting.SYSTEM_PROMPT
+
+
+# ---- review fixes ----
+def test_get_conn_context_closes(db):
+    import sqlite3
+    with db.get_conn() as c:
+        c.execute("SELECT 1")
+    try:
+        c.execute("SELECT 1")
+        closed = False
+    except sqlite3.ProgrammingError:
+        closed = True
+    assert closed
+
+
+def test_malformed_profile_does_not_brick_scoring(client, profile_path, db, ad_factory):
+    import json
+    db.upsert_listing(ad_factory(rent_chf=700))
+    profile_path.write_text(json.dumps({"budget_chf": {"max": "lots"}, "languages": 5, "traits": "x"}))
+    r = client.get("/listings")
+    assert r.status_code == 200 and r.json()[0]["fit_score"] > 0
+    profile_path.write_text(json.dumps({"budget_chf": [1], "languages": ["German", None]}))
+    assert client.get("/listings").status_code == 200
+
+
+def test_best_excludes_apartments_and_kind_filter(client, db, ad_factory):
+    db.upsert_listing(ad_factory(external_id="r1", kind="wg_room", rent_chf=700))
+    db.upsert_listing(ad_factory(external_id="a1", kind="apartment", rent_chf=900, rooms=3.5))
+    ids = {x["external_id"] for x in client.get("/best").json()}
+    assert ids == {"r1"}
+    all_ids = {x["external_id"] for x in client.get("/listings").json()}
+    assert all_ids == {"r1", "a1"}                      # default unchanged
+    only = {x["external_id"] for x in client.get("/listings", params={"kind": "apartment"}).json()}
+    assert only == {"a1"}
+
+
+def test_ingest_endpoint_409_when_lock_held_and_400_on_bad_source(client):
+    import backend.main as m
+    assert client.post("/ingest", params={"sources": "nope"}).status_code == 400
+    assert m._ingest_lock.acquire()
+    try:
+        assert client.post("/ingest", params={"sources": "mock"}).status_code == 409
+    finally:
+        m._ingest_lock.release()
+
+
+def test_extract_batch_single_flight(monkeypatch, db):
+    from backend import extraction
+    assert extraction._batch_lock.acquire()
+    try:
+        r = extraction.extract_batch(limit=5)
+        assert r["error_status"] == 409 and r["extracted"] == 0
+    finally:
+        extraction._batch_lock.release()
+
+
+def test_homegate_drops_ads_it_cannot_place(monkeypatch):
+    from backend.ingestion import homegate_adapter as hg
+    monkeypatch.setattr(hg, "_geocode", lambda a: (None, None))
+    card = {"external_id": "1" * 12, "url": "u", "rent_chf": 900, "address": "Nowhere 1",
+            "title_raw": "WG Zimmer", "desc": "", "kind": "wg_room"}
+    assert hg.HomegateAdapter()._enrich(card) is None
+
+
+def test_profile_put_is_atomic_file(client, profile_path):
+    r = client.put("/profile", json={"budget_chf": {"max": 900}})
+    assert r.status_code == 200
+    assert not profile_path.with_name(profile_path.name + ".tmp").exists()
+
+
+def test_concurrent_ingest_writes_and_request_reads(db, ad_factory):
+    import threading
+    errors = []
+
+    def writer(n):
+        try:
+            for i in range(60):
+                db.upsert_listing(ad_factory(external_id=f"w{n}-{i}"))
+        except Exception as e:  # pragma: no cover
+            errors.append(e)
+
+    def reader():
+        try:
+            for _ in range(60):
+                db.get_all_listings(False)
+                db.get_stats()
+        except Exception as e:  # pragma: no cover
+            errors.append(e)
+
+    ts = [threading.Thread(target=writer, args=(n,)) for n in range(3)] + \
+         [threading.Thread(target=reader) for _ in range(3)]
+    [t.start() for t in ts]
+    [t.join() for t in ts]
+    assert not errors and len(db.get_all_listings(False)) == 180

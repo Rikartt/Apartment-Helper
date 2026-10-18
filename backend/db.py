@@ -36,15 +36,29 @@ INDEXES = [
 ]
 
 
+class _Conn(sqlite3.Connection):
+    """`with get_conn() as conn:` commits (or rolls back) AND closes. The stock
+    sqlite3 context manager only commits, so every call leaked a connection (and an
+    open WAL reader) until garbage collection -- thousands per ingest."""
+
+    def __exit__(self, exc_type, exc, tb):
+        try:
+            return super().__exit__(exc_type, exc, tb)
+        finally:
+            self.close()
+
+
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = sqlite3.connect(DB_PATH, timeout=30, factory=_Conn)
     conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
 def init_db():
     with get_conn() as conn:
+        # WAL is persistent in the DB file, so set it once here instead of on every
+        # connection (readers in request handlers never block the ingest writer).
+        conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS listings (
                 id                      INTEGER PRIMARY KEY AUTOINCREMENT,

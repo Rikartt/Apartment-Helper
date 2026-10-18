@@ -48,7 +48,10 @@ _LANG_ALIASES = {"german": "de", "deutsch": "de", "english": "en", "englisch": "
 
 def _lang_level(profile: dict, code: str) -> int:
     best = 0
-    for l in profile.get("languages") or []:
+    langs = profile.get("languages")
+    for l in langs if isinstance(langs, list) else []:
+        if not isinstance(l, dict):
+            continue
         name = str(l.get("lang", "")).lower()
         if _LANG_ALIASES.get(name, name[:2]) == code:
             best = max(best, _LEVELS.get(str(l.get("level", "")).lower(), 3))
@@ -79,7 +82,14 @@ def _extracted(listing: dict) -> dict | None:
 
 
 def _budget_max(profile: dict) -> int:
-    return int((profile.get("budget_chf") or {}).get("max") or 1000)
+    """Budget ceiling; a malformed profile value falls back to 1000 instead of
+    crashing every scored endpoint."""
+    b = profile.get("budget_chf")
+    try:
+        v = int(float(b.get("max"))) if isinstance(b, dict) else 0
+    except (TypeError, ValueError, OverflowError):
+        v = 0
+    return v if v > 0 else 1000
 
 
 def _ref_move_in(profile: dict, today: date) -> date:
@@ -200,7 +210,7 @@ def dealbreakers(listing: dict, profile: dict, today: date | None = None) -> lis
             out.append(f"Requires: {req}")
         else:
             for code, rx in _LANG_REQ.items():
-                if rx.search(r) and profile.get("languages"):
+                if rx.search(r) and isinstance(profile.get("languages"), list) and profile["languages"]:
                     lvl = _lang_level(profile, code)
                     # "German-speaking" => need roughly B2+; no stated level => skip
                     if lvl < 4:
