@@ -1,4 +1,6 @@
 import json
+import threading
+from contextlib import asynccontextmanager
 from pathlib import Path
 from fastapi import FastAPI, Query
 from fastapi.staticfiles import StaticFiles
@@ -20,19 +22,37 @@ BASE_DIR     = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 PROFILE_PATH = BASE_DIR / "profile.json"
 
-app = FastAPI(title="WGPendler")
+STARTUP_SOURCES = ["flatfox", "wgzimmer", "ronorp", "homegate"]
+
+
+def _startup_ingest():
+    try:
+        run_ingest(STARTUP_SOURCES)
+    except Exception as e:  # never let a scraper crash bring the server down
+        print(f"[startup] ingest failed: {e}")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_db()
+    # Run the first ingest on a worker thread. It makes blocking network calls
+    # and drives Playwright's *sync* API, and neither can run on the asyncio
+    # event loop (Playwright raises "Sync API inside the asyncio loop"). Running
+    # it off-thread also lets the server answer requests while that first ingest
+    # (a minute or two) is still in progress.
+    threading.Thread(
+        target=_startup_ingest, name="startup-ingest", daemon=True
+    ).start()
+    yield
+
+
+app = FastAPI(title="WGPendler", lifespan=lifespan)
 
 
 def _load_profile() -> dict:
     if PROFILE_PATH.exists():
         return json.loads(PROFILE_PATH.read_text())
     return {}
-
-
-@app.on_event("startup")
-def startup():
-    init_db()
-    run_ingest(["flatfox", "wgzimmer", "ronorp", "homegate"])
 
 
 @app.get("/listings")
@@ -87,6 +107,7 @@ def run_extraction():
 def best_listings():
     """Return top 5 listings by relevance with Claude-generated strengths/weaknesses."""
     import os
+    import re
     import anthropic as _anthropic
 
     all_rows = get_all_listings()
@@ -145,7 +166,10 @@ def best_listings():
             max_tokens=700,
             messages=[{"role": "user", "content": prompt}],
         )
-        summaries = json.loads(msg.content[0].text.strip())
+        raw = msg.content[0].text.strip()
+        # Claude sometimes wraps the array in ```json ... ``` fences
+        fence = re.match(r"^```(?:json)?\s*(.*?)\s*```$", raw, re.DOTALL)
+        summaries = json.loads(fence.group(1) if fence else raw)
         by_id = {s["id"]: s for s in summaries}
         for l in top5:
             l["analysis"] = by_id.get(l["id"], {})

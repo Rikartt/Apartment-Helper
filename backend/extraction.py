@@ -1,6 +1,16 @@
 import json
 import os
+import re
 import anthropic
+
+
+def _strip_json_fence(text: str) -> str:
+    """Claude sometimes wraps JSON in ```json ... ``` fences despite being asked
+    not to. Strip them before parsing."""
+    text = text.strip()
+    m = re.match(r"^```(?:json)?\s*(.*?)\s*```$", text, re.DOTALL)
+    return m.group(1).strip() if m else text
+
 
 SYSTEM_PROMPT = """You extract structured facts from a shared-flat (WG) rental ad. Return ONLY valid JSON \
 matching the schema the user provides — no prose, no markdown fences. If a field isn't \
@@ -58,8 +68,7 @@ AD:
             system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
         )
-        text = msg.content[0].text.strip()
-        return json.loads(text)
+        return json.loads(_strip_json_fence(msg.content[0].text))
     except Exception as e:
         print(f"[extraction] failed: {e}")
         return None

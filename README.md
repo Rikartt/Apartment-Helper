@@ -34,13 +34,35 @@ playwright install chromium
 # 5. Configure your API key
 cp .env.example .env
 # then edit .env and set ANTHROPIC_API_KEY=sk-ant-...
+# (the key goes in .env, NOT .env.example — .env is git-ignored)
 ```
+
+### macOS notes
+
+- Tested on Apple Silicon with Python 3.11–3.14 from python.org.
+- `playwright install chromium` is required — the WGZimmer and Ronorp
+  adapters launch a headless browser. Without it those two sources are
+  skipped (Flatfox and Homegate still work).
+- The first ingest now runs on a background thread, so the server answers
+  on http://localhost:8000 immediately while listings load over the next
+  minute or two.
 
 ## Running locally
 
+Make sure the virtual environment from step 2 is activated first — if it isn't,
+your shell will fall back to a system-wide or Homebrew `uvicorn` that doesn't
+have this project's dependencies installed, and you'll get
+`ModuleNotFoundError: No module named 'fastapi'`.
+
 ```bash
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
+# your prompt should now be prefixed with (.venv) — that's how you know it's active
 uvicorn backend.main:app --reload
 ```
+
+Activation doesn't persist across terminal tabs/sessions, so re-run it any time
+you open a new shell before starting the server. If you'd rather not activate,
+call the venv's binary directly instead: `.venv/bin/uvicorn backend.main:app --reload`.
 
 Then open **http://localhost:8000** in your browser.
 
