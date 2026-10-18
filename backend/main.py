@@ -59,7 +59,8 @@ def _sent_info(l: dict, now: datetime | None = None) -> dict:
     followup_due: still 'sent' (no reply, not skipped) for more than WGP_FOLLOWUP_DAYS."""
     if l.get("status") != "sent":
         return {"sent_at": l.get("last_sent_at"), "days_since_sent": None, "followup_due": False}
-    at = l.get("last_sent_at") or l.get("status_updated_at")
+    # the later of "status became sent" and the last stored message (a follow-up restarts it)
+    at = max(filter(None, [l.get("last_sent_at"), l.get("status_updated_at")]), default=None)
     t = _parse_utc(at)
     if not t:
         return {"sent_at": at, "days_since_sent": None, "followup_due": False}
