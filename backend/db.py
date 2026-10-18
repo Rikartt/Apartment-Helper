@@ -12,6 +12,7 @@ NEW_COLUMNS = [
     ("transit_hoenggerberg_min", "INTEGER"),
     ("listed_at", "TEXT"),
     ("reply_score", "INTEGER"),
+    ("kind", "TEXT NOT NULL DEFAULT 'wg_room'"),  # wg_room | studio | apartment
 ]
 
 
@@ -66,8 +67,8 @@ def upsert_listing(ad: dict) -> bool:
                  available_from, raw_text, url,
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
-                 listed_at, fit_score, reply_score)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 listed_at, fit_score, reply_score, kind)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -83,7 +84,8 @@ def upsert_listing(ad: dict) -> bool:
                 transit_hoenggerberg_min = excluded.transit_hoenggerberg_min,
                 listed_at                = excluded.listed_at,
                 fit_score                = excluded.fit_score,
-                reply_score              = excluded.reply_score
+                reply_score              = excluded.reply_score,
+                kind                     = excluded.kind
         """, (
             ad["source"], ad["external_id"], ad["title"], ad["address"],
             ad["lat"], ad["lng"], ad["rent_chf"], ad["available_from"],
@@ -92,6 +94,7 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("bike_hoenggerberg_min"), ad.get("transit_hoenggerberg_min"),
             ad.get("listed_at"),
             ad.get("fit_score"), ad.get("reply_score"),
+            ad.get("kind") or "wg_room",
         ))
         conn.commit()
         return cur.lastrowid is not None and conn.execute(

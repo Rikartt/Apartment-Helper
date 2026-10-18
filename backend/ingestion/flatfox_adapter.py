@@ -1,3 +1,4 @@
+import os
 import re
 import time
 import httpx
@@ -13,6 +14,7 @@ BBOX = {"west": 8.22, "east": 8.88, "north": 47.60, "south": 47.15}
 BATCH = 50    # PKs per detail request
 DELAY = 1.5   # seconds between batches
 MAX_PINS = 1000
+INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS") == "1"
 MAX_PIN_PRICE = 2500
 PIN_DELAY = 0.5  # API hard cap (requests above this return a 400 ValidationError)
 
@@ -42,7 +44,8 @@ class FlatfoxAdapter(BaseAdapter):
         pins = self._collect_pins(session, BBOX)
         # Shared rooms are cheap; skip pins priced far above any WG room to
         # save detail requests (price_display is monthly total for rentals).
-        pins = [p for p in pins if not p.get("price_display") or p["price_display"] <= MAX_PIN_PRICE]
+        if not INCLUDE_APARTMENTS:
+            pins = [p for p in pins if not p.get("price_display") or p["price_display"] <= MAX_PIN_PRICE]
         print(f"[flatfox] {len(pins)} candidate pins after tiling + price prefilter")
 
         ads = []
@@ -56,7 +59,7 @@ class FlatfoxAdapter(BaseAdapter):
                 continue
 
             for l in listings:
-                if l.get("object_category") != "SHARED":
+                if l.get("object_category") != "SHARED" and not INCLUDE_APARTMENTS:
                     continue
                 ad = self._to_ad(l)
                 if ad:
@@ -107,7 +110,7 @@ class FlatfoxAdapter(BaseAdapter):
         rooms = l.get("number_of_rooms")
         if rooms:
             title_parts.append(f"{rooms}-Zimmer")
-        title_parts.append("WG-Zimmer")
+        title_parts.append("WG-Zimmer" if l.get("object_category", "SHARED") == "SHARED" else "Wohnung")
         if city:
             title_parts.append(f"in {city}")
         if rent:
@@ -132,4 +135,5 @@ class FlatfoxAdapter(BaseAdapter):
             "raw_text":     raw_text,
             "url":          url,
             "listed_at":    l.get("published") or l.get("created") or None,
+            "kind":         "wg_room" if l.get("object_category") == "SHARED" else "apartment",
         }
