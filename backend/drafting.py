@@ -1,7 +1,9 @@
 """Phase 5: draft a first message to a WG poster, for the user to review and send."""
 import json
+from datetime import date
 
 from . import llm
+from .scoring import _parse_date
 
 MODEL = llm.DRAFT_MODEL
 
@@ -16,7 +18,8 @@ the neighbourhood, what they asked applicants to include).
 - Use ONLY facts from the applicant's profile. Never invent language ability, hobbies, or claims. \
 If a fact isn't in the profile, leave it out rather than guess.
 - 4-7 sentences. Warm, direct, not gushing. Include: who they are, why they fit what the ad said, \
-their move-in date and how long they want to stay, and a clear ask to view the room.
+when they can move in (see "move_in" in the profile: if it says available immediately, say \
+"available immediately" or "from now", never quote a calendar date that is in the past) and how long they want to stay, and a clear ask to view the room.
 - Include anything the ad explicitly asked applicants to state.
 - If the profile has a message_template, treat it as the applicant's own voice: keep its tone, \
 facts and sign-off, but rewrite it to fit this ad (translate if needed) and drop parts that don't apply.
@@ -25,6 +28,23 @@ never invent a name, and never use placeholders like [Name].
 - If the EXTRACTED fields list a hard requirement the applicant does not meet according to the \
 profile, do not claim to meet it.
 - Output only the message text — no subject line, no notes, no quotes around it."""
+
+def profile_for_draft(profile: dict, today: date | None = None) -> dict:
+    """Copy of the profile safe to show the model: a move_in_earliest that is today or in
+    the past becomes an explicit "available immediately" (a past date in a message would
+    read as a mistake); a future date stays as given."""
+    today = today or date.today()
+    out = dict(profile)
+    raw = out.pop("move_in_earliest", None)
+    earliest = _parse_date(raw)
+    if raw is None or raw == "":
+        pass                       # profile states nothing: say nothing
+    elif earliest is None or earliest <= today:
+        out["move_in"] = "available immediately (from now)"
+    else:
+        out["move_in"] = f"from {earliest.isoformat()}"
+    return out
+
 
 class DraftError(llm.LLMError):
     pass
@@ -37,7 +57,7 @@ def draft(listing: dict, profile: dict) -> str:
     language = LANG_NAMES.get(lang_code, "the same language the ad is written in")
 
     user_prompt = f"""MY PROFILE:
-{json.dumps(profile, ensure_ascii=False, indent=2)}
+{json.dumps(profile_for_draft(profile), ensure_ascii=False, indent=2)}
 
 THE AD (raw):
 <<<

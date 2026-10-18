@@ -71,8 +71,11 @@ def geocode(address: str) -> tuple[float | None, float | None]:
     if not key:
         return None, None
     with _lock:
-        with _conn() as c:
+        c = _conn()
+        try:
             row = c.execute("SELECT lat, lng FROM geocache WHERE q=?", (key,)).fetchone()
+        finally:
+            c.close()
         if row:
             return row[0], row[1]  # (None, None) for cached definitive miss
 
@@ -88,7 +91,11 @@ def geocode(address: str) -> tuple[float | None, float | None]:
             if result:
                 break
         if result or definitive:
-            with _conn() as c:
-                c.execute("INSERT OR REPLACE INTO geocache VALUES (?,?,?,?)",
-                          (key, result[0] if result else None, result[1] if result else None, time.time()))
+            c = _conn()
+            try:
+                with c:
+                    c.execute("INSERT OR REPLACE INTO geocache VALUES (?,?,?,?)",
+                              (key, result[0] if result else None, result[1] if result else None, time.time()))
+            finally:
+                c.close()
         return result if result else (None, None)

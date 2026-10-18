@@ -38,7 +38,7 @@ def run_ingest(sources: list[str] | None = None) -> dict:
     per_source: dict = {}
     try:
         seen_keys = {}
-        for row in get_all_listings(include_gone=True):
+        for row in get_all_listings(include_raw=False):
             k = dedupe_key(row)
             if k:
                 seen_keys.setdefault(k, row["source"])
@@ -51,7 +51,10 @@ def run_ingest(sources: list[str] | None = None) -> dict:
         print(f"[ingest] running {name} adapter...")
         run_started = utc_now()
         try:
-            ads = ADAPTERS[name]().fetch()
+            adapter = ADAPTERS[name]()
+            ads = adapter.fetch()
+            truncated = bool(getattr(adapter, "truncated", False))
+            trunc_reason = getattr(adapter, "truncated_reason", "") or "result window capped"
         except Exception as e:
             print(f"[ingest] {name} failed: {e}")
             per_source[name] = {"ok": False, "fetched": 0, "new": 0, "gone": 0,
@@ -78,11 +81,16 @@ def run_ingest(sources: list[str] | None = None) -> dict:
         # so a blocked/partial scrape can't mass-hide a source's listings.
         prev = last_source_count(name)
         healthy = len(ads) > 0 and (prev is None or len(ads) >= GONE_MIN_RATIO * prev)
+        # A truncated run (page/ad caps hit, partial pagination, robots-limited paging) only
+        # saw a window of the source, so "not seen" does not mean "removed": skip it.
         src_gone = 0
-        if healthy and prev is not None:
+        if healthy and prev is not None and not truncated:
             src_gone = mark_gone(name, run_started)
             gone += src_gone
         info = {"ok": healthy, "fetched": len(ads), "new": src_new, "gone": src_gone}
+        if truncated:
+            info["truncated"] = True
+            info["note"] = f"gone-check skipped: {trunc_reason}"
         if not healthy:
             info["error"] = ("no listings returned" if not ads else
                              f"only {len(ads)} listings vs {prev} before; gone-check skipped")

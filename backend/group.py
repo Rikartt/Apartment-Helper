@@ -12,13 +12,15 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from . import llm
+from .drafting import profile_for_draft
 from .db import get_all_listings, get_listing
-from .scoring import load_profile, _parse_date
+from .scoring import load_profile, _parse_date, price_implausible
 
 router = APIRouter()
 
 CAMPUSES = ("zentrum", "hoenggerberg")
 MAX_GROUP_SIZE = 12
+GROUP_FLOOR = 20   # lowest score for a listing without dealbreakers (dealbreakers are filtered/sorted last)
 DEFAULT_GROUP = {"size": 3, "budget_per_person_chf": 1100, "members": [], "notes": ""}
 
 
@@ -116,6 +118,10 @@ def group_detail(listing: dict, group: dict, today: date | None = None) -> dict:
     deal: list[str] = []
     s = 24.0
 
+    bad_price = price_implausible(listing)
+    if bad_price:
+        deal.append(bad_price)
+
     # bedrooms
     if bedrooms is None:
         reasons.append("room count unknown")
@@ -133,7 +139,7 @@ def group_detail(listing: dict, group: dict, today: date | None = None) -> dict:
     else:
         ratio = per_person / budget if budget else 9
         if ratio <= 1.0:
-            s += 15 + min(15, (1 - ratio) * 60)
+            s += 15 + min(18, (1 - ratio) * 40)
             reasons.append(f"CHF {per_person} pp within budget")
         elif ratio <= 1.1:
             s += 5 - (ratio - 1) * 100
@@ -147,22 +153,20 @@ def group_detail(listing: dict, group: dict, today: date | None = None) -> dict:
     # worst commute
     if worst is None:
         s -= 3
-    elif worst <= 20:
-        s += 20
-        reasons.append(f"worst commute {worst} min")
-    elif worst <= 30:
-        s += 12
-        reasons.append(f"worst commute {worst} min")
-    elif worst <= 40:
-        s += 5
-    elif worst > 55:
+    elif worst <= 55:
+        # continuous (a step function made many flats tie): 20 pts at <=10 min,
+        # falling ~0.7/min, still +3 at 40 and 0 at ~46
+        s += max(0.0, 20 - max(0, worst - 10) * 0.55)
+        if worst <= 30:
+            reasons.append(f"worst commute {worst} min")
+    else:
         s -= 10
 
     # recency
     d = _parse_date(listing.get("listed_at")) or _parse_date(listing.get("created_at"))
     if d:
         age = max(0, (today - d).days)
-        s += max(0.0, 10 - age / 3)
+        s += 10 * math.pow(0.5, age / 10)
         if age <= 7:
             reasons.append("fresh listing")
 
@@ -182,7 +186,7 @@ def group_detail(listing: dict, group: dict, today: date | None = None) -> dict:
         "per_person_chf": per_person,
         "bedrooms": bedrooms,
         "worst_commute_min": worst,
-        "group_fit_score": max(0, min(100, round(s))),
+        "group_fit_score": max(GROUP_FLOOR, min(98, round(s))),
         "group_reasons": reasons,
         "group_dealbreakers": deal,
     }
@@ -201,7 +205,8 @@ def group_listings(listings: list[dict], group: dict, include_dealbreakers: bool
             continue
         out.append(l)
     # fits first, then score
-    out.sort(key=lambda r: (bool(r["group_dealbreakers"]), -r["group_fit_score"]))
+    out.sort(key=lambda r: (bool(r["group_dealbreakers"]), -r["group_fit_score"],
+                            r["per_person_chf"] or 0))
     return out
 
 
@@ -228,9 +233,9 @@ the writer's name and real facts, not its solo-room framing.
 - Landlords in Switzerland often decline flat-shares in regular apartments. Address this honestly and briefly: \
 say plainly that it is a group of {size} people who want to live together, and offer to discuss the tenancy \
 arrangement (for example that all tenants sign the lease) and to provide proof of funds or references on request. \
-Only state that proof or references EXIST if the profile's "has" list says so; otherwise phrase it as a \
+Do not mention any other document (for example a debt-collection extract / Betreibungsauszug) unless it is in the profile. If the ad gives its own start date, say they are available immediately and can take over from that date, in one clear clause. Only state that proof or references EXIST if the profile's "has" list says so; otherwise phrase it as a \
 willingness to discuss, never as a claim.
-- 4-7 sentences. Include the earliest move-in date if the profile has one, and a clear ask to view the apartment.
+- 4-7 sentences. State when they can move in using the applicant profile's "move_in" field: if it says available immediately, write "available immediately" / "from now" and never quote a past calendar date. Include a clear ask to view the apartment.
 - Include anything the ad explicitly asks applicants to state.
 - Output only the message text, no subject line, no notes, no quotes."""
 
@@ -258,7 +263,7 @@ class GroupDraftError(llm.LLMError):
 def build_group_prompt(listing: dict, profile: dict, group: dict) -> tuple[str, str, str]:
     """Returns (language, system, user)."""
     language = detect_language(listing)
-    applicant = {k: v for k, v in profile.items() if k != "group"}
+    applicant = {k: v for k, v in profile_for_draft(profile).items() if k != "group"}
     detail = group_detail(listing, group)
     system = GROUP_SYSTEM_PROMPT.format(language=language, size=group["size"])
     user = f"""GROUP PROFILE:
