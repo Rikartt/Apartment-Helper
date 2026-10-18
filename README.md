@@ -1,110 +1,173 @@
 # WGPendler
 
-A WG (shared-flat) room hunting assistant for ETH Zürich students. It ingests room listings from several Swiss housing sites, extracts structured details with Claude, scores each listing by fit and reply likelihood, and shows everything on a Zürich commute map.
+A room-hunting assistant for ETH Zürich students. It pulls listings from several Swiss housing sites, scores each one for how well it fits you and how likely the landlord is to reply, shows them on a commute map, and drafts the first message for you. It never contacts anyone on its own: you read, edit and send every message yourself.
 
-## Stack
+Two modes:
 
-- **Backend:** FastAPI + SQLite
-- **Frontend:** single-page Leaflet map (`frontend/index.html`), served by the backend
-- **Sources:** Flatfox, WGZimmer, Ronorp, Homegate (scraped via `httpx`/Playwright)
-- **AI:** Anthropic API for listing extraction and top-match analysis
-
-## Prerequisites
-
-- Python 3.11+
-- An [Anthropic API key](https://console.anthropic.com/)
+- **Solo**: WG rooms for you alone.
+- **Group**: whole flats for you and some classmates.
 
 ## Setup
 
+Requires Python 3.11+ and (optionally, for Extract / Top 5 / Draft) an [Anthropic API key](https://console.anthropic.com/). Without a key, browsing, filtering and rule-based scoring all still work.
+
 ```bash
-# 1. Clone the repo
-git clone git@github.com:Rikartt/Apartment-Helper.git
-cd Apartment-Helper
+git clone <repo-url> WGHelfer && cd WGHelfer
 
-# 2. Create and activate a virtual environment
 python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
-# 3. Install dependencies
 pip install -r requirements.txt
+playwright install chromium      # needed by the Ronorp adapter
 
-# 4. Install Playwright's browser binaries (used by some ingestion adapters)
-playwright install chromium
-
-# 5. Configure your API key
 cp .env.example .env
-# then edit .env and set ANTHROPIC_API_KEY=sk-ant-...
-# (the key goes in .env, NOT .env.example — .env is git-ignored)
+# edit .env and set ANTHROPIC_API_KEY=sk-ant-...   (.env is git-ignored; never put the key in .env.example)
 ```
 
-### macOS notes
+## Running
 
-- Tested on Apple Silicon with Python 3.11–3.14 from python.org.
-- `playwright install chromium` is required — the WGZimmer and Ronorp
-  adapters launch a headless browser. Without it those two sources are
-  skipped (Flatfox and Homegate still work).
-- The first ingest now runs on a background thread, so the server answers
-  on http://localhost:8000 immediately while listings load over the next
-  minute or two.
-
-## Running locally
-
-Make sure the virtual environment from step 2 is activated first — if it isn't,
-your shell will fall back to a system-wide or Homebrew `uvicorn` that doesn't
-have this project's dependencies installed, and you'll get
-`ModuleNotFoundError: No module named 'fastapi'`.
+Activate the venv first. If you don't, your shell may pick up a system or Homebrew `uvicorn` without this project's dependencies and you get `ModuleNotFoundError: No module named 'fastapi'`.
 
 ```bash
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-# your prompt should now be prefixed with (.venv) — that's how you know it's active
+source .venv/bin/activate        # your prompt should now start with (.venv)
 uvicorn backend.main:app --reload
 ```
 
-Activation doesn't persist across terminal tabs/sessions, so re-run it any time
-you open a new shell before starting the server. If you'd rather not activate,
-call the venv's binary directly instead: `.venv/bin/uvicorn backend.main:app --reload`.
+Activation does not persist across terminal tabs; repeat it in each new shell, or call `.venv/bin/uvicorn backend.main:app --reload` directly. Then open **http://localhost:8000** (add `--port 8110` to use another port).
 
-Then open **http://localhost:8000** in your browser.
+**First run:** the database (`wgpendler.db`) starts empty and the server ingests all sources on a background thread. The page loads immediately and shows "syncing sources...". In a fresh-clone test the full first ingest took about 8 minutes (Flatfox is the slow part, around 5-6 minutes; Homegate about 2). Listings appear in the UI as they are stored, so refresh after a few minutes. Later startups skip ingesting if the last successful run is younger than the refresh interval.
 
-On startup the app initializes the SQLite database (`wgpendler.db`) and automatically ingests listings from all sources — this can take a minute or two the first time.
+## Features
 
-## Usage
+### Scoring
+- **Fit score**: how well the listing matches your profile (rent, commute to both campuses, location, move-in date, house rules, languages, wants). Computed locally, no API cost.
+- **Reply score**: how likely you are to get an answer (ad age, private vs agency, what the ad asks for).
+- **Dealbreakers**: hard no's (over budget, implausible price, "no students", too far, etc.). Dealbreaker listings are marked and can be hidden with the "Hide dealbreakers" filter; they are never suggested in Top 5.
+- Edit your profile in the **Profile** panel; it is saved to `profile.json`.
 
-- **Extract** — click the "Extract" button to run Claude over newly ingested listings and pull out structured details (requirements, vibe, red flags, etc.)
-- **Filters** — narrow by max rent, max commute time, campus (Zentrum/Hönggerberg), and mode (transit/bike)
-- **Top 5** — the amber button surfaces your best-fit listings with a short Claude-generated analysis per listing
-- **Profile** — edit your applicant profile (used for scoring and analysis) in the Profile panel; it's persisted to `profile.json`
+### Claude actions and their cost
+Only these three call the Anthropic API. Costs are small but real; the default models are cheap ones for bulk work.
 
-To re-ingest listings manually without restarting the server:
+| Action | What it does | Cost |
+|---|---|---|
+| **Extract** (menu, top right) | Reads the ad text of up to 50 not-yet-extracted listings (newest first, only ones that pass rent and commute prefilters) and pulls out requirements, vibe, red flags. One small Haiku-class call per listing. | Lowest, per listing |
+| **Top 5** | Analyses your five best non-dealbreaker listings (strengths/weaknesses). One call, cached per set of top-5 ids, so reloading is free. | One small call |
+| **Draft** (in a listing's detail view) | Writes a first message in the ad's language from your template and profile. Sonnet-class model. In group mode it writes from the group's members and notes only (nothing invented). | One medium call per draft |
+
+If the key is missing or the credit is exhausted the UI shows a clear error instead of failing silently. Auto-extraction after each ingest is on by default when a key is set (see `WGP_AUTO_EXTRACT`); set `WGP_AUTO_EXTRACT=0` to spend nothing until you press Extract.
+
+### Tracking
+Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view hides what you've handled. Status survives re-ingests and is never changed by the app, even when a listing disappears.
+
+### Fresh listings
+- The server re-ingests in the background every `WGP_INGEST_INTERVAL_MIN` minutes (default 45, jittered).
+- Listings first seen since your last visit get a **NEW** badge, there is a **New only** toggle, and a notice appears when a background ingest adds listings.
+- A **Message today** strip highlights the best listings you haven't contacted yet.
+- **Gone listings**: when a source stops returning a listing it is marked gone and hidden (`GET /listings?include_gone=1` shows them). To avoid false alarms, a listing is only marked gone after two consecutive healthy runs, and runs that returned under 50% of the previous count or were truncated are ignored.
+
+### Group mode
+Switch with the **Solo | Group** toggle. Group mode shows whole flats (not WG rooms), scored per person: each member has a campus, and the worst-case commute counts. Edit group size, members and shared notes in the group editor. Per-person pills show how each member fares; group drafts use only the facts you entered.
+
+### Keyboard shortcuts
+Press `?` in the app for the list.
+
+| Key | Action |
+|---|---|
+| `j` / `k` (or arrows) | Next / previous listing |
+| `Enter` | Open selected listing |
+| `s` | Mark Sent |
+| `x` | Mark Skipped |
+| `o` | Open the original ad |
+| `d` | Draft a message (in detail view) |
+| `?` | Show shortcuts |
+| `Esc` | Close panel / detail |
+
+### Phone alerts (optional)
+After each ingest, the app can send one digest (max 5 listings) of new listings whose fit is at or above `WGP_NOTIFY_MIN_FIT`. Alerts go only to you, never to landlords. Nothing is sent unless you configure a channel.
+
+ntfy (easiest):
+1. Install the ntfy app on your phone.
+2. Subscribe to a long random topic name (it acts as a password, e.g. `wgp-k3j9x2q8m4v7`).
+3. Put it in `.env`: `WGP_NTFY_TOPIC=wgp-k3j9x2q8m4v7`
+4. Restart the server, then test: `curl -X POST localhost:8000/notify/test`
+
+Telegram (optional): create a bot with @BotFather, get your chat id from @userinfobot, set `WGP_TELEGRAM_TOKEN` and `WGP_TELEGRAM_CHAT_ID`.
+
+Endpoints: `GET /notify/status` (configured channels, threshold, quiet hours, last error) and `POST /notify/test` (sends a test message).
+
+## Environment variables
+
+All are optional except the API key if you want Claude features. Set them in `.env`.
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | none | Enables Extract, Top 5, Draft |
+| `WGP_AUTO_EXTRACT` | `1` | `0` stops automatic extraction after ingests |
+| `WGP_AUTO_EXTRACT_LIMIT` | `25` | Max listings auto-extracted per ingest |
+| `WGP_EXTRACT_MAX_PER_RUN` | `50` | Default batch size for the Extract button |
+| `WGP_EXTRACT_MAX_TRANSIT_MIN` | `50` | Skip extracting listings with a longer transit commute |
+| `WGP_EXTRACT_MODEL` | `claude-haiku-5-5` | Model for extraction |
+| `WGP_BEST_MODEL` | same as extract model | Model for Top 5 |
+| `WGP_DRAFT_MODEL` | `claude-sonnet-5-5` | Model for drafts |
+| `WGP_INGEST_INTERVAL_MIN` | `45` | Minutes between background ingests; `0` = off |
+| `WGPENDLER_INCLUDE_APARTMENTS` | `1` | `0` stops Flatfox/Homegate from collecting whole flats (needed for group mode) |
+| `WGPENDLER_GEOCACHE` | `geocache.sqlite` in repo root | Path of the address-to-coordinates cache |
+| `WGP_NTFY_TOPIC` | none | ntfy topic for phone alerts |
+| `WGP_NTFY_SERVER` | `https://ntfy.sh` | ntfy server |
+| `WGP_TELEGRAM_TOKEN`, `WGP_TELEGRAM_CHAT_ID` | none | Telegram alerts (both needed) |
+| `WGP_NOTIFY_MIN_FIT` | `75` | Minimum fit score to alert on |
+| `WGP_NOTIFY_QUIET` | `23-07` suggested in `.env.example`; unset = no quiet hours | Quiet hours (local time); digests are held |
+| `WGP_LIVE_API`, `E2E_INGEST_WAIT`, `RUN_E2E` | see Tests | Only used by the e2e script |
+
+## Sources
+
+| Source | Status |
+|---|---|
+| Flatfox | Used (public API, tiled to get past its result cap) |
+| Homegate | Used (up to 40 result pages per run) |
+| WOKO | Used (student housing cooperative; few listings) |
+| Ronorp | Used, first results page only (its robots.txt disallows paging) |
+| WGZimmer | Not usable: search is behind reCAPTCHA, which we don't bypass. The adapter is present but returns nothing, and logs "no listings returned" |
+| students.ch and others | Not implemented: no permitted automated access (login/captcha walls or terms of service). The app only reads what robots.txt and the site allow, at about 1 request per second |
+
+Ingest errors for one source never stop the others; see `GET /ingest/status` for the last 5 runs. To re-run manually:
 
 ```bash
-curl -X POST "http://localhost:8000/ingest?sources=flatfox,wgzimmer,ronorp,homegate"
+curl -X POST "http://localhost:8000/ingest?sources=flatfox,homegate"
 ```
+
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+The suite is offline (saved HTML/JSON fixtures, no network, no API calls). There is also an opt-in end-to-end smoke test that starts a real server, ingests, and checks the API and page:
+
+```bash
+RUN_E2E=1 python tests/smoke_e2e.py              # no Anthropic calls
+RUN_E2E=1 WGP_LIVE_API=1 python tests/smoke_e2e.py   # also exercises Claude (costs credit)
+```
+
+`E2E_INGEST_WAIT` (default 240 seconds) is how long it waits for the first ingest.
+
+## Troubleshooting
+
+- **`ModuleNotFoundError: No module named 'fastapi'`**: the venv is not active, see Running.
+- **Empty list right after first start**: the first ingest takes several minutes; check `curl localhost:8000/ingest/status`.
+- **Ronorp returns nothing**: run `playwright install chromium`. WGZimmer always returns nothing, by design.
+- **"credit balance exhausted" / auth errors**: top up billing or fix `ANTHROPIC_API_KEY` in `.env`, then restart.
+- **Address already in use**: another server is on port 8000; use `--port`.
+- **Map tiles missing**: tiles come from Esri; check your connection.
+- **Start over**: stop the server and delete `wgpendler.db` (listings and your Sent/Replied marks) and optionally `geocache.sqlite`.
 
 ## Project structure
 
 ```
-backend/
-  main.py              FastAPI app and routes
-  db.py                SQLite schema and queries
-  ingest.py            Ingestion orchestration
-  ingestion/           One adapter per source
-  extraction.py        Claude-based listing extraction
-  scoring.py           Fit score and reply-likelihood scoring
-  commute.py           Commute time estimation
-frontend/
-  index.html           Map UI, served at "/"
-profile.json            Your applicant profile (edited via the UI)
+backend/   main.py (routes), db.py, ingest.py, ingestion/ (one adapter per source),
+           scoring.py, extraction.py, drafting.py, group.py, notify.py, llm.py, commute.py
+frontend/  index.html (Leaflet map UI, served at "/")
+tests/     offline pytest suite + opt-in smoke_e2e.py
+profile.json   your applicant profile (edited in the UI)
 ```
-
-## Freshness
-
-- The server re-ingests in the background every `WGP_INGEST_INTERVAL_MIN` minutes
-  (default 45, jittered +-15%, `0` = off). On startup it only ingests if the last
-  successful run is older than that interval. Runs are logged in the `ingest_runs`
-  table; the last 5 appear in `GET /ingest/status`.
-- Listings a source stops returning are marked gone (hidden unless
-  `GET /listings?include_gone=1`), but only when that run returned at least 50% of
-  the source's previous count. Your sent/replied status is never changed.
-- The UI badges listings first seen since your last visit as NEW, has a "New only"
-  toggle, and shows a notice when a background ingest adds listings.
