@@ -12,7 +12,9 @@ BBOX = {"west": 8.22, "east": 8.88, "north": 47.60, "south": 47.15}
 
 BATCH = 50    # PKs per detail request
 DELAY = 1.5   # seconds between batches
-MAX_PINS = 1000  # API hard cap (requests above this return a 400 ValidationError)
+MAX_PINS = 1000
+MAX_PIN_PRICE = 2500
+PIN_DELAY = 0.5  # API hard cap (requests above this return a 400 ValidationError)
 
 
 class FlatfoxAdapter(BaseAdapter):
@@ -34,14 +36,14 @@ class FlatfoxAdapter(BaseAdapter):
         session.headers["X-CSRFToken"] = csrf_token
         session.headers["Cookie"] = f"csrftoken={csrf_token}"
 
-        # get pin IDs in bounding box (all listing types; we filter to SHARED below)
-        r1 = session.get(PIN_URL, params={**BBOX, "listing_type": "rent", "max_count": MAX_PINS})
-        r1.raise_for_status()
-        pins = r1.json()
-        if not isinstance(pins, list):
-            print(f"[flatfox] unexpected pin response: {pins}")
-            return []
-        print(f"[flatfox] {len(pins)} pins in bounding box")
+        # The pin API caps at 1000 pins per request (verified: max_count>1000
+        # -> 400) and ignores object_category filters, so tile the bbox
+        # recursively until every tile returns <1000 pins.
+        pins = self._collect_pins(session, BBOX)
+        # Shared rooms are cheap; skip pins priced far above any WG room to
+        # save detail requests (price_display is monthly total for rentals).
+        pins = [p for p in pins if not p.get("price_display") or p["price_display"] <= MAX_PIN_PRICE]
+        print(f"[flatfox] {len(pins)} candidate pins after tiling + price prefilter")
 
         ads = []
         for i in range(0, len(pins), BATCH):
@@ -64,6 +66,25 @@ class FlatfoxAdapter(BaseAdapter):
 
         print(f"[flatfox] {len(ads)} SHARED_FLAT listings extracted")
         return ads
+
+    def _collect_pins(self, session, box: dict, depth: int = 0) -> list[dict]:
+        r = session.get(PIN_URL, params={**box, "listing_type": "rent", "max_count": MAX_PINS})
+        r.raise_for_status()
+        pins = r.json()
+        if not isinstance(pins, list):
+            print(f"[flatfox] unexpected pin response: {pins}")
+            return []
+        time.sleep(PIN_DELAY)
+        if len(pins) < MAX_PINS or depth >= 6:
+            return pins
+        mx = (box["west"] + box["east"]) / 2
+        my = (box["south"] + box["north"]) / 2
+        out: dict[int, dict] = {}
+        for w, e in ((box["west"], mx), (mx, box["east"])):
+            for s_, n in ((box["south"], my), (my, box["north"])):
+                for p in self._collect_pins(session, {"west": w, "east": e, "south": s_, "north": n}, depth + 1):
+                    out[p["pk"]] = p
+        return list(out.values())
 
     def _to_ad(self, l: dict) -> dict | None:
         pk = l.get("pk")
