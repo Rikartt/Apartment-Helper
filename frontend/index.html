@@ -665,7 +665,9 @@ function fitReasons(l) {
   return r.slice(0, 4);
 }
 
+function fitP(l) { return l.fit_precise ?? l.fit_score ?? 0; }   // unrounded fit breaks near-ties
 function relevanceScore(l) { if (groupMode) return l.fit_score ?? 0; return Math.round(((l.fit_score ?? 0) + (l.reply_score ?? 0)) / 2); }
+function relevanceP(l) { return groupMode ? fitP(l) : (fitP(l) + (l.reply_score ?? 0)) / 2; }
 function commuteMin(l) { if (groupMode) return l.worst_commute_min ?? 999; return l[`${mode}_${campus}_min`] ?? 999; }
 
 function commuteGrid(l) {
@@ -690,7 +692,7 @@ function commuteInline(l) {
 
 function scoreChip(s) {
   if (s == null) return '';
-  const cls = s >= 70 ? 'score-high' : s >= 50 ? 'score-mid' : 'score-low';
+  const cls = s >= 72 ? 'score-high' : s >= 55 ? 'score-mid' : 'score-low';   // fit now spans ~30-95
   return `<span class="badge ${cls}" title="Fit score: how well this matches your profile (0–100)"><i>FIT</i>${s}</span>`;
 }
 function replyChip(s) {
@@ -730,6 +732,7 @@ function friendlyError(status, body) {
   if (status === 503 && /not set/.test(low)) return 'No Anthropic API key is configured on the server (ANTHROPIC_API_KEY in .env).';
   if (status === 429 || /rate|overload/.test(low)) return 'Claude is rate-limited or busy right now. Wait a minute and try again.';
   if (status === 404) return 'That listing no longer exists. Reload the page.';
+  if (status === 409) return 'That is already running on the server. Give it a minute, then reload.';
   if (status >= 500) return 'The server could not complete the request' + (raw ? ` (${raw.slice(0, 140)})` : '') + '.';
   return raw || 'Something went wrong.';
 }
@@ -828,11 +831,11 @@ function sortFn(a, b) {
   // dealbreakers always sink to the bottom
   if (!!a._deal.length !== !!b._deal.length) return a._deal.length ? 1 : -1;
   let sa, sb, asc = false;
-  if (sortMode === 'match') { sa = a.fit_score ?? -1; sb = b.fit_score ?? -1; }
+  if (sortMode === 'match') { sa = a.fit_score == null ? -1 : fitP(a); sb = b.fit_score == null ? -1 : fitP(b); }
   else if (sortMode === 'reply') { sa = a.reply_score ?? -1; sb = b.reply_score ?? -1; }
   else if (sortMode === 'commute') { sa = commuteMin(a); sb = commuteMin(b); asc = true; }
   else if (sortMode === 'rent') { sa = priceOf(a) || 0; sb = priceOf(b) || 0; asc = true; }
-  else { sa = relevanceScore(a); sb = relevanceScore(b); }
+  else { sa = relevanceP(a); sb = relevanceP(b); }
   if (sa !== sb) return asc ? sa - sb : sb - sa;
   return priceOf(a) - priceOf(b);
 }
@@ -1202,11 +1205,11 @@ function closeDetail() {
 
 // ── Loading listings (+ background-ingest polling) ───────────────────────────
 async function fetchListings() {
-  if (!groupMode) return api('/listings');
+  if (!groupMode) return api('/listings?kind=wg_room,studio');   // whole flats only load in group mode
   const body = await api('/group/listings');
   groupInfo = body;
   return body.listings.map(l => ({   // map group fields onto the shared card/marker fields
-    ...l, fit_score: l.group_fit_score, reply_score: null,
+    ...l, fit_score: l.group_fit_score, fit_precise: l.group_fit_precise ?? null, reply_score: null,
     fit_reasons: l.group_reasons, dealbreakers: l.group_dealbreakers,
   }));
 }
