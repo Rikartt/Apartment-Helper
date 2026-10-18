@@ -47,6 +47,7 @@ def _keep_apartment(l: dict, ad: dict) -> bool:
 
 class FlatfoxAdapter(BaseAdapter):
     def fetch(self) -> list[dict]:
+        self.truncated, self.truncated_reason = False, ""
         session = httpx.Client(
             headers={
                 "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
@@ -84,6 +85,7 @@ class FlatfoxAdapter(BaseAdapter):
             r2.raise_for_status()
             listings = r2.json()
             if not isinstance(listings, list):
+                self.truncated, self.truncated_reason = True, "unexpected detail response"
                 continue
 
             for l in listings:
@@ -109,6 +111,8 @@ class FlatfoxAdapter(BaseAdapter):
             return []
         time.sleep(PIN_DELAY)
         if len(pins) < MAX_PINS or depth >= 6:
+            if len(pins) >= MAX_PINS:   # tile still full at max depth: pins were cut off
+                self.truncated, self.truncated_reason = True, "pin tile still at the 1000 cap"
             return pins
         mx = (box["west"] + box["east"]) / 2
         my = (box["south"] + box["north"]) / 2

@@ -18,7 +18,8 @@ NEW_COLUMNS = [
     ("extracted_at", "TEXT"),
     ("kind", "TEXT NOT NULL DEFAULT 'wg_room'"),  # wg_room | studio | apartment
     ("last_seen_at", "TEXT"),   # UTC; last ingest run that still returned this ad
-    ("gone_at", "TEXT"),        # UTC; set when a healthy run no longer returns it
+    ("gone_at", "TEXT"),        # UTC; set when GONE_MISSED_RUNS healthy, untruncated runs missed it
+    ("missed_runs", "INTEGER NOT NULL DEFAULT 0"),  # consecutive such runs without seeing it
     ("rooms", "REAL"),                  # Swiss "Zimmer" count, e.g. 4.5
     ("living_area_m2", "REAL"),
 ]
@@ -139,6 +140,7 @@ def upsert_listing(ad: dict) -> bool:
                 rooms          = excluded.rooms,
                 living_area_m2 = excluded.living_area_m2,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
+                missed_runs  = 0,
                 gone_at      = NULL
                 -- status / extracted / seen / created_at are deliberately untouched
         """, (
@@ -291,15 +293,24 @@ def utc_now() -> str:
 GONE_MIN_RATIO = 0.5
 
 
-def mark_gone(source: str, run_started_at: str) -> int:
-    """Mark a source's listings that the run starting at run_started_at did not
-    see as gone. Only touches gone_at -- user status is never changed."""
+GONE_MISSED_RUNS = 2   # a listing must be absent from this many consecutive healthy runs
+
+
+def mark_gone(source: str, run_started_at: str, required_misses: int = GONE_MISSED_RUNS) -> int:
+    """Called after a healthy, untruncated run of `source` that started at run_started_at.
+    Each listing that run did not see gets missed_runs += 1; once it has been missed
+    `required_misses` runs in a row it is marked gone. Returns how many became gone.
+    Only touches gone_at/missed_runs -- user status is never changed."""
     with get_conn() as conn:
-        cur = conn.execute(
-            "UPDATE listings SET gone_at = datetime('now') "
+        conn.execute(
+            "UPDATE listings SET missed_runs = missed_runs + 1 "
             "WHERE source = ? AND gone_at IS NULL "
             "AND (last_seen_at IS NULL OR last_seen_at < ?)",
             (source, run_started_at))
+        cur = conn.execute(
+            "UPDATE listings SET gone_at = strftime('%Y-%m-%d %H:%M:%f','now') "
+            "WHERE source = ? AND gone_at IS NULL AND missed_runs >= ?",
+            (source, required_misses))
         return cur.rowcount
 
 

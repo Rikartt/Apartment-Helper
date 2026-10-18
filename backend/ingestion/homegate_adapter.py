@@ -62,6 +62,7 @@ _MAX_ROOMS = 2.5
 class HomegateAdapter(BaseAdapter):
 
     def fetch(self) -> list[dict]:
+        self.truncated, self.truncated_reason = False, ""
         session = httpx.Client(
             headers={
                 "User-Agent": _UA,
@@ -81,10 +82,12 @@ class HomegateAdapter(BaseAdapter):
                 resp = session.get(url)
             except Exception as e:
                 print(f"[homegate] HTTP error page {page_num}: {e}")
+                self._truncate(f"HTTP error on page {page_num}")
                 break
 
             if resp.status_code != 200:
                 print(f"[homegate] page {page_num} returned {resp.status_code}")
+                self._truncate(f"page {page_num} returned {resp.status_code}")
                 break
 
             soup = BeautifulSoup(resp.text, "lxml")
@@ -101,6 +104,8 @@ class HomegateAdapter(BaseAdapter):
             if new_this_page == 0:
                 break
 
+            if page_num == MAX_PAGES:
+                self._truncate(f"hit MAX_PAGES={MAX_PAGES}")
             time.sleep(SCRAPE_DELAY)
 
         # Filter to WG-like listings
@@ -111,9 +116,13 @@ class HomegateAdapter(BaseAdapter):
             is_apt = card["kind"] == "apartment"
             if is_apt:
                 # separate budget so flats never crowd out WG rooms (and geocoding stays bounded)
-                if not INCLUDE_APARTMENTS or n_apt >= MAX_APARTMENTS:
+                if not INCLUDE_APARTMENTS:
+                    continue
+                if n_apt >= MAX_APARTMENTS:
+                    self._truncate(f"hit MAX_APARTMENTS={MAX_APARTMENTS}")
                     continue
             elif len(ads) - n_apt >= MAX_ADS:
+                self._truncate(f"hit MAX_ADS={MAX_ADS}")
                 continue
             ad = self._enrich(card)
             if ad:
@@ -122,6 +131,10 @@ class HomegateAdapter(BaseAdapter):
 
         print(f"[homegate] {len(ads)} WG-candidate listings after filtering")
         return ads
+
+    def _truncate(self, reason: str):
+        if not self.truncated:
+            self.truncated, self.truncated_reason = True, reason
 
     # ------------------------------------------------------------------
     # Parse listing cards from results page HTML

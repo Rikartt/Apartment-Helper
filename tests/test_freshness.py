@@ -27,7 +27,9 @@ def _ids(client, **q):
 def test_gone_marking_and_reappearance(client, monkeypatch):
     _run(monkeypatch, ["a", "b", "c", "d"])           # baseline run
     assert _ids(client) == {"a", "b", "c", "d"}
-    _run(monkeypatch, ["a", "b", "c"])                # d vanished (3 >= 50% of 4)
+    _run(monkeypatch, ["a", "b", "c"])                # d missed once: still shown
+    assert _ids(client) == {"a", "b", "c", "d"}
+    _run(monkeypatch, ["a", "b", "c"])                # missed twice in a row: gone
     assert _ids(client) == {"a", "b", "c"}
     assert _ids(client, include_gone=1) == {"a", "b", "c", "d"}
     _run(monkeypatch, ["a", "b", "c", "d"])           # reappears
@@ -48,6 +50,7 @@ def test_gone_never_touches_user_status(client, monkeypatch):
     _run(monkeypatch, ["a", "b", "c", "d"])
     d_id = next(r["id"] for r in client.get("/listings").json() if r["external_id"] == "d")
     client.post(f"/listings/{d_id}/status", json={"status": "replied"})
+    _run(monkeypatch, ["a", "b", "c"])
     _run(monkeypatch, ["a", "b", "c"])
     row = next(r for r in client.get("/listings", params={"include_gone": 1}).json()
                if r["external_id"] == "d")
@@ -118,3 +121,68 @@ def test_periodic_loop_runs(db, monkeypatch):
     monkeypatch.setattr(m, "_tracked_ingest", fake)
     m._periodic_loop(stop)
     assert calls == [("periodic", False)]
+
+
+def _trunc_adapter(ids, truncated):
+    cls = _adapter(ids)
+    cls.truncated = truncated
+    cls.truncated_reason = "hit MAX_ADS"
+    return cls
+
+
+def test_single_miss_then_reappear_resets_counter(client, monkeypatch):
+    _run(monkeypatch, ["a", "b", "c", "d"])
+    _run(monkeypatch, ["a", "b", "c"])                # d missed once
+    _run(monkeypatch, ["a", "b", "c", "d"])           # seen again -> counter reset
+    _run(monkeypatch, ["a", "b", "c"])                # missed once more, not twice in a row
+    assert _ids(client) == {"a", "b", "c", "d"}
+
+
+def test_truncated_run_never_marks_gone(client, monkeypatch):
+    _run(monkeypatch, ["a", "b", "c", "d"])
+    monkeypatch.setitem(ing.ADAPTERS, "mock", _trunc_adapter(["a", "b", "c"], True))
+    for _ in range(3):
+        m._tracked_ingest(["mock"], trigger="manual")
+    assert _ids(client) == {"a", "b", "c", "d"}
+    info = dbm.recent_runs()[0]["sources"]["mock"]
+    assert info["truncated"] is True and "MAX_ADS" in info["note"] and info["gone"] == 0
+    # a truncated run is neither a miss nor a reset: later untruncated runs still need 2
+    monkeypatch.setitem(ing.ADAPTERS, "mock", _trunc_adapter(["a", "b", "c"], False))
+    m._tracked_ingest(["mock"], trigger="manual")
+    assert _ids(client) == {"a", "b", "c", "d"}
+    m._tracked_ingest(["mock"], trigger="manual")
+    assert _ids(client) == {"a", "b", "c"}
+
+
+def test_homegate_reports_truncation(monkeypatch):
+    from backend.ingestion import homegate_adapter as hg
+    a = hg.HomegateAdapter()
+    monkeypatch.setattr(hg, "MAX_PAGES", 2)
+    monkeypatch.setattr(hg, "SCRAPE_DELAY", 0)
+    pages = iter(range(100))
+
+    class R:
+        status_code = 200
+        text = ""
+    class C:
+        def __init__(self, *a, **k): pass
+        def get(self, url): return R()
+    monkeypatch.setattr(hg.httpx, "Client", C)
+    monkeypatch.setattr(a, "_parse_cards",
+                        lambda soup: [{"external_id": str(next(pages)) + "0" * 10, "rent_chf": 0}])
+    a.fetch()
+    assert a.truncated and "MAX_PAGES" in a.truncated_reason
+    # natural end (a page with nothing new) is not truncation
+    seq = iter([[{"external_id": "1" * 12, "rent_chf": 0}], []])
+    monkeypatch.setattr(hg, "MAX_PAGES", 5)
+    monkeypatch.setattr(a, "_parse_cards", lambda soup: next(seq))
+    a.fetch()
+    assert not a.truncated
+
+
+def test_ronorp_always_truncated(monkeypatch):
+    from backend.ingestion.ronorp_adapter import RonorpAdapter
+    a = RonorpAdapter()
+    monkeypatch.setattr(a, "_get_listing_urls", lambda: [])
+    a.fetch()
+    assert a.truncated

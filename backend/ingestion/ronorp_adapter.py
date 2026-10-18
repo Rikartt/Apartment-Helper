@@ -44,6 +44,10 @@ class RonorpAdapter(BaseAdapter):
     def fetch(self) -> list[dict]:
         urls = self._get_listing_urls()
         print(f"[ronorp] {len(urls)} listing URLs found")
+        # robots.txt forbids ?page=, so only page 1 is ever read: an ad that is not on it
+        # may simply be on page 2. Never treat "unseen" as "gone" for this source.
+        self.truncated = True
+        self.truncated_reason = "only the first results page is read (robots.txt)"
 
         ads = []
         for url in urls[:MAX_ADS]:
