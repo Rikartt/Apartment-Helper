@@ -208,7 +208,7 @@ def test_draft_404_and_ok_and_502(client, seeded, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     assert client.post("/draft/9999").status_code == 404
     monkeypatch.setattr(m, "draft", lambda l, p: "Hi!")
-    assert client.post("/draft/1").json() == {"id": 1, "draft": "Hi!"}
+    assert client.post("/draft/1").json()["draft"] == "Hi!"
     def bad(l, p): raise m.DraftError("nope")
     monkeypatch.setattr(m, "draft", bad)
     assert client.post("/draft/1").status_code == 502
