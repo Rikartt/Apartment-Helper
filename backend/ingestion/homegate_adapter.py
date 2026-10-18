@@ -26,8 +26,8 @@ SEARCH_BASE  = (
     "https://www.homegate.ch/rent/real-estate/city-zurich/matching-list"
     "?map=false&ep={page}"
 )
-MAX_PAGES    = 8        # pages of ~20 listings each (~160 listings total)
-MAX_ADS      = 80
+MAX_PAGES    = 20       # pages of ~20 listings each (~400 listings scanned)
+MAX_ADS      = 200
 SCRAPE_DELAY = 1.0
 GEOCODE_DELAY = 1.0
 
@@ -38,10 +38,14 @@ _UA = (
 )
 _GEOCODE_UA = "WGPendler/1.0 (blennhemrikard@gmail.com)"
 
-# Keywords in title/description that suggest a shared or room listing
+# Keywords in title/description that suggest a shared or room listing.
+# NOTE: bare "zimmer"/"room"/"möbliert" are deliberately excluded — German
+# rental ads state room *count* as "3.5 Zimmer" on every listing (not just
+# WGs), so those words alone aren't a WG signal and would match ~all ads.
 _WG_KEYWORDS = re.compile(
-    r"\b(wg|zimmer|mitbewohner|wohngemeinschaft|room|shared|untermiete"
-    r"|co.living|coliving|furnished room|möbliert)\b",
+    r"\b(wg|mitbewohner|wohngemeinschaft|flatshare|shared room|shared flat"
+    r"|shared apartment|room in a shared|room for rent|zimmer frei"
+    r"|möbliertes zimmer|untermiete|co.living|coliving)\b",
     re.I,
 )
 

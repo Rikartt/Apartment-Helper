@@ -10,8 +10,9 @@ DETAIL_URL  = "https://flatfox.ch/api/v1/public-listing/"
 # Bounding box centred on ETH Zentrum, ~25 km radius (covers ~60 min transit)
 BBOX = {"west": 8.22, "east": 8.88, "north": 47.60, "south": 47.15}
 
-BATCH = 50   # PKs per detail request
-DELAY = 1.5  # seconds between batches
+BATCH = 50    # PKs per detail request
+DELAY = 1.5   # seconds between batches
+MAX_PINS = 1000  # API hard cap (requests above this return a 400 ValidationError)
 
 
 class FlatfoxAdapter(BaseAdapter):
@@ -34,7 +35,7 @@ class FlatfoxAdapter(BaseAdapter):
         session.headers["Cookie"] = f"csrftoken={csrf_token}"
 
         # get pin IDs in bounding box (all listing types; we filter to SHARED below)
-        r1 = session.get(PIN_URL, params={**BBOX, "listing_type": "rent", "max_count": 400})
+        r1 = session.get(PIN_URL, params={**BBOX, "listing_type": "rent", "max_count": MAX_PINS})
         r1.raise_for_status()
         pins = r1.json()
         if not isinstance(pins, list):
