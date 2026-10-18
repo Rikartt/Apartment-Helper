@@ -4,3 +4,6 @@ __pycache__/
 .env
 wgpendler.db
 .DS_Store
+wgpendler.db-shm
+wgpendler.db-wal
+.pytest_cache/
