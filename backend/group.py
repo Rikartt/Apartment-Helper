@@ -8,7 +8,7 @@ import math
 import re
 from datetime import date
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from . import llm
@@ -114,7 +114,7 @@ def group_detail(listing: dict, group: dict, today: date | None = None) -> dict:
     worst = worst_commute(listing, group)
     reasons: list[str] = []
     deal: list[str] = []
-    s = 40.0
+    s = 24.0
 
     # bedrooms
     if bedrooms is None:
@@ -188,13 +188,17 @@ def group_detail(listing: dict, group: dict, today: date | None = None) -> dict:
     }
 
 
-def group_listings(listings: list[dict], group: dict) -> list[dict]:
+def group_listings(listings: list[dict], group: dict, include_dealbreakers: bool = False) -> list[dict]:
+    """Apartments scored for the group. Ones that cannot work (too few bedrooms, far over
+    budget, ad excludes shared flats) are left out unless include_dealbreakers."""
     out = []
     for l in listings:
         if (l.get("kind") or "wg_room") != "apartment" or (l.get("rent_chf") or 0) <= 0:
             continue
         l = dict(l)
         l.update(group_detail(l, group))
+        if l["group_dealbreakers"] and not include_dealbreakers:
+            continue
         out.append(l)
     # fits first, then score
     out.sort(key=lambda r: (bool(r["group_dealbreakers"]), -r["group_fit_score"]))
@@ -202,9 +206,10 @@ def group_listings(listings: list[dict], group: dict) -> list[dict]:
 
 
 @router.get("/group/listings")
-def group_listings_endpoint():
+def group_listings_endpoint(include_dealbreakers: bool = Query(False)):
     group = get_group()
-    return JSONResponse({"group": group, "listings": group_listings(get_all_listings(False), group)})
+    return JSONResponse({"group": group, "listings": group_listings(
+        get_all_listings(False), group, include_dealbreakers)})
 
 
 # --------------------------------------------------------------------------- drafting

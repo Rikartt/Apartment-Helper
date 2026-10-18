@@ -3,6 +3,7 @@ import re
 import time
 import httpx
 from .base import BaseAdapter
+from ..commute import estimate_commute, ETH_ZENTRUM, ETH_HOENGGERBERG
 
 SEARCH_PAGE = "https://flatfox.ch/en/search/"
 PIN_URL     = "https://flatfox.ch/api/v1/pin/"
@@ -18,6 +19,10 @@ MAX_PINS = 1000
 INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS", "1") != "0"
 MAX_PIN_PRICE = 2500
 MAX_APARTMENT_PRICE = 6000  # CHF/month; anything dearer is not a student-group flat
+MIN_APARTMENT_PRICE = 700   # below this a "flat" is a parking space/storage, not a home
+MIN_PIN_PRICE = 250         # cheapest plausible WG room; drops parking/storage pins early
+APARTMENT_CATEGORIES = {"APARTMENT", "HOUSE"}
+MAX_APARTMENT_TRANSIT_MIN = 55  # straight-line transit estimate to the nearer campus
 PIN_DELAY = 0.5  # API hard cap (requests above this return a 400 ValidationError)
 
 
@@ -27,6 +32,17 @@ def _num(v) -> float | None:
     except (TypeError, ValueError):
         return None
     return f if f > 0 else None
+
+
+def _keep_apartment(l: dict, ad: dict) -> bool:
+    """Residential flats/houses only, sane rent, reachable from ETH."""
+    if l.get("object_category") not in APARTMENT_CATEGORIES:
+        return False
+    if not (MIN_APARTMENT_PRICE <= ad["rent_chf"] <= MAX_APARTMENT_PRICE) or not ad.get("rooms"):
+        return False
+    t = min(estimate_commute(ad["lat"], ad["lng"], c)["transit_min"]
+            for c in (ETH_ZENTRUM, ETH_HOENGGERBERG))
+    return t <= MAX_APARTMENT_TRANSIT_MIN
 
 
 class FlatfoxAdapter(BaseAdapter):
@@ -56,6 +72,8 @@ class FlatfoxAdapter(BaseAdapter):
         # save detail requests (price_display is monthly total for rentals).
         cap = MAX_APARTMENT_PRICE if INCLUDE_APARTMENTS else MAX_PIN_PRICE
         pins = [p for p in pins if not p.get("price_display") or p["price_display"] <= cap]
+        if INCLUDE_APARTMENTS:
+            pins = [p for p in pins if not p.get("price_display") or p["price_display"] >= MIN_PIN_PRICE]
         print(f"[flatfox] {len(pins)} candidate pins after tiling + price prefilter")
 
         ads = []
@@ -72,7 +90,7 @@ class FlatfoxAdapter(BaseAdapter):
                 if l.get("object_category") != "SHARED" and not INCLUDE_APARTMENTS:
                     continue
                 ad = self._to_ad(l)
-                if ad and ad["kind"] == "apartment" and ad["rent_chf"] > MAX_APARTMENT_PRICE:
+                if ad and ad["kind"] == "apartment" and not _keep_apartment(l, ad):
                     continue
                 if ad:
                     ads.append(ad)

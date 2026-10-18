@@ -108,12 +108,12 @@
   @keyframes sk { to { background-position:-200% 0; } }
 
   /* profile */
-  #profile-panel { position:fixed; top:0; right:0; width:380px; max-width:100vw; height:100vh; height:100dvh; background:var(--panel); border-left:1px solid var(--line); z-index:1000; display:flex; flex-direction:column; transform:translateX(100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
-  #profile-panel.open { transform:none; visibility:visible; }
-  #profile-panel-header { padding:12px 16px; border-bottom:2px solid var(--red); display:flex; justify-content:space-between; align-items:center; }
-  #profile-panel-header h2 { color:var(--red); font-size:.85rem; letter-spacing:.1em; text-transform:uppercase; }
-  #profile-panel-body { flex:1; overflow-y:auto; padding:12px 16px; }
-  #profile-panel-footer { padding:12px 16px; border-top:1px solid var(--line); display:flex; gap:8px; }
+  #profile-panel, #group-panel { position:fixed; top:0; right:0; width:380px; max-width:100vw; height:100vh; height:100dvh; background:var(--panel); border-left:1px solid var(--line); z-index:1000; display:flex; flex-direction:column; transform:translateX(100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
+  #profile-panel.open, #group-panel.open { transform:none; visibility:visible; }
+  #profile-panel-header, #group-panel-header { padding:12px 16px; border-bottom:2px solid var(--red); display:flex; justify-content:space-between; align-items:center; }
+  #profile-panel-header h2, #group-panel-header h2 { color:var(--red); font-size:.85rem; letter-spacing:.1em; text-transform:uppercase; }
+  #profile-panel-body, #group-panel-body { flex:1; overflow-y:auto; padding:12px 16px; }
+  #profile-panel-footer, #group-panel-footer { padding:12px 16px; border-top:1px solid var(--line); display:flex; gap:8px; }
   .pfield { margin-bottom:12px; }
   .pfield label { display:block; font-size:.65rem; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; margin-bottom:3px; }
   .pfield input, .pfield textarea { width:100%; background:var(--bg); border:1px solid var(--line); color:var(--txt); font-family:inherit; font-size:.8rem; padding:6px 8px; outline:none; }
@@ -242,7 +242,7 @@
     #map { flex:0 0 36%; min-height:160px; }
     #sidebar { width:100%; flex:1; border-left:none; border-top:2px solid var(--red); }
     body.has-detail #map { flex-basis:30%; }
-    #profile-panel { width:100vw; }
+    #profile-panel, #group-panel { width:100vw; }
     .map-legend { display:none; }
     .st { padding:5px 8px; font-size:.64rem; }
     .act, .card-link { padding:5px 6px; font-size:.68rem; }
@@ -250,6 +250,22 @@
     #toasts { bottom:8px; }
   }
 .kind-badge { font-size: .55rem; letter-spacing: .08em; color: #f0a020; border: 1px solid #f0a020; padding: 0 4px; margin-right: 4px; vertical-align: 2px; }
+
+  /* ── Group mode (Phase 7) ── */
+  .seg.gmode button.active { background:var(--amber); color:#111; border-color:var(--amber); font-weight:bold; }
+  #group-edit-btn { display:none; }
+  body.group-mode #group-edit-btn { display:inline-block; }
+  body.group-mode .solo-only { display:none !important; }
+  .group-line { font-size:.68rem; color:#bbb; margin:3px 0 2px; letter-spacing:.02em; }
+  .group-line b { color:var(--amber); font-weight:normal; }
+  .g-tot { font-size:.6rem; color:#777; margin-left:6px; }
+  .member-row { display:flex; gap:6px; margin-bottom:6px; }
+  .member-row input { flex:1; min-width:0; }
+  .member-row select { background:var(--bg); border:1px solid var(--line); color:var(--txt); font-family:inherit; font-size:.75rem; padding:4px; }
+  .member-row button { background:none; border:1px solid var(--line); color:#888; cursor:pointer; padding:0 8px; }
+  .member-row button:hover { border-color:var(--red); color:var(--txt); }
+  .g-hint { font-size:.62rem; color:#777; margin-top:4px; }
+  @media (max-width:760px) { #mode-seg button { padding:5px 8px; font-size:.64rem; } }
 </style>
 </head>
 <body>
@@ -258,10 +274,35 @@
   <h1>WGPendler</h1>
   <span id="sync" title="The server fetches new listings in the background on startup">syncing sources…</span>
   <span id="count">— listings</span>
+  <div class="seg gmode" id="mode-seg" role="group" aria-label="Search mode">
+    <button data-m="solo" class="active" onclick="setGroupMode(false)" title="Find a room in a shared flat for yourself">Solo</button>
+    <button data-m="group" onclick="setGroupMode(true)" title="Find a whole apartment to start a new WG with your cohort">Group</button>
+  </div>
+  <button class="topbar-btn" id="group-edit-btn" onclick="openGroup()" title="Group size, per-person budget and members">Group ✎</button>
   <button class="topbar-btn" id="filters-toggle" onclick="toggleFilters()" aria-expanded="false">Filters ▾</button>
-  <button class="topbar-btn" onclick="runExtract()" id="extract-btn" title="Reads every unprocessed ad with Claude (uses API credits)">Extract</button>
-  <button class="topbar-btn amber" onclick="showBest()" title="Claude analyses your 5 best listings (uses API credits)">Top 5</button>
+  <button class="topbar-btn solo-only" onclick="runExtract()" id="extract-btn" title="Reads every unprocessed ad with Claude (uses API credits)">Extract</button>
+  <button class="topbar-btn amber solo-only" onclick="showBest()" title="Claude analyses your 5 best listings (uses API credits)">Top 5</button>
   <button class="topbar-btn" onclick="openProfile()">Profile</button>
+</div>
+
+<div id="group-panel" role="dialog" aria-label="Group profile">
+  <div id="group-panel-header">
+    <h2>Group Profile</h2>
+    <button class="cancel-btn" onclick="closeGroup()" aria-label="Close">✕</button>
+  </div>
+  <div id="group-panel-body">
+    <div class="pfield"><label for="g-size">Group size <span class="hint">(people who will live there)</span></label><input type="number" id="g-size" min="2" max="12"></div>
+    <div class="pfield"><label for="g-budget">Budget per person (CHF/month)</label><input type="number" id="g-budget" min="100" max="10000" step="50"></div>
+    <div class="pfield"><label>Members <span class="hint">(campus decides the worst-case commute)</span></label>
+      <div id="g-members"></div>
+      <button class="linkbtn" id="g-add" onclick="addMemberRow()">+ add member</button>
+      <div class="g-hint">Only what you enter here is ever used in a drafted message.</div></div>
+    <div class="pfield"><label for="g-notes">Notes <span class="hint">(shared facts for the landlord, e.g. "3 ETH BSc students, non-smokers")</span></label><textarea id="g-notes" rows="4"></textarea></div>
+  </div>
+  <div id="group-panel-footer">
+    <button class="cancel-btn" onclick="closeGroup()">Cancel</button>
+    <button class="save-btn" id="g-save-btn" onclick="saveGroup()">Save group</button>
+  </div>
 </div>
 
 <div id="profile-panel" role="dialog" aria-label="My profile">
@@ -290,7 +331,7 @@
 
 <div id="filters">
   <div class="filter-group">
-    <label for="maxRent">Max Rent</label>
+    <label for="maxRent" id="rent-label-name">Max Rent</label>
     <input type="range" id="maxRent" min="400" max="1500" step="50" value="1000">
     <span class="filter-val" id="rentLabel">1000 CHF</span>
   </div>
@@ -313,15 +354,14 @@
       <button id="btn-bike" onclick="setMode('bike')">Bike</button>
     </div>
   </div>
-  <div class="filter-group">
+  <div class="filter-group solo-only">
     <label>Type</label>
     <div class="seg kind">
       <button id="btn-kind-wg" class="active" onclick="setKind('wg')" title="Rooms in shared flats only">WG rooms</button>
       <button id="btn-kind-studio" onclick="setKind('studio')" title="WG rooms plus small studios">+ Studios</button>
-      <button id="btn-kind-all" onclick="setKind('all')" title="Everything, including whole apartments">All</button>
     </div>
   </div>
-  <div class="filter-group">
+  <div class="filter-group solo-only">
     <label>Posted by</label>
     <div class="seg poster">
       <button id="btn-poster-all" class="active" onclick="setPoster('all')">All</button>
@@ -344,7 +384,7 @@
     <div class="seg sort">
       <button id="btn-sort-relevance" class="active" onclick="setSort('relevance')" title="Average of fit and reply score">Best</button>
       <button id="btn-sort-match" onclick="setSort('match')" title="Fit score: how well the listing matches your profile">Fit</button>
-      <button id="btn-sort-reply" onclick="setSort('reply')" title="Estimated chance the poster replies">Reply</button>
+      <button id="btn-sort-reply" class="solo-only" onclick="setSort('reply')" title="Estimated chance the poster replies">Reply</button>
       <button id="btn-sort-commute" onclick="setSort('commute')" title="Shortest commute to the selected campus and mode">Commute</button>
       <button id="btn-sort-rent" onclick="setSort('rent')" title="Cheapest first">Rent</button>
     </div>
@@ -387,6 +427,8 @@ const ETH_ZENTRUM      = [47.3769, 8.5481];
 const ETH_HOENGGERBERG = [47.4083, 8.5075];
 const CAMPUS_NAME = { zentrum: 'Zentrum', hoenggerberg: 'Hönggerberg' };
 const $ = id => document.getElementById(id);
+let groupMode = false, groupInfo = null;   // Phase 7: group mode state
+try { groupMode = localStorage.getItem('wgp_mode') === 'group'; } catch (_) {}
 
 function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
@@ -411,7 +453,16 @@ const RENT_TIERS = [
   { key: 'mid',  max: 1000,     label: '801–1000 CHF', color: '#42a5f5' },
   { key: 'high', max: Infinity, label: '> 1000 CHF',   color: '#ffa726' },
 ];
-function rentTier(rent) { return RENT_TIERS.find(t => rent <= t.max) ?? RENT_TIERS[2]; }
+const GROUP_TIERS = [
+  { key: 'low',  max: 900,      label: '≤ 900 pp',       color: '#66bb6a' },
+  { key: 'mid',  max: 1200,     label: '901–1200 pp',    color: '#42a5f5' },
+  { key: 'high', max: Infinity, label: '> 1200 pp',      color: '#ffa726' },
+];
+function tiers() { return groupMode ? GROUP_TIERS : RENT_TIERS; }
+function rentTier(rent) { return tiers().find(t => rent <= t.max) ?? tiers()[2]; }
+function fmtChf(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g, "'"); }
+// what the pill / card headline shows: rent (solo) or per-person share (group)
+function priceOf(l) { return groupMode ? (l.per_person_chf ?? l.rent_chf) : l.rent_chf; }
 
 const cluster = L.markerClusterGroup({
   maxClusterRadius: 45, disableClusteringAtZoom: 15, showCoverageOnHover: false,
@@ -424,12 +475,15 @@ const cluster = L.markerClusterGroup({
 }).addTo(map);
 
 const legend = L.control({ position: 'bottomleft' });
-legend.onAdd = () => {
-  const div = L.DomUtil.create('div', 'map-legend');
-  div.innerHTML = `<div class="map-legend-title">Monthly rent</div>
-    ${RENT_TIERS.map(t => `<div class="row"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`).join('')}
+function legendHtml() {
+  return `<div class="map-legend-title">${groupMode ? 'Rent per person' : 'Monthly rent'}</div>
+    ${tiers().map(t => `<div class="row"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`).join('')}
     <div class="row"><span class="swatch" style="background:#777"></span>dealbreaker</div>
     <hr><div class="row"><span class="eth-marker"></span>ETH campus</div>`;
+}
+legend.onAdd = () => {
+  const div = L.DomUtil.create('div', 'map-legend');
+  div.innerHTML = legendHtml();
   return div;
 };
 legend.addTo(map);
@@ -500,8 +554,8 @@ function fitReasons(l) {
   return r.slice(0, 4);
 }
 
-function relevanceScore(l) { return Math.round(((l.fit_score ?? 0) + (l.reply_score ?? 0)) / 2); }
-function commuteMin(l) { return l[`${mode}_${campus}_min`] ?? 999; }
+function relevanceScore(l) { if (groupMode) return l.fit_score ?? 0; return Math.round(((l.fit_score ?? 0) + (l.reply_score ?? 0)) / 2); }
+function commuteMin(l) { if (groupMode) return l.worst_commute_min ?? 999; return l[`${mode}_${campus}_min`] ?? 999; }
 
 function commuteGrid(l) {
   const row = c => {
@@ -581,7 +635,7 @@ async function api(url, opts) {
 function seg(ids, active) { ids.forEach(([id, v]) => $(id).classList.toggle('active', v === active)); }
 function setCampus(c) { campus = c; seg([['btn-zentrum','zentrum'],['btn-hoenggerberg','hoenggerberg']], c); applyFilters(); }
 function setMode(m)   { mode = m;   seg([['btn-transit','transit'],['btn-bike','bike']], m); applyFilters(); }
-function setKind(k)   { kindFilter = k; seg([['btn-kind-wg','wg'],['btn-kind-studio','studio'],['btn-kind-all','all']], k); applyFilters(); }
+function setKind(k)   { kindFilter = k; seg([['btn-kind-wg','wg'],['btn-kind-studio','studio']], k); applyFilters(); }
 function setPoster(p) { posterFilter = p; seg([['btn-poster-all','all'],['btn-poster-private','private'],['btn-poster-agency','agency']], p); applyFilters(); }
 function setSort(s)   { sortMode = s; seg([['btn-sort-relevance','relevance'],['btn-sort-match','match'],['btn-sort-reply','reply'],['btn-sort-commute','commute'],['btn-sort-rent','rent']], s); applyFilters(); }
 function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
@@ -589,6 +643,7 @@ function resetFilters() {
   $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
   $('maxCommute').value = 60; $('hideDeal').checked = false;
   setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance');
+  applyModeUI();
 }
 function toggleFilters() {
   const f = $('filters'); const c = f.classList.toggle('collapsed');
@@ -601,9 +656,11 @@ function syncFilterCollapse() { $('filters').classList.toggle('collapsed', mq.ma
 mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
 
 function passes(l, f) {
-  if (l.rent_chf > f.maxRent) return false;
+  if (priceOf(l) > f.maxRent) return false;
   if (f.filterCommute && commuteMin(l) > f.maxCommute) return false;
   const kind = l.kind || 'wg_room';
+  if (groupMode) return (kind === 'apartment') && (!f.hideDeal || !l._deal.length) && statusOk(l);
+  if (kind === 'apartment') return false;   // whole flats only appear in group mode
   if (kindFilter === 'wg' && kind !== 'wg_room') return false;
   if (kindFilter === 'studio' && kind === 'apartment') return false;
   if (posterFilter !== 'all') {
@@ -611,10 +668,14 @@ function passes(l, f) {
     if (posterFilter === 'private' && pt === 'agency') return false;
     if (posterFilter === 'agency' && pt !== 'agency') return false;
   }
+  if (!statusOk(l)) return false;
+  if (f.hideDeal && l._deal.length) return false;
+  return true;
+}
+function statusOk(l) {
   const st = l.status ?? null;
   if (showFilter === 'todo' && st !== null) return false;
   if (showFilter !== 'all' && showFilter !== 'todo' && st !== showFilter) return false;
-  if (f.hideDeal && l._deal.length) return false;
   return true;
 }
 
@@ -625,10 +686,10 @@ function sortFn(a, b) {
   if (sortMode === 'match') { sa = a.fit_score ?? -1; sb = b.fit_score ?? -1; }
   else if (sortMode === 'reply') { sa = a.reply_score ?? -1; sb = b.reply_score ?? -1; }
   else if (sortMode === 'commute') { sa = commuteMin(a); sb = commuteMin(b); asc = true; }
-  else if (sortMode === 'rent') { sa = a.rent_chf || 0; sb = b.rent_chf || 0; asc = true; }
+  else if (sortMode === 'rent') { sa = priceOf(a) || 0; sb = priceOf(b) || 0; asc = true; }
   else { sa = relevanceScore(a); sb = relevanceScore(b); }
   if (sa !== sb) return asc ? sa - sb : sb - sa;
-  return (a.rent_chf || 0) - (b.rent_chf || 0);
+  return priceOf(a) - priceOf(b);
 }
 
 let _raf = 0;
@@ -647,12 +708,13 @@ $('maxCommute').addEventListener('input', applyFilters);
 
 // ── Markers ──────────────────────────────────────────────────────────────────
 function markerHtml(l) {
-  const tier = rentTier(l.rent_chf);
+  const tier = rentTier(priceOf(l));
   const cls = ['price-marker', 'tier-' + tier.key];
   if (l._deal.length) cls.push('dim');
   if (l.status === 'sent') cls.push('mk-sent'); else if (l.status === 'replied') cls.push('mk-replied');
   if (l.id === selectedId) cls.push('selected');
   const fit = l.fit_score != null ? `<span class="fit" title="Fit score">${l.fit_score}</span>` : '';
+  if (groupMode) return `<div class="${cls.join(' ')}">${fmtChf(priceOf(l))}<span class="cur">pp</span>${fit}</div>`;
   return `<div class="${cls.join(' ')}">${l.rent_chf}<span class="cur">CHF</span>${fit}</div>`;
 }
 function makeIcon(l) {
@@ -660,7 +722,8 @@ function makeIcon(l) {
 }
 function popupHtml(l) {
   const link = safeUrl(l.url);
-  return `<div class="popup-rent">${l.rent_chf} CHF</div><div>${esc(cleanTitle(l))}</div>
+  return `<div class="popup-rent">${groupMode ? fmtChf(priceOf(l)) + ' pp' : l.rent_chf + ' CHF'}</div><div>${esc(cleanTitle(l))}</div>
+    ${groupMode ? `<div style="font-size:.7rem">${groupLine(l)}</div>` : ''}
     <div style="color:#777;font-size:.7rem">${esc(l.address)}</div>
     <div class="popup-commute">${commuteInline(l)}</div>
     ${link ? `<a href="${link}" target="_blank" rel="noopener" style="font-size:.7rem">↗ view listing</a>` : ''}`;
@@ -679,9 +742,25 @@ function getMarker(l) {
 }
 function markerEl(id) { return markers[id]?.getElement()?.querySelector('.price-marker'); }
 
+// ── Group-mode helpers ───────────────────────────────────────────────────────
+function groupLine(l) {
+  const bits = [];
+  if (l.rooms) bits.push(`<b>${l.rooms}</b> Zi`);
+  bits.push(l.bedrooms != null ? `~<b>${l.bedrooms}</b> bedroom${l.bedrooms === 1 ? '' : 's'}` : 'bedrooms ?');
+  if (l.living_area_m2) bits.push(`${Math.round(l.living_area_m2)} m²`);
+  bits.push(`CHF ${fmtChf(l.rent_chf)} total`);
+  if (l.worst_commute_min != null) bits.push(`worst commute <b>${l.worst_commute_min}</b> min`);
+  return bits.join(' · ');
+}
+function headPrice(l) {
+  return groupMode
+    ? `${fmtChf(priceOf(l))}<small>pp</small>`
+    : `${l.rent_chf}<small>CHF</small>`;
+}
+
 // ── Rendering ────────────────────────────────────────────────────────────────
 function cardHtml(l) {
-  const tier = rentTier(l.rent_chf);
+  const tier = rentTier(priceOf(l));
   const deal = l._deal;
   const reasons = deal.length ? [] : fitReasons(l);
   const chips = deal.length
@@ -697,19 +776,20 @@ function cardHtml(l) {
     <div class="card-body">
       <div class="card-top">
         <span class="card-dot" style="background:${deal.length ? '#777' : tier.color}" title="${tier.label}"></span>
-        <span class="card-rent">${l.rent_chf}<small>CHF</small></span>
+        <span class="card-rent">${headPrice(l)}</span>
         ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}
         ${l.status ? `<span class="stbadge ${l.status}">${STATUS_LABEL[l.status]}</span>` : ''}
       </div>
       <div class="card-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
       <div class="card-address">${esc(l.address)}</div>
-      ${commuteGrid(l)}
+      ${groupMode ? `<div class="group-line">${groupLine(l)}</div>` : ''}
+      ${groupMode ? '' : commuteGrid(l)}
       ${chips ? `<div class="chips">${chips}</div>` : ''}
       <div class="card-meta"><span>${avail}</span><span>${esc(l.source || '')}${ageLabel(l) ? ' · ' + ageLabel(l) : ''}</span></div>
     </div>
     <div class="card-actions">
       ${statusBar(l)}
-      <button class="act" data-act="draft" title="Draft a message with Claude (uses API credits)">✎ draft</button>
+      <button class="act" data-act="draft" title="${groupMode ? 'Draft a group application with Claude (uses API credits)' : 'Draft a message with Claude (uses API credits)'}">✎ draft</button>
       ${link ? `<a class="card-link" href="${link}" target="_blank" rel="noopener">↗</a>` : ''}
     </div>
   </div>`;
@@ -751,7 +831,8 @@ function renderAll(listings) {
     return;
   }
   const dealN = listings.filter(l => l._deal.length).length;
-  head.innerHTML = `<b>${listings.length}</b> listing${listings.length === 1 ? '' : 's'} · sorted by <b>${sortMode === 'relevance' ? 'best' : sortMode}</b><br>${SORT_DESC[sortMode]}${dealN ? ` · ${dealN} dealbreaker${dealN === 1 ? '' : 's'} last` : ''}`;
+  const gTag = groupMode && groupInfo?.group ? `group of <b>${groupInfo.group.size}</b> · CHF ${fmtChf(groupInfo.group.budget_per_person_chf)} pp<br>` : '';
+  head.innerHTML = `${gTag}<b>${listings.length}</b> ${groupMode ? 'apartment' : 'listing'}${listings.length === 1 ? '' : 's'} · sorted by <b>${sortMode === 'relevance' ? 'best' : sortMode}</b><br>${groupMode && sortMode === 'relevance' ? 'Best = group fit score' : SORT_DESC[sortMode]}${dealN ? ` · ${dealN} dealbreaker${dealN === 1 ? '' : 's'} last` : ''}`;
   if (!listings.length) {
     if (!total) {
       const syncing = Date.now() - pageStart < SYNC_WINDOW_MS;
@@ -849,7 +930,8 @@ function showDetail(l) {
   const hasExt = !!(e.vibe || e.hard_requirements);
 
   $('detail-body').innerHTML = `
-    <div class="detail-rent">${l.rent_chf} CHF <span style="font-size:.6rem;color:#777">/ month</span></div>
+    <div class="detail-rent">${groupMode ? fmtChf(priceOf(l)) + ' CHF <span style="font-size:.6rem;color:#777">/ person / month</span>' : l.rent_chf + ' CHF <span style="font-size:.6rem;color:#777">/ month</span>'}</div>
+    ${groupMode ? `<div class="group-line">${groupLine(l)}</div>` : ''}
     <div class="detail-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
     <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
     ${commuteGrid(l)}
@@ -866,12 +948,12 @@ function showDetail(l) {
     ${prefs ? `<div class="detail-section"><div class="detail-section-label">Preferences</div>${prefs}</div>` : ''}
     ${incl ? `<div class="detail-section"><div class="detail-section-label">Include in Your Message</div>${incl}</div>` : ''}
     ${flags ? `<div class="detail-section"><div class="detail-section-label">Red Flags</div>${flags}</div>` : ''}
-    ${!hasExt ? '<div class="note-inline">Ad not analysed yet — run Extract for requirements, vibe and red flags.</div>' : ''}
-    <button class="draft-btn" id="draft-btn" onclick="draftMessage(${l.id})">✎ Draft Message</button>
+    ${!hasExt && !groupMode ? '<div class="note-inline">Ad not analysed yet — run Extract for requirements, vibe and red flags.</div>' : ''}
+    <button class="draft-btn" id="draft-btn" onclick="draftMessage(${l.id})">${groupMode ? '✎ Draft Group Application' : '✎ Draft Message'}</button>
     <div id="draft-area"></div>
     <div id="rawtext-slot">${l.raw_text ? `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>` : ''}</div>
     ${url ? `<a class="detail-link-btn" href="${url}" target="_blank" rel="noopener">↗ View Listing</a>` : ''}`;
-  if (drafts[l.id]) renderDraft(l.id, drafts[l.id]);
+  if (D()[l.id]) renderDraft(l.id, D()[l.id]);
   // /listings omits raw_text to keep the payload small; fetch it for the detail view.
   if (!l.raw_text && l.has_raw_text) {
     api(`/listings/${l.id}`).then(full => {
@@ -895,6 +977,15 @@ function closeDetail() {
 }
 
 // ── Loading listings (+ background-ingest polling) ───────────────────────────
+async function fetchListings() {
+  if (!groupMode) return api('/listings');
+  const body = await api('/group/listings');
+  groupInfo = body;
+  return body.listings.map(l => ({   // map group fields onto the shared card/marker fields
+    ...l, fit_score: l.group_fit_score, reply_score: null,
+    fit_reasons: l.group_reasons, dealbreakers: l.group_dealbreakers,
+  }));
+}
 function indexListings(data) {
   allListings = data;
   byId = {};
@@ -903,7 +994,7 @@ function indexListings(data) {
 async function loadListings(silent) {
   if (!silent) { loadState = 'loading'; applyFilters(); }
   try {
-    const data = await api('/listings');
+    const data = await fetchListings();
     const before = allListings.length;
     indexListings(data);
     loadState = 'ok';
@@ -921,7 +1012,7 @@ function pollIngest() {
   const t = setInterval(async () => {
     if (!syncing()) { clearInterval(t); $('sync').classList.remove('on'); if (!allListings.length) applyFilters(); return; }
     const prevLen = allListings.length, prevMax = Math.max(0, ...allListings.map(l => l.id));
-    const ok = await fetch('/listings').then(r => r.ok ? r.json() : null).catch(() => null);
+    const ok = await fetchListings().catch(() => null);
     if (!ok) return;
     const max = Math.max(0, ...ok.map(l => l.id));
     if (ok.length !== prevLen || max !== prevMax) {
@@ -942,6 +1033,7 @@ async function loadProfileBasics() {
     if (p.budget_chf?.max) { budget = p.budget_chf.max; $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50)); }
     if (p.move_in_earliest) moveIn = p.move_in_earliest;
   } catch (_) {}
+  applyModeUI();
 }
 async function openProfile() {
   $('profile-panel').classList.add('open');
@@ -982,6 +1074,77 @@ async function saveProfile() {
   finally { btn.disabled = false; btn.textContent = 'Save & Re-score'; }
 }
 
+// ── Group mode (Phase 7) ─────────────────────────────────────────────────────
+function applyModeUI() {
+  document.body.classList.toggle('group-mode', groupMode);
+  document.querySelectorAll('#mode-seg button').forEach(b => b.classList.toggle('active', (b.dataset.m === 'group') === groupMode));
+  $('rent-label-name').textContent = groupMode ? 'Max per person' : 'Max Rent';
+  const lg = document.querySelector('.map-legend'); if (lg) lg.innerHTML = legendHtml();
+  if (groupMode) {
+    const b = _profile.group?.budget_per_person_chf || groupInfo?.group?.budget_per_person_chf;
+    $('maxRent').max = 2500;
+    if (b) $('maxRent').value = Math.min(2500, Math.max(400, Math.ceil(b * 1.25 / 50) * 50));
+  } else {
+    $('maxRent').max = 1500;
+    $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
+  }
+  if (groupMode && sortMode === 'reply') setSort('relevance');
+}
+async function setGroupMode(g) {
+  if (g === groupMode) return;
+  groupMode = g;
+  try { localStorage.setItem('wgp_mode', g ? 'group' : 'solo'); } catch (_) {}
+  if ($('detail-view').classList.contains('open')) closeDetail();
+  selectedId = null; allListings = []; byId = {};
+  applyModeUI();
+  await loadListings();
+  if (g && !_profile.group) { toast('Using a default group of 3 at CHF 1100 pp. Set yours with Group ✎.'); }
+}
+function memberRow(m = {}) {
+  const d = document.createElement('div'); d.className = 'member-row';
+  d.innerHTML = `<input type="text" placeholder="label, e.g. friend A" maxlength="60" aria-label="Member label">
+    <select aria-label="Member campus"><option value="zentrum">Zentrum</option><option value="hoenggerberg">Hönggerberg</option></select>
+    <button type="button" aria-label="Remove member" title="Remove">✕</button>`;
+  d.querySelector('input').value = m.label || '';
+  d.querySelector('select').value = m.campus || 'zentrum';
+  d.querySelector('button').onclick = () => { d.remove(); syncAddBtn(); };
+  return d;
+}
+function syncAddBtn() {
+  const size = parseInt($('g-size').value) || 0, n = $('g-members').children.length;
+  $('g-add').disabled = n >= size; $('g-add').style.opacity = n >= size ? .4 : 1;
+}
+function addMemberRow(m) { if ($('g-members').children.length >= (parseInt($('g-size').value) || 0)) return; $('g-members').appendChild(memberRow(m)); syncAddBtn(); }
+$('g-size').addEventListener('input', syncAddBtn);
+function openGroup() {
+  const g = _profile.group || groupInfo?.group || { size: 3, budget_per_person_chf: 1100, members: [{ label: 'me', campus: 'zentrum' }], notes: '' };
+  $('g-size').value = g.size; $('g-budget').value = g.budget_per_person_chf; $('g-notes').value = g.notes || '';
+  $('g-members').innerHTML = '';
+  (g.members || []).forEach(m => $('g-members').appendChild(memberRow(m)));
+  syncAddBtn();
+  $('group-panel').classList.add('open');
+}
+function closeGroup() { $('group-panel').classList.remove('open'); }
+async function saveGroup() {
+  const size = parseInt($('g-size').value), budget = parseInt($('g-budget').value);
+  const members = [...$('g-members').children].map(r => ({ label: r.querySelector('input').value.trim(), campus: r.querySelector('select').value }));
+  if (!(size >= 2 && size <= 12)) { toast('Group size must be between 2 and 12', { err: true }); return; }
+  if (!(budget > 0)) { toast('Enter a per-person budget', { err: true }); return; }
+  if (members.length > size) { toast('More members than the group size', { err: true }); return; }
+  const group = { size, budget_per_person_chf: budget, members, notes: $('g-notes').value.trim() };
+  const btn = $('g-save-btn'); btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    const updated = { ..._profile, group };
+    await api('/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+    _profile = updated;
+    toast('Group saved');
+    closeGroup();
+    applyModeUI();
+    await loadListings(true);
+  } catch (e) { toast('Could not save group: ' + e.message, { err: true }); }
+  finally { btn.disabled = false; btn.textContent = 'Save group'; }
+}
+
 // ── Top 5 ────────────────────────────────────────────────────────────────────
 async function showBest() {
   $('best-modal').classList.add('open');
@@ -1012,7 +1175,8 @@ function closeBest() { $('best-modal').classList.remove('open'); }
 $('best-modal').addEventListener('click', e => { if (e.target === $('best-modal')) closeBest(); });
 
 // ── Draft (review + copy; never sends) ───────────────────────────────────────
-const drafts = {};
+const drafts = {}, gdrafts = {};
+function D() { return groupMode ? gdrafts : drafts; }
 function guessLang(text) {
   const t = ' ' + String(text || '').toLowerCase().replace(/[^a-zäöüß ]/g, ' ') + ' ';
   const count = ws => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);
@@ -1025,19 +1189,20 @@ const LANG_NAME = { de: 'German', en: 'English' };
 async function draftMessage(id) {
   const btn = $('draft-btn'), area = $('draft-area');
   if (!btn || !area || selectedId !== id) return;
-  if (drafts[id] && !confirm('Redraft? Your current text in the box will be replaced (and this uses API credits).')) return;
+  if (groupMode && !_profile.group) { toast('Set up your group first (size and budget), then draft.'); openGroup(); return; }
+  if (D()[id] && !confirm('Redraft? Your current text in the box will be replaced (and this uses API credits).')) return;
   btn.disabled = true; btn.textContent = 'Drafting…';
-  area.innerHTML = '<div class="note-inline">Claude is writing a message in the ad\'s language…</div>';
+  area.innerHTML = `<div class="note-inline">Claude is writing ${groupMode ? 'a group application' : 'a message'} in the ad's language…</div>`;
   try {
-    const body = await api(`/draft/${id}`, { method: 'POST' });
-    drafts[id] = body.draft;
+    const body = await api(groupMode ? `/group/draft/${id}` : `/draft/${id}`, { method: 'POST' });
+    D()[id] = body.draft;
     if (selectedId === id) renderDraft(id, body.draft);
   } catch (e) {
     if (selectedId === id) { area.innerHTML = '<div class="draft-error"></div>'; area.firstChild.textContent = '✗ ' + e.message; }
     else toast(e.message, { err: true });
   } finally {
     const b = $('draft-btn');
-    if (b) { b.disabled = false; b.textContent = drafts[id] ? '↻ Redraft' : '✎ Draft Message'; }
+    if (b) { b.disabled = false; b.textContent = D()[id] ? '↻ Redraft' : (groupMode ? '✎ Draft Group Application' : '✎ Draft Message'); }
   }
 }
 function renderDraft(id, text) {
@@ -1060,7 +1225,7 @@ function renderDraft(id, text) {
     $('draft-count').textContent = `${ta.value.trim().split(/\s+/).filter(Boolean).length} words`;
   };
   meta();
-  ta.addEventListener('input', () => { drafts[id] = ta.value; meta(); });
+  ta.addEventListener('input', () => { D()[id] = ta.value; meta(); });
   const b = $('draft-btn'); if (b) b.textContent = '↻ Redraft';
 }
 function copyDraft() {
@@ -1088,11 +1253,13 @@ async function runExtract() {
 document.addEventListener('keydown', e => {
   if (e.key !== 'Escape') return;
   if ($('best-modal').classList.contains('open')) closeBest();
+  else if ($('group-panel').classList.contains('open')) closeGroup();
   else if ($('profile-panel').classList.contains('open')) closeProfile();
   else if ($('detail-view').classList.contains('open')) closeDetail();
 });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
+applyModeUI();
 applyFilters();
 loadProfileBasics().finally(() => { loadListings().then(() => { applyFilters(); pollIngest(); }); });
 </script>

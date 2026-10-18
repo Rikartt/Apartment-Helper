@@ -82,7 +82,10 @@ def test_group_listings_endpoint(client, db, ad_factory):
     db.upsert_listing(apt(ad_factory, external_id="ap1"))
     db.upsert_listing(ad_factory(external_id="room1"))  # wg_room: excluded
     client.put("/profile", json={"group": G})
+    db.upsert_listing(apt(ad_factory, external_id="tiny", rooms=2.5, rent_chf=1500))
     body = client.get("/group/listings").json()
+    both = client.get("/group/listings?include_dealbreakers=1").json()
+    assert {l["external_id"] for l in both["listings"]} == {"ap1", "tiny"}
     assert [l["external_id"] for l in body["listings"]] == ["ap1"]
     l = body["listings"][0]
     assert l["rooms"] == 4.5 and l["per_person_chf"] == 1100
@@ -139,3 +142,15 @@ def test_homegate_apartments_default_and_cap(monkeypatch):
     ad = h.HomegateAdapter()._enrich(card)
     assert ad["rooms"] == 4.5 and ad["living_area_m2"] == 100.0 and ad["kind"] == "apartment"
     assert h.HomegateAdapter()._enrich(dict(card, rent_chf=9000)) is None
+
+
+def test_flatfox_apartment_filter():
+    from backend.ingestion.flatfox_adapter import FlatfoxAdapter, _keep_apartment
+    a = FlatfoxAdapter()
+    good = {"pk": 1, "latitude": 47.4, "longitude": 8.5, "rent_gross": 2800, "number_of_rooms": "4.5",
+            "object_category": "APARTMENT"}
+    assert _keep_apartment(good, a._to_ad(good))
+    for bad in [dict(good, object_category="PARKING"), dict(good, rent_gross=120),
+                dict(good, rent_gross=9000), dict(good, number_of_rooms=None),
+                dict(good, latitude=47.15, longitude=8.25)]:
+        assert not _keep_apartment(bad, a._to_ad(bad))
