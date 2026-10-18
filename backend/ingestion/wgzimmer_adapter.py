@@ -1,25 +1,22 @@
 """
 WGZimmer.ch adapter.
 
-Search results are JS-rendered, so we use Playwright to get listing URLs.
-Detail pages are static HTML that httpx can fetch directly.
+Search is reCAPTCHA-protected, so fetch() is disabled (see guardrails).
+Detail pages are static HTML that _scrape_listing can parse.
 Coordinates come from Nominatim (OSM) since WGZimmer doesn't expose lat/lng.
 """
 import re
 import time
 from datetime import date as _date
-from functools import lru_cache
 
 import httpx
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright
 
 from .base import BaseAdapter
+from .geocode import geocode as _geocode
 
 BASE      = "http://www.wgzimmer.ch"
-SEARCH    = f"{BASE}/wgzimmer/search/room.html"
-REGIONS   = ["zurich-kanton"]
-MAX_ADS   = 60
+MAX_ADS   = 600
 SCRAPE_DELAY  = 1.0   # seconds between detail-page fetches
 GEOCODE_DELAY = 1.0   # Nominatim policy: ≤1 req/sec
 
@@ -43,50 +40,11 @@ _DISTRICTS = [
 class WGZimmerAdapter(BaseAdapter):
 
     def fetch(self) -> list[dict]:
-        urls = self._get_listing_urls()
-        print(f"[wgzimmer] {len(urls)} listing URLs found")
-
-        ads = []
-        for url in urls[:MAX_ADS]:
-            try:
-                ad = self._scrape_listing(url)
-                if ad:
-                    ads.append(ad)
-            except Exception as e:
-                print(f"[wgzimmer] skipped {url}: {e}")
-            time.sleep(SCRAPE_DELAY)
-
-        print(f"[wgzimmer] {len(ads)} valid listings extracted")
-        return ads
-
-    def _get_listing_urls(self) -> list[str]:
-        urls: list[str] = []
-        with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page(user_agent=_UA)
-            try:
-                for region in REGIONS:
-                    try:
-                        page.goto(
-                            f"{SEARCH}?region={region}&priceMax=1200",
-                            timeout=30_000,
-                            wait_until="networkidle",
-                        )
-                        page.wait_for_selector("a[href*='/wglink/']", timeout=12_000)
-                    except Exception as e:
-                        print(f"[wgzimmer] search page timed out for {region}: {e}")
-                        continue
-
-                    soup = BeautifulSoup(page.content(), "lxml")
-                    for a in soup.select("a[href*='/wglink/']"):
-                        href = a.get("href", "")
-                        if href.startswith("/"):
-                            href = BASE + href
-                        if href not in urls:
-                            urls.append(href)
-            finally:
-                browser.close()
-        return urls
+        # wgzimmer.ch's search is protected by reCAPTCHA. Per the project
+        # guardrails we don't automate past anti-bot protection, so search is
+        # disabled. _scrape_listing still parses a single listing page.
+        print("[wgzimmer] skipped: search is reCAPTCHA-protected")
+        return []
 
     def _scrape_listing(self, url: str) -> dict | None:
         m = re.search(r"/wglink/(?:de|en|fr)/([^/]+)/", url)
@@ -114,6 +72,7 @@ class WGZimmerAdapter(BaseAdapter):
         # --- rent ---
         rent = 0
         for pat in [
+            r"Miete\s*/\s*Monat\s*sFr\.\s*(\d{3,4})",
             r"(?:CHF|Fr\.)\s*(\d{3,4})(?:[.,][\d–\-]*)?",
             r"(\d{3,4})\s*(?:CHF|Fr\.)",
             r"Miete[^:]*:\s*(\d{3,4})",
@@ -128,6 +87,11 @@ class WGZimmerAdapter(BaseAdapter):
         if not rent:
             return None
 
+        # Real ads: the structured block starts at "Daten und Miete".
+        k = text.find("Daten und Miete")
+        if k >= 0:
+            text = text[k:]
+
         # --- available date ---
         avail = "flexible"
         dm = re.search(r"(\d{1,2})[.\s/](\d{1,2})[.\s/](\d{4})", text)
@@ -138,7 +102,7 @@ class WGZimmerAdapter(BaseAdapter):
                 pass
 
         # --- address ---
-        address = _extract_address(soup, text)
+        address = _structured_address(text) or _extract_address(soup, text)
 
         # --- geocode ---
         lat, lng = _geocode(address)
@@ -148,7 +112,10 @@ class WGZimmerAdapter(BaseAdapter):
 
         # --- title ---
         h1 = soup.find("h1")
-        title = h1.get_text(strip=True)[:200] if h1 else f"WG-Zimmer – {rent} CHF"
+        title = h1.get_text(strip=True)[:200] if h1 else ""
+        if not title:  # real pages only have a logo in the h1
+            place = address.split(",")[-1].strip() if "," in address else address
+            title = f"WG-Zimmer in {place} – {rent} CHF"
 
         # --- raw text for Claude extraction ---
         main = (
@@ -156,7 +123,7 @@ class WGZimmerAdapter(BaseAdapter):
             or soup.find(id=re.compile(r"content|main|description", re.I))
             or soup.find(class_=re.compile(r"content|description|text", re.I))
         )
-        raw_text = (main.get_text(" ", strip=True) if main else text)[:3000]
+        raw_text = (text if k >= 0 or not main else main.get_text(" ", strip=True))[:3000]
 
         return {
             "source":       "wgzimmer",
@@ -171,6 +138,18 @@ class WGZimmerAdapter(BaseAdapter):
             "url":          url,
             "listed_at":    None,
         }
+
+
+def _structured_address(text: str) -> str | None:
+    """Parse "Adresse <street> Ort <PLZ> <city>" from real wgzimmer pages."""
+    m = re.search(r"Adresse\s+((?:(?!Adresse).)+?)\s+Ort\s+(\d{4})\s+([^\s].*?)\s+(?:Kreis|In der N|Google|Beschreibung)", text)
+    if m:
+        return f"{m.group(1)}, {m.group(2)} {m.group(3)}"
+    m = re.search(r"Ort\s+(\d{4})\s+(\S+(?: \S+)?)", text)
+    if m:
+        q = re.search(r"Kreis / Quartier\s+(.+?)\s+In der N", text)
+        return f"{q.group(1)}, {m.group(1)} {m.group(2)}" if q else f"{m.group(1)} {m.group(2)}"
+    return None
 
 
 def _extract_address(soup: BeautifulSoup, text: str) -> str:
@@ -191,27 +170,3 @@ def _extract_address(soup: BeautifulSoup, text: str) -> str:
             return ht[:100]
 
     return "Zürich"
-
-
-@lru_cache(maxsize=256)
-def _geocode(address: str) -> tuple[float | None, float | None]:
-    """OSM Nominatim geocoder, cached per address string."""
-    try:
-        time.sleep(GEOCODE_DELAY)
-        resp = httpx.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": f"{address}, Switzerland",
-                "format": "json",
-                "limit": 1,
-                "countrycodes": "ch",
-            },
-            headers={"User-Agent": _GEOCODE_UA},
-            timeout=8,
-        )
-        data = resp.json()
-        if data:
-            return float(data[0]["lat"]), float(data[0]["lon"])
-    except Exception as e:
-        print(f"[wgzimmer] geocode failed for '{address}': {e}")
-    return None, None

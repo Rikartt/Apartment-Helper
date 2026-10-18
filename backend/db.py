@@ -16,6 +16,7 @@ NEW_COLUMNS = [
     ("status_updated_at", "TEXT"),
     ("extract_attempts", "INTEGER NOT NULL DEFAULT 0"),
     ("extracted_at", "TEXT"),
+    ("kind", "TEXT NOT NULL DEFAULT 'wg_room'"),  # wg_room | studio | apartment
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -95,8 +96,8 @@ def upsert_listing(ad: dict) -> bool:
                  available_from, raw_text, url,
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
-                 listed_at, fit_score, reply_score)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                 listed_at, fit_score, reply_score, kind)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -114,7 +115,8 @@ def upsert_listing(ad: dict) -> bool:
                 fit_score   = CASE WHEN listings.extracted IS NOT NULL
                                    THEN listings.fit_score ELSE excluded.fit_score END,
                 reply_score = CASE WHEN listings.extracted IS NOT NULL
-                                   THEN listings.reply_score ELSE excluded.reply_score END
+                                   THEN listings.reply_score ELSE excluded.reply_score END,
+                kind        = excluded.kind
                 -- status / extracted / seen / created_at are deliberately untouched
         """, (
             ad["source"], ad["external_id"], ad["title"], ad["address"],
@@ -124,6 +126,7 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("bike_hoenggerberg_min"), ad.get("transit_hoenggerberg_min"),
             ad.get("listed_at"),
             ad.get("fit_score"), ad.get("reply_score"),
+            ad.get("kind") or "wg_room",
         ))
         return not existed
 

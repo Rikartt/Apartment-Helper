@@ -15,19 +15,23 @@ Geocoding via OSM Nominatim.
 """
 import re
 import time
-from functools import lru_cache
+import os
 
 import httpx
 from bs4 import BeautifulSoup
 
 from .base import BaseAdapter
+from .geocode import geocode as _geocode
 
 SEARCH_BASE  = (
     "https://www.homegate.ch/rent/real-estate/city-zurich/matching-list"
     "?map=false&ep={page}"
 )
-MAX_PAGES    = 20       # pages of ~20 listings each (~400 listings scanned)
-MAX_ADS      = 200
+MAX_PAGES    = 40       # pages of ~20 listings each; stops early when a page adds nothing
+MAX_ADS      = 400
+# Whole apartments are only kept (kind="apartment") when explicitly enabled,
+# so they do not clutter the WG-room map until a group mode exists.
+INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS") == "1"
 SCRAPE_DELAY = 1.0
 GEOCODE_DELAY = 1.0
 
@@ -100,7 +104,8 @@ class HomegateAdapter(BaseAdapter):
         # Filter to WG-like listings
         ads = []
         for card in raw_cards:
-            if self._is_wg_candidate(card) and len(ads) < MAX_ADS:
+            card["kind"] = self._kind(card)
+            if (card["kind"] != "apartment" or INCLUDE_APARTMENTS) and len(ads) < MAX_ADS:
                 ad = self._enrich(card)
                 if ad:
                     ads.append(ad)
@@ -177,6 +182,13 @@ class HomegateAdapter(BaseAdapter):
 
         return cards
 
+    def _kind(self, card: dict) -> str:
+        """wg_room (explicit WG wording), studio (tiny unit) or apartment."""
+        combined = " ".join([card.get("title_raw", ""), card.get("desc", ""), card.get("address", "")])
+        if _WG_KEYWORDS.search(combined):
+            return "wg_room"
+        return "studio" if self._is_wg_candidate(card) else "apartment"
+
     def _is_wg_candidate(self, card: dict) -> bool:
         """Return True if the card looks like a WG/shared-room listing."""
         combined = " ".join([
@@ -232,32 +244,5 @@ class HomegateAdapter(BaseAdapter):
             "raw_text":       raw_text,
             "url":            card["url"],
             "listed_at":      None,
+            "kind":           card.get("kind", "wg_room"),
         }
-
-
-# ---------------------------------------------------------------------------
-# Shared geocoder
-# ---------------------------------------------------------------------------
-
-@lru_cache(maxsize=256)
-def _geocode(address: str) -> tuple[float | None, float | None]:
-    """OSM Nominatim geocoder, cached per address string."""
-    try:
-        time.sleep(GEOCODE_DELAY)
-        resp = httpx.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": f"{address}, Switzerland",
-                "format": "json",
-                "limit": 1,
-                "countrycodes": "ch",
-            },
-            headers={"User-Agent": _GEOCODE_UA},
-            timeout=8,
-        )
-        data = resp.json()
-        if data:
-            return float(data[0]["lat"]), float(data[0]["lon"])
-    except Exception as e:
-        print(f"[homegate] geocode failed for '{address}': {e}")
-    return None, None

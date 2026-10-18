@@ -7,3 +7,4 @@ wgpendler.db
 wgpendler.db-shm
 wgpendler.db-wal
 .pytest_cache/
+geocache.sqlite
