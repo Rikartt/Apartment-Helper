@@ -23,13 +23,13 @@ from .db import (  # noqa: E402
 )
 from .drafting import draft, DraftError  # noqa: E402
 from .extraction import extract_batch  # noqa: E402
-from .ingest import run_ingest  # noqa: E402
+from .ingest import run_ingest, ADAPTERS  # noqa: E402
 from .scoring import score_detail, load_profile, PROFILE_PATH  # noqa: E402
 
 BASE_DIR     = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
-STARTUP_SOURCES = ["flatfox", "wgzimmer", "ronorp", "homegate"]
+STARTUP_SOURCES = [n for n in ADAPTERS if n != "mock"]
 AUTO_EXTRACT = os.environ.get("WGP_AUTO_EXTRACT", "1") != "0"
 AUTO_EXTRACT_LIMIT = int(os.environ.get("WGP_AUTO_EXTRACT_LIMIT", "25"))
 
