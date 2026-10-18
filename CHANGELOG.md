@@ -1,5 +1,10 @@
 # Changelog
 
+## Follow-up loop
+
+### New
+- Draft checklist (what the ad asked for, ticked heuristically), sent-message history (`sent_messages` table, `POST /listings/{id}/sent`), "Follow up?" chip and Follow-ups filter (`WGP_FOLLOWUP_DAYS`, default 3), optional follow-up draft (`POST /draft/{id}?followup=1`), and a Copy & open ad button.
+
 ## 2026-10-18 overnight
 
 ### New

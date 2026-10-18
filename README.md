@@ -59,6 +59,12 @@ If the key is missing or the credit is exhausted the UI shows a clear error inst
 ### Tracking
 Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view hides what you've handled. Status survives re-ingests and is never changed by the app, even when a listing disappears.
 
+### Draft to reply loop
+- **Draft checklist**: under a draft, a checklist of what the ad asked for (and its hard requirements). A keyword/date/number heuristic ticks what your text already covers; the rest get an amber hint. It runs in the browser, costs nothing and never edits your text.
+- **Sent history**: Mark as sent from the draft panel (or after Copy & open ad) saves the final text and time; the detail view shows "You sent this on ...".
+- **Follow-ups**: a listing still marked Sent after `WGP_FOLLOWUP_DAYS` days (default 3) gets a "Follow up?" chip and appears under Show > Follow-ups. "Draft follow-up" asks Claude for a short, polite note in the ad's language that does not repeat your first message (one small API call, solo mode only). You still send it yourself.
+- **Copy & open ad**: copies the draft, opens the ad in a new tab and asks "Mark as sent?".
+
 ### Fresh listings
 - The server re-ingests in the background every `WGP_INGEST_INTERVAL_MIN` minutes (default 45, jittered).
 - Listings first seen since your last visit get a **NEW** badge, there is a **New only** toggle, and a notice appears when a background ingest adds listings.
