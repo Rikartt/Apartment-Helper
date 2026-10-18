@@ -10,13 +10,13 @@ Geocoding via OSM Nominatim (shared cache with wgzimmer adapter).
 """
 import re
 import time
-from functools import lru_cache
 
 import httpx
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 from .base import BaseAdapter
+from .geocode import geocode as _geocode
 
 BASE         = "https://ronorp.net"
 SEARCH_URL   = f"{BASE}/zurich/market/housing/zimmer-wg"
@@ -74,7 +74,7 @@ class RonorpAdapter(BaseAdapter):
                     try:
                         page.goto(url, timeout=30_000, wait_until="networkidle")
                         # Wait for listing cards to appear
-                        page.wait_for_selector("a[href*='/market/posts/']", timeout=15_000)
+                        page.wait_for_selector("a[href*='/market/posts/']", timeout=8_000)
                     except Exception as e:
                         print(f"[ronorp] page {page_num} timed out: {e}")
                         break
@@ -160,7 +160,7 @@ class RonorpAdapter(BaseAdapter):
         address = _extract_address(soup, text)
 
         # Filter out non-Zürich listings (Ronorp covers all Swiss cities)
-        if not _is_zurich(address, text):
+        if not address or not _is_zurich(address, text):
             return None
 
         # --- geocode ---
@@ -205,7 +205,7 @@ class RonorpAdapter(BaseAdapter):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _extract_address(soup: BeautifulSoup, text: str) -> str:
+def _extract_address(soup: BeautifulSoup, text: str) -> str | None:
     """Best-effort address extraction from Ronorp listing page."""
     # Look for a Swiss postal code + city pattern: "8001 Zürich" etc.
     m = re.search(r"\b(80[0-9]{2}|8[1-9]\d{2})\s+(Zürich|Zuerich|Zurich|[A-ZÄÖÜ][a-zäöü]+)", text)
@@ -234,7 +234,7 @@ def _extract_address(soup: BeautifulSoup, text: str) -> str:
         if re.search(r"zürich|zuerich|zurich", ht, re.I):
             return ht[:100]
 
-    return "Zürich"
+    return None
 
 
 def _is_zurich(address: str, text: str) -> bool:
@@ -246,27 +246,3 @@ def _is_zurich(address: str, text: str) -> bool:
     if re.search(r"zürich|zuerich|zurich", combined):
         return True
     return False
-
-
-@lru_cache(maxsize=256)
-def _geocode(address: str) -> tuple[float | None, float | None]:
-    """OSM Nominatim geocoder, cached per address string."""
-    try:
-        time.sleep(GEOCODE_DELAY)
-        resp = httpx.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": f"{address}, Switzerland",
-                "format": "json",
-                "limit": 1,
-                "countrycodes": "ch",
-            },
-            headers={"User-Agent": _GEOCODE_UA},
-            timeout=8,
-        )
-        data = resp.json()
-        if data:
-            return float(data[0]["lat"]), float(data[0]["lon"])
-    except Exception as e:
-        print(f"[ronorp] geocode failed for '{address}': {e}")
-    return None, None

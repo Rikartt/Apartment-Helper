@@ -4,3 +4,4 @@ __pycache__/
 .env
 wgpendler.db
 .DS_Store
+geocache.sqlite

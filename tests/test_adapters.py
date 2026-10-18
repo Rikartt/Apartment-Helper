@@ -110,7 +110,6 @@ def test_ronorp_scrape(monkeypatch):
     assert "8004" in ad["address"]
 
 
-@pytest.mark.xfail(reason="BUG: ronorp_adapter._extract_address falls back to 'Zürich' for any page lacking a recognised address, so _is_zurich(address, text) is always True and non-Zürich (e.g. Bern) listings are kept (ronorp_adapter.py _is_zurich call in _scrape_listing)", strict=True)
 def test_ronorp_rejects_non_zurich(monkeypatch):
     stub_http(monkeypatch, ronorp_adapter, html("ronorp_non_zurich.html"))
     assert RonorpAdapter()._scrape_listing(RON_URL) is None
