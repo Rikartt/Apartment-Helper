@@ -7,423 +7,341 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
 <style>
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: 'Courier New', Courier, monospace; background: #1a1a1a; color: #e0e0e0; display: flex; flex-direction: column; height: 100vh; }
-
-  #topbar {
-    background: #111; border-bottom: 2px solid #c00; padding: 8px 16px;
-    display: flex; align-items: center; gap: 16px; flex-shrink: 0;
-  }
-  #topbar h1 { color: #c00; font-size: 1.1rem; letter-spacing: 0.15em; text-transform: uppercase; }
-  #count { color: #888; font-size: 0.75rem; margin-left: auto; }
-  .topbar-btn {
-    background: none; border: 1px solid #333; color: #aaa;
-    font-family: inherit; font-size: 0.7rem; padding: 3px 10px;
-    cursor: pointer; letter-spacing: 0.08em;
-  }
-  .topbar-btn:hover { border-color: #c00; color: #e0e0e0; }
-
-  #filters {
-    background: #111; border-bottom: 1px solid #333; padding: 8px 16px;
-    display: flex; gap: 24px; align-items: center; flex-wrap: wrap; flex-shrink: 0;
-  }
-  .filter-group { display: flex; align-items: center; gap: 8px; }
-  .filter-group label { font-size: 0.7rem; color: #888; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
-  .filter-group input[type=range] { accent-color: #c00; width: 110px; }
-  .filter-val { font-size: 0.8rem; color: #e0e0e0; font-variant-numeric: tabular-nums; min-width: 60px; }
-
-  .campus-toggle { display: flex; gap: 0; }
-  .campus-toggle button {
-    background: #1a1a1a; color: #888; border: 1px solid #333;
-    font-family: inherit; font-size: 0.7rem; padding: 3px 8px; cursor: pointer;
-    letter-spacing: 0.05em;
-  }
-  .campus-toggle button:first-child { border-radius: 2px 0 0 2px; }
-  .campus-toggle button:last-child  { border-radius: 0 2px 2px 0; border-left: none; }
-  .campus-toggle button.active { background: #c00; color: #fff; border-color: #c00; }
-
-  .mode-toggle { display: flex; gap: 0; }
-  .mode-toggle button {
-    background: #1a1a1a; color: #888; border: 1px solid #333;
-    font-family: inherit; font-size: 0.7rem; padding: 3px 8px; cursor: pointer;
-  }
-  .mode-toggle button:first-child { border-radius: 2px 0 0 2px; }
-  .mode-toggle button:last-child  { border-radius: 0 2px 2px 0; border-left: none; }
-  .mode-toggle button.active { background: #2196f3; color: #fff; border-color: #2196f3; }
-
-  .poster-toggle { display: flex; gap: 0; }
-  .poster-toggle button {
-    background: #1a1a1a; color: #888; border: 1px solid #333;
-    font-family: inherit; font-size: 0.7rem; padding: 3px 8px; cursor: pointer;
-  }
-  .poster-toggle button:first-child { border-radius: 2px 0 0 2px; }
-  .poster-toggle button:last-child  { border-radius: 0 2px 2px 0; border-left: none; }
-  .poster-toggle button:not(:first-child) { border-left: none; }
-  .poster-toggle button.active { background: #00695c; color: #fff; border-color: #00695c; }
-
-  .sort-toggle { display: flex; gap: 0; }
-  .sort-toggle button {
-    background: #1a1a1a; color: #888; border: 1px solid #333;
-    font-family: inherit; font-size: 0.7rem; padding: 3px 8px; cursor: pointer;
-  }
-  .sort-toggle button:first-child { border-radius: 2px 0 0 2px; }
-  .sort-toggle button:last-child  { border-radius: 0 2px 2px 0; border-left: none; }
-  .sort-toggle button:not(:first-child) { border-left: none; }
-  .sort-toggle button.active { background: #7b1fa2; color: #fff; border-color: #7b1fa2; }
-
-  #main { display: flex; flex: 1; overflow: hidden; }
-  #map { flex: 1; }
-
-  #sidebar {
-    width: 300px; background: #111; border-left: 1px solid #333;
-    overflow-y: auto; display: flex; flex-direction: column; flex-shrink: 0;
-  }
-  #sidebar-header {
-    padding: 6px 12px; border-bottom: 1px solid #333;
-    font-size: 0.65rem; color: #555; letter-spacing: 0.1em; text-transform: uppercase;
-    flex-shrink: 0;
-  }
-
-  .card {
-    padding: 9px 12px; border-bottom: 1px solid #1e1e1e; cursor: pointer;
-    transition: background 0.1s; position: relative;
-  }
-  .card:hover { background: #181818; }
-  .card.selected { background: #1c1c1c; border-left: 3px solid #c00; padding-left: 9px; }
-  .card-rent { font-size: 1.05rem; color: #c00; font-variant-numeric: tabular-nums; display: inline-block; }
-  .card-score  { display: inline-block; margin-left: 8px; font-size: 0.7rem; font-weight: bold; padding: 1px 5px; border-radius: 2px; font-variant-numeric: tabular-nums; vertical-align: middle; }
-  .score-high  { background: #1a3a1a; color: #4caf50; }
-  .score-mid   { background: #1a2a3a; color: #2196f3; }
-  .score-low   { background: #2a2a1a; color: #888; }
-  .card-reply  { display: inline-block; margin-left: 4px; font-size: 0.7rem; padding: 1px 5px; border-radius: 2px; font-variant-numeric: tabular-nums; vertical-align: middle; }
-  .reply-high  { background: #241a00; color: #ffc107; }
-  .reply-mid   { background: #1e1400; color: #a07820; }
-  .reply-low   { background: #1e1a1a; color: #555; }
-  .card-title { font-size: 0.75rem; color: #ccc; margin-top: 1px; }
-  .card-address { font-size: 0.65rem; color: #666; margin-top: 1px; }
-  .card-commute { font-size: 0.65rem; color: #4a9; margin-top: 3px; font-variant-numeric: tabular-nums; }
-  .card-meta { font-size: 0.6rem; color: #444; margin-top: 3px; display: flex; justify-content: space-between; align-items: center; }
-  .card-link {
-    font-size: 0.6rem; color: #2196f3; text-decoration: none; letter-spacing: 0.05em;
-  }
-  .card-link:hover { text-decoration: underline; }
-
-  /* profile panel */
-  #profile-panel {
-    position: fixed; top: 0; right: 0; width: 380px; height: 100vh;
-    background: #111; border-left: 1px solid #333; z-index: 1000;
-    display: flex; flex-direction: column; transform: translateX(100%);
-    transition: transform 0.2s ease;
-  }
-  #profile-panel.open { transform: translateX(0); }
-  #profile-panel-header {
-    padding: 12px 16px; border-bottom: 2px solid #c00;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  #profile-panel-header h2 { color: #c00; font-size: 0.85rem; letter-spacing: 0.1em; text-transform: uppercase; }
-  #profile-panel-body { flex: 1; overflow-y: auto; padding: 12px 16px; }
-  #profile-panel-footer { padding: 12px 16px; border-top: 1px solid #333; display: flex; gap: 8px; }
-
-  .pfield { margin-bottom: 12px; }
-  .pfield label { display: block; font-size: 0.65rem; color: #888; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 3px; }
-  .pfield input, .pfield textarea {
-    width: 100%; background: #1a1a1a; border: 1px solid #333; color: #e0e0e0;
-    font-family: inherit; font-size: 0.75rem; padding: 5px 8px; outline: none;
-  }
-  .pfield input:focus, .pfield textarea:focus { border-color: #c00; }
-  .pfield textarea { resize: vertical; min-height: 60px; }
-  .pfield .hint { font-size: 0.6rem; color: #555; margin-top: 2px; }
-
-  .save-btn {
-    flex: 1; background: #c00; color: #fff; border: none; font-family: inherit;
-    font-size: 0.75rem; padding: 7px; cursor: pointer; letter-spacing: 0.08em;
-  }
-  .save-btn:hover { background: #e00; }
-  .cancel-btn {
-    background: none; border: 1px solid #333; color: #888; font-family: inherit;
-    font-size: 0.75rem; padding: 7px 14px; cursor: pointer;
-  }
-  .cancel-btn:hover { border-color: #666; }
-  .saved-msg { font-size: 0.65rem; color: #4caf50; align-self: center; display: none; }
-
-  /* ── listing detail view ───────────────────────────────────────── */
-  #detail-view { display:none; flex-direction:column; height:100%; }
-  #detail-view.open { display:flex; }
-  #detail-topbar {
-    padding: 6px 12px; border-bottom: 1px solid #333; flex-shrink:0;
-    display:flex; justify-content:space-between; align-items:center;
-  }
-  .detail-back {
-    background:none; border:none; color:#888; font-family:inherit;
-    font-size:0.7rem; cursor:pointer; padding:2px 0; letter-spacing:0.05em;
-  }
-  .detail-back:hover { color:#e0e0e0; }
-  #detail-body { flex:1; overflow-y:auto; padding:12px; }
-  .detail-rent { font-size:1.4rem; color:#c00; font-variant-numeric:tabular-nums; }
-  .detail-title { font-size:0.8rem; color:#ccc; margin:2px 0; }
-  .detail-addr  { font-size:0.65rem; color:#666; }
-  .detail-commute { font-size:0.7rem; color:#4a9; margin:6px 0; }
-  .detail-section { margin-top:10px; }
-  .detail-section-label {
-    font-size:0.6rem; color:#555; letter-spacing:0.1em; text-transform:uppercase;
-    margin-bottom:4px; border-top:1px solid #1e1e1e; padding-top:8px;
-  }
-  .pill {
-    display:inline-block; background:#1e1e1e; color:#aaa; border:1px solid #2a2a2a;
-    border-radius:2px; font-size:0.65rem; padding:1px 6px; margin:2px 2px 0 0;
-  }
-  .pill.red   { background:#2a0000; color:#e57373; border-color:#5a1010; }
-  .pill.green { background:#0a2010; color:#66bb6a; border-color:#1a4a20; }
-  .detail-bullet { font-size:0.7rem; color:#aaa; margin:2px 0; padding-left:8px; }
-  .detail-bullet::before { content:"• "; color:#555; }
-  .detail-link-btn {
-    display:block; margin-top:14px; text-align:center; background:#c00; color:#fff;
-    font-family:inherit; font-size:0.75rem; padding:7px; text-decoration:none;
-    letter-spacing:0.08em;
-  }
-  .detail-link-btn:hover { background:#e00; }
-  .detail-scores { margin:6px 0; }
-
-  /* ── draft message ────────────────────────────────────────────── */
-  .draft-btn {
-    display:block; width:100%; margin-top:14px; background:none; color:#ffc107;
-    border:1px solid #ffc107; font-family:inherit; font-size:0.75rem; padding:6px;
-    letter-spacing:0.08em; cursor:pointer;
-  }
-  .draft-btn:hover { background:#2a2000; }
-  .draft-btn:disabled { opacity:0.5; cursor:wait; }
-  #draft-box { margin-top:8px; }
-  #draft-text {
-    width:100%; min-height:220px; background:#0a0a0a; color:#e0e0e0; border:1px solid #333;
-    font-family:inherit; font-size:0.72rem; line-height:1.45; padding:8px; resize:vertical;
-  }
-  #draft-text:focus { outline:none; border-color:#ffc107; }
-  .draft-actions { display:flex; gap:6px; margin-top:4px; align-items:center; }
-  .draft-actions button {
-    background:none; border:1px solid #444; color:#aaa; font-family:inherit;
-    font-size:0.65rem; padding:3px 8px; cursor:pointer; letter-spacing:0.05em;
-  }
-  .draft-actions button:hover { border-color:#ffc107; color:#ffc107; }
-  .draft-note { font-size:0.6rem; color:#555; margin-left:auto; }
-  .draft-error { font-size:0.65rem; color:#e57373; margin-top:6px; }
-  .card-draft { color:#ffc107; cursor:pointer; margin-left:8px; }
-  .card-draft:hover { text-decoration:underline; }
-
-  /* ── best listings modal ──────────────────────────────────────── */
-  #best-modal {
-    display:none; position:fixed; inset:0; background:#0009; z-index:2000;
-    align-items:center; justify-content:center;
-  }
-  #best-modal.open { display:flex; }
-  #best-box {
-    background:#111; border:1px solid #333; width:min(700px, 95vw);
-    max-height:90vh; display:flex; flex-direction:column; border-top:2px solid #c00;
-  }
-  #best-header {
-    padding:10px 16px; border-bottom:1px solid #333;
-    display:flex; justify-content:space-between; align-items:center; flex-shrink:0;
-  }
-  #best-header h2 { color:#c00; font-size:0.85rem; letter-spacing:0.1em; text-transform:uppercase; }
-  #best-list { overflow-y:auto; flex:1; }
-  .best-entry {
-    padding:12px 16px; border-bottom:1px solid #1e1e1e;
-  }
-  .best-entry-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
-  .best-entry-title { font-size:0.8rem; color:#ccc; }
-  .best-entry-rent { font-size:1rem; color:#c00; font-variant-numeric:tabular-nums; }
-  .best-sw { display:flex; gap:16px; margin-top:6px; flex-wrap:wrap; }
-  .best-col-label { font-size:0.6rem; color:#555; letter-spacing:0.08em; text-transform:uppercase; margin-bottom:3px; }
-  .best-col { min-width:140px; flex:1; }
-  .best-strength { font-size:0.7rem; color:#66bb6a; margin:1px 0; }
-  .best-strength::before { content:"✓ "; }
-  .best-weakness { font-size:0.7rem; color:#e57373; margin:1px 0; }
-  .best-weakness::before { content:"✗ "; }
-  .best-tip { margin-top:6px; font-size:0.68rem; color:#ffc107; }
-  .best-tip::before { content:"💡 "; }
-  .best-open { font-size:0.65rem; color:#2196f3; text-decoration:none; }
-  .best-open:hover { text-decoration:underline; }
-  #best-loading { padding:32px; text-align:center; color:#555; font-size:0.8rem; letter-spacing:0.1em; }
-
-  /* popup overrides */
-  .leaflet-popup-content-wrapper { background: #111; border: 1px solid #333; border-radius: 2px; }
-  .leaflet-popup-content { color: #e0e0e0; font-family: 'Courier New', monospace; font-size: 12px; margin: 8px 10px; }
-  .leaflet-popup-tip { background: #111; }
-  .popup-rent { color: #c00; font-size: 1rem; font-variant-numeric: tabular-nums; }
-  .popup-commute { color: #4a9; font-size: 0.7rem; margin-top: 4px; }
-  .popup-link { color: #2196f3; font-size: 0.7rem; display: block; margin-top: 4px; }
-
-  /* ── map markers ──────────────────────────────────────────────── */
   :root {
-    --tier-low:  #66bb6a;   /* ≤ 800 CHF */
-    --tier-mid:  #42a5f5;   /* 801–1000 CHF */
-    --tier-high: #ffa726;   /* > 1000 CHF */
+    --bg:#1a1a1a; --panel:#111; --line:#333; --line2:#1e1e1e; --txt:#e0e0e0; --dim:#888; --faint:#555;
+    --red:#c00; --transit:#2196f3; --bike:#4caf50; --amber:#ffc107;
+    --tier-low:#66bb6a; --tier-mid:#42a5f5; --tier-high:#ffa726;
   }
-  .price-marker-wrap { background: none; border: none; }
-  /* pill sits above the point, with its tail tip on the exact location */
-  .price-marker {
-    position: absolute; left: 0; top: 0;
-    transform: translate(-50%, calc(-100% - 6px));
-    background: var(--tier); color: #111;
-    font: bold 12px/1 'Courier New', Courier, monospace;
-    padding: 4px 7px; border-radius: 999px; white-space: nowrap;
-    border: 1.5px solid #111; box-shadow: 0 2px 6px #000a;
-    font-variant-numeric: tabular-nums; cursor: pointer;
-    transition: transform 0.12s ease, box-shadow 0.12s ease;
-  }
-  .price-marker::after {
-    content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -5px;
-    border: 5px solid transparent; border-top-color: var(--tier); border-bottom: 0;
-    filter: drop-shadow(0 1.5px 0 #111);
-  }
-  .price-marker .cur { font-weight: normal; font-size: 9px; opacity: 0.7; margin-left: 2px; }
-  .price-marker.tier-low  { --tier: var(--tier-low); }
-  .price-marker.tier-mid  { --tier: var(--tier-mid); }
-  .price-marker.tier-high { --tier: var(--tier-high); }
-  .price-marker:hover, .price-marker.hover {
-    transform: translate(-50%, calc(-100% - 6px)) scale(1.12);
-  }
-  .price-marker.selected {
-    transform: translate(-50%, calc(-100% - 6px)) scale(1.18);
-    border-color: #fff; box-shadow: 0 0 0 3px #fff4, 0 3px 10px #000c;
-  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family:'Courier New',Courier,monospace; background:var(--bg); color:var(--txt); display:flex; flex-direction:column; height:100vh; height:100dvh; }
+  button { font-family:inherit; }
+  a { color:var(--transit); }
+  :focus-visible { outline:2px solid var(--amber); outline-offset:1px; }
 
-  .price-cluster {
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 50%; background: #222e; color: #eee;
-    border: 2px solid #555; box-shadow: 0 2px 8px #000a;
-    font: bold 12px 'Courier New', Courier, monospace;
-  }
-  .price-cluster:hover { border-color: #ccc; }
+  #topbar { background:var(--panel); border-bottom:2px solid var(--red); padding:8px 16px; display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  #topbar h1 { color:var(--red); font-size:1.1rem; letter-spacing:.15em; text-transform:uppercase; }
+  #count { color:var(--dim); font-size:.75rem; margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  #sync { color:var(--amber); font-size:.65rem; letter-spacing:.06em; display:none; white-space:nowrap; }
+  #sync.on { display:inline; }
+  #sync::before { content:"●"; margin-right:4px; animation:pulse 1.2s infinite; }
+  @keyframes pulse { 50% { opacity:.2; } }
+  .topbar-btn { background:none; border:1px solid var(--line); color:#aaa; font-size:.7rem; padding:4px 10px; cursor:pointer; letter-spacing:.08em; white-space:nowrap; }
+  .topbar-btn:hover { border-color:var(--red); color:var(--txt); }
+  .topbar-btn:disabled { opacity:.5; cursor:wait; }
+  .topbar-btn.amber { border-color:var(--amber); color:var(--amber); }
 
-  .eth-marker {
-    background: #c00; border: 2px solid #fff; border-radius: 50%;
-    width: 14px; height: 14px; box-shadow: 0 0 0 4px #c004;
-  }
+  #filters-toggle { display:none; }
+  #filters { background:var(--panel); border-bottom:1px solid var(--line); padding:8px 16px; display:flex; gap:8px 22px; align-items:center; flex-wrap:wrap; flex-shrink:0; }
+  .filter-group { display:flex; align-items:center; gap:8px; }
+  .filter-group > label, .flabel { font-size:.68rem; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
+  .filter-group input[type=range] { accent-color:var(--red); width:100px; }
+  .filter-val { font-size:.8rem; font-variant-numeric:tabular-nums; min-width:58px; }
+  .seg { display:flex; }
+  .seg button { background:var(--bg); color:var(--dim); border:1px solid var(--line); font-size:.7rem; padding:4px 8px; cursor:pointer; }
+  .seg button + button { border-left:none; }
+  .seg button:first-child { border-radius:2px 0 0 2px; } .seg button:last-child { border-radius:0 2px 2px 0; }
+  .seg button:hover { color:var(--txt); }
+  .seg.campus button.active { background:var(--red); color:#fff; border-color:var(--red); }
+  .seg.mode button.active { background:var(--transit); color:#fff; border-color:var(--transit); }
+  .seg.mode button#btn-bike.active { background:var(--bike); border-color:var(--bike); }
+  .seg.poster button.active { background:#00695c; color:#fff; border-color:#00695c; }
+  .seg.sort button.active { background:#7b1fa2; color:#fff; border-color:#7b1fa2; }
+  .seg.show button.active { background:#37474f; color:#fff; border-color:#546e7a; }
+  .linkbtn { background:none; border:none; color:var(--dim); font-size:.68rem; text-decoration:underline; cursor:pointer; }
+  .linkbtn:hover { color:var(--txt); }
+  .chk { display:flex; align-items:center; gap:5px; font-size:.68rem; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; cursor:pointer; white-space:nowrap; }
+  .chk input { accent-color:var(--red); }
 
-  .map-legend {
-    background: #111e; border: 1px solid #333; border-radius: 4px;
-    padding: 8px 10px; font-size: 0.68rem; color: #bbb; line-height: 1.7;
-    font-family: 'Courier New', Courier, monospace; box-shadow: 0 2px 8px #0008;
-  }
-  .map-legend-title { font-size: 0.6rem; color: #777; letter-spacing: 0.1em; text-transform: uppercase; }
-  .map-legend .row { display: flex; align-items: center; gap: 7px; }
-  .map-legend .swatch { width: 18px; height: 10px; border-radius: 999px; border: 1px solid #111; }
-  .map-legend .eth-marker { width: 10px; height: 10px; box-shadow: none; margin: 0 4px; }
-  .map-legend hr { border: none; border-top: 1px solid #2a2a2a; margin: 4px 0; }
+  #main { display:flex; flex:1; overflow:hidden; min-height:0; }
+  #map { flex:1; min-width:0; background:#222; }
+  #sidebar { width:330px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; display:flex; flex-direction:column; flex-shrink:0; }
+  #cards-view { display:flex; flex-direction:column; min-height:100%; }
+  #sidebar-header { padding:6px 12px; border-bottom:1px solid var(--line); font-size:.62rem; color:var(--dim); letter-spacing:.06em; position:sticky; top:0; background:var(--panel); z-index:2; line-height:1.4; }
+  #sidebar-header b { color:#c9c9c9; font-weight:normal; text-transform:uppercase; }
 
-  .card-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+  /* cards */
+  .card { padding:9px 12px 8px; border-bottom:1px solid var(--line2); cursor:pointer; transition:background .1s; border-left:3px solid transparent; }
+  .card:hover { background:#181818; }
+  .card.selected { background:#1c1c1c; border-left-color:var(--red); }
+  .card.dim .card-body { opacity:.45; }
+  .card.dim:hover .card-body { opacity:.8; }
+  .card.st-sent { border-left-color:#1565c0; } .card.st-replied { border-left-color:#2e7d32; } .card.st-rejected .card-body { opacity:.35; }
+  .card-top { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
+  .card-rent { font-size:1.1rem; color:var(--red); font-variant-numeric:tabular-nums; }
+  .card-rent small { font-size:.6rem; color:#8a3030; margin-left:2px; }
+  .card-dot { width:8px; height:8px; border-radius:50%; align-self:center; }
+  .badge { font-size:.65rem; padding:1px 5px; border-radius:2px; font-variant-numeric:tabular-nums; white-space:nowrap; cursor:help; }
+  .badge i { font-style:normal; font-size:.55rem; opacity:.7; margin-right:3px; letter-spacing:.05em; }
+  .score-high { background:#1a3a1a; color:#4caf50; } .score-mid { background:#1a2a3a; color:#2196f3; } .score-low { background:#2a2a1a; color:#999; }
+  .reply-high { background:#241a00; color:var(--amber); } .reply-mid { background:#1e1400; color:#a07820; } .reply-low { background:#1e1a1a; color:#666; }
+  .stbadge { margin-left:auto; font-size:.58rem; text-transform:uppercase; letter-spacing:.08em; padding:1px 5px; border:1px solid; border-radius:2px; }
+  .stbadge.sent { color:#64b5f6; border-color:#1565c0; } .stbadge.replied { color:#81c784; border-color:#2e7d32; } .stbadge.rejected { color:#777; border-color:#444; }
+  .card-title { font-size:.74rem; color:#ccc; margin-top:2px; line-height:1.3; }
+  .card-address { font-size:.64rem; color:#777; margin-top:1px; }
+  .commute { display:grid; grid-template-columns:auto auto auto 1fr; gap:1px 8px; align-items:center; margin-top:5px; font-size:.66rem; font-variant-numeric:tabular-nums; }
+  .commute .cn { color:#666; text-transform:uppercase; letter-spacing:.05em; font-size:.58rem; }
+  .commute .cn.on { color:#e0e0e0; }
+  .commute .t { color:#3a7fc0; } .commute .b { color:#3a8a4a; }
+  .commute .t.on { color:#64b5f6; font-weight:bold; } .commute .b.on { color:#81c784; font-weight:bold; }
+  .commute .t::before, .commute .b::before { content:""; display:inline-block; width:10px; height:3px; margin-right:4px; vertical-align:middle; background:currentColor; border-radius:1px; }
+  .chips { margin-top:5px; display:flex; flex-wrap:wrap; gap:3px; }
+  .chip { font-size:.6rem; padding:1px 5px; border-radius:2px; background:#10261a; color:#66bb6a; border:1px solid #1a4a20; white-space:nowrap; }
+  .chip.bad { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .chip.dealbreaker { text-decoration:none; }
+  .card-meta { font-size:.6rem; color:#555; margin-top:5px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
+  .card-actions { display:flex; gap:4px; margin-top:6px; align-items:center; flex-wrap:wrap; }
+  .st { background:none; border:1px solid #2c2c2c; color:#777; font-size:.6rem; padding:2px 6px; cursor:pointer; letter-spacing:.04em; text-transform:uppercase; }
+  .st:hover { color:var(--txt); border-color:#666; }
+  .st.sent.active { background:#0d2a4a; color:#64b5f6; border-color:#1565c0; }
+  .st.replied.active { background:#0d2e14; color:#81c784; border-color:#2e7d32; }
+  .st.rejected.active { background:#2a2a2a; color:#aaa; border-color:#555; }
+  .act { background:none; border:none; color:var(--amber); font-size:.62rem; cursor:pointer; padding:2px 3px; margin-left:auto; }
+  .act:hover { text-decoration:underline; }
+  .card-link { font-size:.62rem; color:var(--transit); text-decoration:none; padding:2px 3px; }
+  .card-link:hover { text-decoration:underline; }
+
+  .empty { padding:28px 18px; text-align:center; color:#777; font-size:.75rem; line-height:1.6; }
+  .empty h3 { color:#bbb; font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; font-weight:normal; }
+  .empty .linkbtn { font-size:.75rem; margin-top:8px; }
+  .empty.err h3 { color:#e57373; }
+  .skel { height:92px; margin:0; border-bottom:1px solid var(--line2); background:linear-gradient(90deg,#141414,#1b1b1b,#141414); background-size:200% 100%; animation:sk 1.3s infinite linear; }
+  @keyframes sk { to { background-position:-200% 0; } }
+
+  /* profile */
+  #profile-panel { position:fixed; top:0; right:0; width:380px; max-width:100vw; height:100vh; height:100dvh; background:var(--panel); border-left:1px solid var(--line); z-index:1000; display:flex; flex-direction:column; transform:translateX(100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
+  #profile-panel.open { transform:none; visibility:visible; }
+  #profile-panel-header { padding:12px 16px; border-bottom:2px solid var(--red); display:flex; justify-content:space-between; align-items:center; }
+  #profile-panel-header h2 { color:var(--red); font-size:.85rem; letter-spacing:.1em; text-transform:uppercase; }
+  #profile-panel-body { flex:1; overflow-y:auto; padding:12px 16px; }
+  #profile-panel-footer { padding:12px 16px; border-top:1px solid var(--line); display:flex; gap:8px; }
+  .pfield { margin-bottom:12px; }
+  .pfield label { display:block; font-size:.65rem; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; margin-bottom:3px; }
+  .pfield input, .pfield textarea { width:100%; background:var(--bg); border:1px solid var(--line); color:var(--txt); font-family:inherit; font-size:.8rem; padding:6px 8px; outline:none; }
+  .pfield input:focus, .pfield textarea:focus { border-color:var(--red); }
+  .pfield textarea { resize:vertical; min-height:60px; }
+  .pfield .hint { font-size:.6rem; color:#666; text-transform:none; letter-spacing:0; }
+  .save-btn { flex:1; background:var(--red); color:#fff; border:none; font-size:.75rem; padding:8px; cursor:pointer; letter-spacing:.08em; }
+  .save-btn:hover { background:#e00; } .save-btn:disabled { opacity:.5; }
+  .cancel-btn { background:none; border:1px solid var(--line); color:var(--dim); font-size:.75rem; padding:6px 14px; cursor:pointer; }
+  .cancel-btn:hover { border-color:#666; color:var(--txt); }
+
+  /* detail */
+  #detail-view { display:none; flex-direction:column; min-height:100%; }
+  #detail-view.open { display:flex; }
+  #detail-topbar { padding:6px 12px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--panel); z-index:2; }
+  .detail-back { background:none; border:none; color:#aaa; font-size:.72rem; cursor:pointer; padding:4px 0; letter-spacing:.05em; }
+  .detail-back:hover { color:#fff; }
+  #detail-body { padding:12px; }
+  .detail-rent { font-size:1.5rem; color:var(--red); font-variant-numeric:tabular-nums; }
+  .detail-title { font-size:.8rem; color:#ccc; margin:2px 0; line-height:1.35; }
+  .detail-addr { font-size:.66rem; color:#777; }
+  .detail-section { margin-top:10px; }
+  .detail-section-label { font-size:.6rem; color:#666; letter-spacing:.1em; text-transform:uppercase; margin-bottom:4px; border-top:1px solid var(--line2); padding-top:8px; }
+  .pill { display:inline-block; background:#1e1e1e; color:#aaa; border:1px solid #2a2a2a; border-radius:2px; font-size:.65rem; padding:1px 6px; margin:2px 2px 0 0; }
+  .pill.red { background:#2a0000; color:#e57373; border-color:#5a1010; }
+  .pill.green { background:#0a2010; color:#66bb6a; border-color:#1a4a20; }
+  .detail-bullet { font-size:.7rem; color:#aaa; margin:2px 0; padding-left:8px; }
+  .detail-bullet::before { content:"• "; color:#555; }
+  .detail-link-btn { display:block; margin-top:14px; text-align:center; background:var(--red); color:#fff; font-size:.75rem; padding:8px; text-decoration:none; letter-spacing:.08em; }
+  .detail-link-btn:hover { background:#e00; }
+  details.rawtext { margin-top:10px; border-top:1px solid var(--line2); padding-top:8px; }
+  details.rawtext summary { font-size:.6rem; color:#666; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; }
+  details.rawtext pre { white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:.68rem; color:#999; margin-top:6px; max-height:260px; overflow:auto; line-height:1.4; }
+  .note-inline { font-size:.66rem; color:#777; margin-top:8px; }
+
+  /* draft */
+  .draft-btn { display:block; width:100%; margin-top:14px; background:none; color:var(--amber); border:1px solid var(--amber); font-size:.78rem; padding:8px; letter-spacing:.08em; cursor:pointer; }
+  .draft-btn:hover { background:#2a2000; } .draft-btn:disabled { opacity:.5; cursor:wait; }
+  #draft-box { margin-top:8px; }
+  .draft-head { display:flex; align-items:center; gap:8px; font-size:.62rem; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; }
+  .lang-tag { background:#241a00; color:var(--amber); border:1px solid #5a4400; padding:0 5px; border-radius:2px; font-weight:bold; }
+  .lang-warn { color:#ff9800; text-transform:none; letter-spacing:0; }
+  #draft-text { width:100%; min-height:240px; background:#0a0a0a; color:var(--txt); border:1px solid var(--line); font-family:inherit; font-size:.76rem; line-height:1.5; padding:8px; resize:vertical; }
+  #draft-text:focus { outline:none; border-color:var(--amber); }
+  .draft-actions { display:flex; gap:6px; margin-top:6px; align-items:center; flex-wrap:wrap; }
+  .draft-actions button { background:none; border:1px solid #555; color:#bbb; font-size:.68rem; padding:5px 10px; cursor:pointer; letter-spacing:.05em; }
+  .draft-actions button:hover { border-color:var(--amber); color:var(--amber); }
+  .draft-actions button.primary { background:var(--amber); color:#111; border-color:var(--amber); font-weight:bold; }
+  .draft-note { font-size:.6rem; color:#666; width:100%; }
+  .draft-error { font-size:.7rem; color:#e57373; margin-top:8px; line-height:1.4; border:1px solid #5a1010; background:#1a0a0a; padding:8px; }
+
+  /* best */
+  #best-modal { display:none; position:fixed; inset:0; background:#000a; z-index:2000; align-items:center; justify-content:center; }
+  #best-modal.open { display:flex; }
+  #best-box { background:var(--panel); border:1px solid var(--line); width:min(700px,95vw); max-height:90vh; display:flex; flex-direction:column; border-top:2px solid var(--red); }
+  #best-header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+  #best-header h2 { color:var(--red); font-size:.85rem; letter-spacing:.1em; text-transform:uppercase; }
+  #best-list { overflow-y:auto; flex:1; }
+  .best-entry { padding:12px 16px; border-bottom:1px solid var(--line2); }
+  .best-entry-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  .best-rank { color:var(--amber); margin-right:8px; font-size:.8rem; }
+  .best-entry-title { font-size:.8rem; color:#ccc; }
+  .best-entry-rent { font-size:1rem; color:var(--red); font-variant-numeric:tabular-nums; }
+  .best-sw { display:flex; gap:16px; margin-top:6px; flex-wrap:wrap; }
+  .best-col-label { font-size:.6rem; color:#666; letter-spacing:.08em; text-transform:uppercase; margin-bottom:3px; }
+  .best-col { min-width:140px; flex:1; }
+  .best-strength { font-size:.7rem; color:#66bb6a; margin:1px 0; } .best-strength::before { content:"✓ "; }
+  .best-weakness { font-size:.7rem; color:#e57373; margin:1px 0; } .best-weakness::before { content:"✗ "; }
+  .best-tip { margin-top:6px; font-size:.68rem; color:var(--amber); } .best-tip::before { content:"TIP  "; color:#8a6d00; font-size:.58rem; letter-spacing:.1em; }
+  .best-foot { margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .best-open { font-size:.68rem; color:var(--transit); text-decoration:none; background:none; border:none; cursor:pointer; }
+  .best-open:hover { text-decoration:underline; }
+  #best-loading { padding:32px; text-align:center; color:#777; font-size:.8rem; letter-spacing:.06em; line-height:1.6; }
+
+  /* toast */
+  #toasts { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:3000; display:flex; flex-direction:column; gap:6px; align-items:center; width:max-content; max-width:92vw; }
+  .toast { background:#222; border:1px solid #444; border-left:3px solid var(--amber); color:var(--txt); font-size:.74rem; padding:8px 12px; box-shadow:0 4px 14px #000a; display:flex; gap:12px; align-items:center; }
+  .toast.err { border-left-color:#e53935; }
+  .toast button { background:none; border:none; color:var(--amber); font-size:.74rem; cursor:pointer; text-decoration:underline; }
+
+  /* popup */
+  .leaflet-popup-content-wrapper { background:var(--panel); border:1px solid var(--line); border-radius:2px; }
+  .leaflet-popup-content { color:var(--txt); font-family:'Courier New',monospace; font-size:12px; margin:8px 10px; }
+  .leaflet-popup-tip { background:var(--panel); }
+  .popup-rent { color:var(--red); font-size:1rem; font-variant-numeric:tabular-nums; }
+  .popup-commute { font-size:.7rem; margin-top:4px; }
+  .popup-commute .t { color:#64b5f6; } .popup-commute .b { color:#81c784; }
+
+  /* markers */
+  .price-marker-wrap { background:none; border:none; }
+  .price-marker { position:absolute; left:0; top:0; transform:translate(-50%,calc(-100% - 6px)); background:var(--tier); color:#111; font:bold 12px/1 'Courier New',Courier,monospace; padding:4px 7px; border-radius:999px; white-space:nowrap; border:1.5px solid #111; box-shadow:0 2px 6px #000a; font-variant-numeric:tabular-nums; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease; }
+  .price-marker::after { content:''; position:absolute; left:50%; bottom:-6px; margin-left:-5px; border:5px solid transparent; border-top-color:var(--tier); border-bottom:0; filter:drop-shadow(0 1.5px 0 #111); }
+  .price-marker .cur { font-weight:normal; font-size:9px; opacity:.7; margin-left:2px; }
+  .price-marker .fit { font-weight:normal; font-size:9px; opacity:.75; margin-left:4px; padding-left:4px; border-left:1px solid #0004; }
+  .price-marker.tier-low { --tier:var(--tier-low); } .price-marker.tier-mid { --tier:var(--tier-mid); } .price-marker.tier-high { --tier:var(--tier-high); }
+  .price-marker.dim { --tier:#777; opacity:.65; }
+  .price-marker.mk-sent { box-shadow:0 0 0 2px #1565c0, 0 2px 6px #000a; }
+  .price-marker.mk-replied { box-shadow:0 0 0 2px #2e7d32, 0 2px 6px #000a; }
+  .price-marker:hover, .price-marker.hover { transform:translate(-50%,calc(-100% - 6px)) scale(1.12); }
+  .price-marker.selected { transform:translate(-50%,calc(-100% - 6px)) scale(1.18); border-color:#fff; box-shadow:0 0 0 3px #fff4, 0 3px 10px #000c; opacity:1; }
+  .price-cluster { display:flex; align-items:center; justify-content:center; border-radius:50%; background:#222e; color:#eee; border:2px solid #555; box-shadow:0 2px 8px #000a; font:bold 12px 'Courier New',Courier,monospace; }
+  .price-cluster:hover { border-color:#ccc; }
+  .eth-marker { background:var(--red); border:2px solid #fff; border-radius:50%; width:14px; height:14px; box-shadow:0 0 0 4px #c004; }
+  .map-legend { background:#111e; border:1px solid var(--line); border-radius:4px; padding:8px 10px; font-size:.68rem; color:#bbb; line-height:1.7; font-family:'Courier New',monospace; box-shadow:0 2px 8px #0008; }
+  .map-legend-title { font-size:.6rem; color:#777; letter-spacing:.1em; text-transform:uppercase; }
+  .map-legend .row { display:flex; align-items:center; gap:7px; white-space:nowrap; }
+  .map-legend .swatch { width:18px; height:10px; border-radius:999px; border:1px solid #111; }
+  .map-legend .eth-marker { width:10px; height:10px; box-shadow:none; margin:0 4px; }
+  .map-legend hr { border:none; border-top:1px solid #2a2a2a; margin:4px 0; }
+
+  @media (max-width:760px) {
+    #topbar { padding:6px 10px; gap:6px; }
+    #topbar h1 { font-size:.85rem; letter-spacing:.06em; }
+    .topbar-btn { padding:5px 6px; font-size:.64rem; letter-spacing:0; }
+    #sync { display:none !important; }
+    #count { display:none; }
+    #topbar h1 { margin-right:auto; }
+    #filters-toggle { display:inline-block; }
+    #filters { padding:8px 10px; gap:8px 14px; max-height:42vh; overflow-y:auto; }
+    #filters.collapsed { display:none; }
+    .filter-group { flex-wrap:wrap; gap:6px; }
+    .filter-group.wide { width:100%; }
+    .filter-group input[type=range] { flex:1; width:auto; min-width:90px; }
+    .seg button { padding:6px 10px; }
+    #main { flex-direction:column; }
+    #map { flex:0 0 36%; min-height:160px; }
+    #sidebar { width:100%; flex:1; border-left:none; border-top:2px solid var(--red); }
+    body.has-detail #map { flex-basis:30%; }
+    #profile-panel { width:100vw; }
+    .map-legend { display:none; }
+    .st { padding:5px 8px; font-size:.64rem; }
+    .act, .card-link { padding:5px 6px; font-size:.68rem; }
+    .draft-actions button { padding:8px 12px; }
+    #toasts { bottom:8px; }
+  }
 </style>
 </head>
 <body>
 
 <div id="topbar">
   <h1>WGPendler</h1>
+  <span id="sync" title="The server fetches new listings in the background on startup">syncing sources…</span>
   <span id="count">— listings</span>
-  <button class="topbar-btn" onclick="runExtract()" id="extract-btn">Extract</button>
-  <button class="topbar-btn" onclick="showBest()" style="border-color:#ffc107;color:#ffc107">Top 5</button>
+  <button class="topbar-btn" id="filters-toggle" onclick="toggleFilters()" aria-expanded="false">Filters ▾</button>
+  <button class="topbar-btn" onclick="runExtract()" id="extract-btn" title="Reads every unprocessed ad with Claude (uses API credits)">Extract</button>
+  <button class="topbar-btn amber" onclick="showBest()" title="Claude analyses your 5 best listings (uses API credits)">Top 5</button>
   <button class="topbar-btn" onclick="openProfile()">Profile</button>
 </div>
 
-<div id="profile-panel">
+<div id="profile-panel" role="dialog" aria-label="My profile">
   <div id="profile-panel-header">
     <h2>My Profile</h2>
-    <button class="cancel-btn" onclick="closeProfile()">✕</button>
+    <button class="cancel-btn" onclick="closeProfile()" aria-label="Close">✕</button>
   </div>
   <div id="profile-panel-body">
-    <div class="pfield">
-      <label>Status</label>
-      <input type="text" id="p-status">
-    </div>
-    <div class="pfield">
-      <label>Move-in (earliest)</label>
-      <input type="date" id="p-move-in">
-    </div>
-    <div class="pfield">
-      <label>Max Budget (CHF/month)</label>
-      <input type="number" id="p-budget-max" min="0" max="5000">
-    </div>
-    <div class="pfield">
-      <label>Age</label>
-      <input type="number" id="p-age" min="16" max="99">
-    </div>
-    <div class="pfield">
-      <label>Gender</label>
-      <input type="text" id="p-gender" placeholder="e.g. male / female / non-binary">
-    </div>
-    <div class="pfield">
-      <label>Smoker</label>
-      <input type="text" id="p-smoker" placeholder="yes / no">
-    </div>
-    <div class="pfield">
-      <label>Languages <span class="hint">(one per line: German native)</span></label>
-      <textarea id="p-languages" rows="3"></textarea>
-    </div>
-    <div class="pfield">
-      <label>Traits <span class="hint">(one per line)</span></label>
-      <textarea id="p-traits" rows="4"></textarea>
-    </div>
-    <div class="pfield">
-      <label>Wants <span class="hint">(one per line)</span></label>
-      <textarea id="p-wants" rows="3"></textarea>
-    </div>
-    <div class="pfield">
-      <label>Message Template <span class="hint">Your personal intro — Claude fills in the ad-specific parts around this</span></label>
-      <textarea id="p-template" rows="6" placeholder="e.g. I'm Rikard, 18, starting an MSc in EE at ETH in September. I'm tidy, non-smoking, quiet during the week and social on weekends. I cook regularly and go to the gym most days. I have stable funding and can provide references."></textarea>
-    </div>
+    <div class="pfield"><label for="p-status">Status</label><input type="text" id="p-status"></div>
+    <div class="pfield"><label for="p-move-in">Move-in (earliest)</label><input type="date" id="p-move-in"></div>
+    <div class="pfield"><label for="p-budget-max">Max Budget (CHF/month)</label><input type="number" id="p-budget-max" min="0" max="5000"></div>
+    <div class="pfield"><label for="p-age">Age</label><input type="number" id="p-age" min="16" max="99"></div>
+    <div class="pfield"><label for="p-gender">Gender</label><input type="text" id="p-gender" placeholder="e.g. male / female / non-binary"></div>
+    <div class="pfield"><label for="p-smoker">Smoker</label><input type="text" id="p-smoker" placeholder="yes / no"></div>
+    <div class="pfield"><label for="p-languages">Languages <span class="hint">(one per line: German native)</span></label><textarea id="p-languages" rows="3"></textarea></div>
+    <div class="pfield"><label for="p-traits">Traits <span class="hint">(one per line)</span></label><textarea id="p-traits" rows="4"></textarea></div>
+    <div class="pfield"><label for="p-wants">Wants <span class="hint">(one per line)</span></label><textarea id="p-wants" rows="3"></textarea></div>
+    <div class="pfield"><label for="p-template">Message Template <span class="hint">Your personal intro — Claude fills in the ad-specific parts around this</span></label>
+      <textarea id="p-template" rows="6" placeholder="e.g. I'm Rikard, 18, starting an MSc in EE at ETH in September. I'm tidy, non-smoking, quiet during the week and social on weekends."></textarea></div>
   </div>
   <div id="profile-panel-footer">
     <button class="cancel-btn" onclick="closeProfile()">Cancel</button>
-    <button class="save-btn" onclick="saveProfile()">Save &amp; Re-score</button>
-    <span class="saved-msg" id="saved-msg">Saved ✓</span>
+    <button class="save-btn" id="save-btn" onclick="saveProfile()">Save &amp; Re-score</button>
   </div>
 </div>
 
 <div id="filters">
   <div class="filter-group">
-    <label>Max Rent</label>
+    <label for="maxRent">Max Rent</label>
     <input type="range" id="maxRent" min="400" max="1500" step="50" value="1000">
     <span class="filter-val" id="rentLabel">1000 CHF</span>
   </div>
-
   <div class="filter-group">
-    <label>Max Commute</label>
+    <label for="maxCommute">Max Commute</label>
     <input type="range" id="maxCommute" min="5" max="60" step="5" value="60">
     <span class="filter-val" id="commuteLabel">any</span>
   </div>
-
+  <div class="filter-group">
+    <label>Campus</label>
+    <div class="seg campus">
+      <button id="btn-zentrum" class="active" onclick="setCampus('zentrum')">Zentrum</button>
+      <button id="btn-hoenggerberg" onclick="setCampus('hoenggerberg')">Hönggerberg</button>
+    </div>
+  </div>
+  <div class="filter-group">
+    <label>Mode</label>
+    <div class="seg mode">
+      <button id="btn-transit" class="active" onclick="setMode('transit')">Transit</button>
+      <button id="btn-bike" onclick="setMode('bike')">Bike</button>
+    </div>
+  </div>
   <div class="filter-group">
     <label>Posted by</label>
-    <div class="poster-toggle">
+    <div class="seg poster">
       <button id="btn-poster-all" class="active" onclick="setPoster('all')">All</button>
       <button id="btn-poster-private" onclick="setPoster('private')">Private</button>
       <button id="btn-poster-agency" onclick="setPoster('agency')">Agency</button>
     </div>
   </div>
-
   <div class="filter-group">
-    <label>Campus</label>
-    <div class="campus-toggle">
-      <button id="btn-zentrum" class="active" onclick="setCampus('zentrum')">Zentrum</button>
-      <button id="btn-hoenggerberg" onclick="setCampus('hoenggerberg')">Hönggerberg</button>
+    <label>Show</label>
+    <div class="seg show" id="show-seg">
+      <button data-v="todo" class="active" onclick="setShow('todo')" title="Listings you have not acted on yet">To do</button>
+      <button data-v="all" onclick="setShow('all')">All</button>
+      <button data-v="sent" onclick="setShow('sent')">Sent</button>
+      <button data-v="replied" onclick="setShow('replied')">Replied</button>
+      <button data-v="rejected" onclick="setShow('rejected')">Skipped</button>
     </div>
   </div>
-
-  <div class="filter-group">
-    <label>Mode</label>
-    <div class="mode-toggle">
-      <button id="btn-transit" class="active" onclick="setMode('transit')">Transit</button>
-      <button id="btn-bike" onclick="setMode('bike')">Bike</button>
-    </div>
-  </div>
-
   <div class="filter-group">
     <label>Sort</label>
-    <div class="sort-toggle">
-      <button id="btn-sort-relevance" class="active" onclick="setSort('relevance')">Relevance</button>
-      <button id="btn-sort-match" onclick="setSort('match')">Match</button>
-      <button id="btn-sort-reply" onclick="setSort('reply')">Reply %</button>
+    <div class="seg sort">
+      <button id="btn-sort-relevance" class="active" onclick="setSort('relevance')" title="Average of fit and reply score">Best</button>
+      <button id="btn-sort-match" onclick="setSort('match')" title="Fit score: how well the listing matches your profile">Fit</button>
+      <button id="btn-sort-reply" onclick="setSort('reply')" title="Estimated chance the poster replies">Reply</button>
+      <button id="btn-sort-commute" onclick="setSort('commute')" title="Shortest commute to the selected campus and mode">Commute</button>
+      <button id="btn-sort-rent" onclick="setSort('rent')" title="Cheapest first">Rent</button>
     </div>
   </div>
+  <label class="chk"><input type="checkbox" id="hideDeal" onchange="applyFilters()"> Hide dealbreakers</label>
+  <button class="linkbtn" onclick="resetFilters()">reset</button>
 </div>
 
 <div id="main">
@@ -436,544 +354,718 @@
     <div id="detail-view">
       <div id="detail-topbar">
         <button class="detail-back" onclick="closeDetail()">← Listings</button>
-        <a id="detail-ext-link" href="#" target="_blank" class="card-link">↗ open</a>
+        <a id="detail-ext-link" href="#" target="_blank" rel="noopener" class="card-link">↗ open ad</a>
       </div>
       <div id="detail-body"></div>
     </div>
   </div>
 </div>
 
-<!-- best listings modal -->
-<div id="best-modal">
+<div id="best-modal" role="dialog" aria-label="Top 5 picks">
   <div id="best-box">
     <div id="best-header">
       <h2>Top 5 Picks</h2>
-      <button class="cancel-btn" onclick="closeBest()">✕</button>
+      <button class="cancel-btn" onclick="closeBest()" aria-label="Close">✕</button>
     </div>
-    <div id="best-list">
-      <div id="best-loading">Analyzing listings…</div>
-    </div>
+    <div id="best-list"><div id="best-loading">Analyzing listings…</div></div>
   </div>
 </div>
-
+<div id="toasts" aria-live="polite"></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
 const ETH_ZENTRUM      = [47.3769, 8.5481];
 const ETH_HOENGGERBERG = [47.4083, 8.5075];
+const CAMPUS_NAME = { zentrum: 'Zentrum', hoenggerberg: 'Hönggerberg' };
+const $ = id => document.getElementById(id);
 
-const map = L.map('map').setView([47.388, 8.527], 13);
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+function safeUrl(u) { return /^https?:\/\//i.test(u || '') ? esc(u) : ''; }
+
+// ── Map ──────────────────────────────────────────────────────────────────────
+const map = L.map('map', { preferCanvas: true }).setView([47.388, 8.527], 13);
 L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}', {
   attribution: '&copy; Esri &mdash; Esri, DeLorme, NAVTEQ', maxZoom: 16
 }).addTo(map);
 
 function ethMarker(pos, label) {
-  const icon = L.divIcon({
-    className: 'price-marker-wrap',
-    html: `<div class="eth-marker"></div>`,
-    iconSize: [14, 14], iconAnchor: [7, 7]
-  });
+  const icon = L.divIcon({ className: 'price-marker-wrap', html: '<div class="eth-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
   L.marker(pos, { icon, zIndexOffset: -500 }).addTo(map).bindTooltip(label, { direction: 'top', offset: [0, -8] });
 }
-ethMarker(ETH_ZENTRUM,      'ETH Zentrum');
+ethMarker(ETH_ZENTRUM, 'ETH Zentrum');
 ethMarker(ETH_HOENGGERBERG, 'ETH Hönggerberg');
 
-// Rent tiers — shared by map pills, legend and sidebar cards.
 const RENT_TIERS = [
-  { key: 'low',  max: 800,      label: '≤ 800 CHF',     color: '#66bb6a' },
-  { key: 'mid',  max: 1000,     label: '801–1000 CHF',  color: '#42a5f5' },
-  { key: 'high', max: Infinity, label: '> 1000 CHF',    color: '#ffa726' },
+  { key: 'low',  max: 800,      label: '≤ 800 CHF',    color: '#66bb6a' },
+  { key: 'mid',  max: 1000,     label: '801–1000 CHF', color: '#42a5f5' },
+  { key: 'high', max: Infinity, label: '> 1000 CHF',   color: '#ffa726' },
 ];
 function rentTier(rent) { return RENT_TIERS.find(t => rent <= t.max) ?? RENT_TIERS[2]; }
 
-// Nearby listings collapse into a count bubble when zoomed out.
 const cluster = L.markerClusterGroup({
-  maxClusterRadius: 45,
-  disableClusteringAtZoom: 15,
-  showCoverageOnHover: false,
-  spiderfyOnMaxZoom: true,
+  maxClusterRadius: 45, disableClusteringAtZoom: 15, showCoverageOnHover: false,
+  spiderfyOnMaxZoom: true, chunkedLoading: true, removeOutsideVisibleBounds: true,
   iconCreateFunction: c => {
     const n = c.getChildCount();
     const size = n < 10 ? 32 : n < 50 ? 38 : 44;
-    return L.divIcon({
-      className: 'price-marker-wrap',
-      html: `<div class="price-cluster" style="width:${size}px;height:${size}px">${n}</div>`,
-      iconSize: [size, size],
-    });
+    return L.divIcon({ className: 'price-marker-wrap', html: `<div class="price-cluster" style="width:${size}px;height:${size}px">${n}</div>`, iconSize: [size, size] });
   },
 }).addTo(map);
 
 const legend = L.control({ position: 'bottomleft' });
 legend.onAdd = () => {
   const div = L.DomUtil.create('div', 'map-legend');
-  div.innerHTML = `
-    <div class="map-legend-title">Monthly rent</div>
+  div.innerHTML = `<div class="map-legend-title">Monthly rent</div>
     ${RENT_TIERS.map(t => `<div class="row"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`).join('')}
-    <hr>
-    <div class="row"><span class="eth-marker"></span>ETH campus</div>`;
+    <div class="row"><span class="swatch" style="background:#777"></span>dealbreaker</div>
+    <hr><div class="row"><span class="eth-marker"></span>ETH campus</div>`;
   return div;
 };
 legend.addTo(map);
 
+// ── State ────────────────────────────────────────────────────────────────────
 let allListings = [];
-let markers = {};
+let byId = {};
+let markers = {};          // id -> L.Marker (cached)
+let shown = new Set();     // ids currently in the cluster
 let selectedId = null;
-let campus       = 'zentrum';
-let mode         = 'transit';
-let sortMode     = 'relevance';
-let posterFilter = 'all';
+let campus = 'zentrum', mode = 'transit', sortMode = 'relevance', posterFilter = 'all', showFilter = 'todo';
+let loadState = 'loading'; // loading | ok | error
+let _profile = {};
+let budget = 1000, moveIn = '2026-09-01';
+const pageStart = Date.now();
+const SYNC_WINDOW_MS = 150000;
 
-function setCampus(c) {
-  campus = c;
-  document.getElementById('btn-zentrum').classList.toggle('active', c === 'zentrum');
-  document.getElementById('btn-hoenggerberg').classList.toggle('active', c === 'hoenggerberg');
-  applyFilters();
+// ── Helpers: derived info ────────────────────────────────────────────────────
+const BLOCKERS = ['woman only', 'frauen', 'nur frauen', 'weiblich', 'berufstätig', 'working professional'];
+
+function cleanTitle(l) {
+  return (l.title || 'Room').replace(/\s*[–-]\s*\d[\d'’ ]*\s*CHF\s*$/i, '').replace(/^1\.0-Zimmer\s+/i, '').trim() || 'Room';
+}
+function ext(l) { return (l.extracted && typeof l.extracted === 'object') ? l.extracted : {}; }
+
+function dealbreakers(l) {
+  const e = ext(l), out = [];
+  if (l.rent_chf > budget) out.push(`over budget (${l.rent_chf} > ${budget})`);
+  (e.hard_requirements || []).forEach(r => { if (BLOCKERS.some(b => String(r).toLowerCase().includes(b))) out.push(String(r)); });
+  (e.red_flags || []).forEach(f => out.push(String(f)));
+  if (!out.length && l.fit_score === 0) out.push('scored 0 — dealbreaker');
+  return out;
 }
 
-function setMode(m) {
-  mode = m;
-  document.getElementById('btn-transit').classList.toggle('active', m === 'transit');
-  document.getElementById('btn-bike').classList.toggle('active', m === 'bike');
-  applyFilters();
+function daysAgo(l) {
+  const t = Date.parse(l.listed_at || '');
+  if (isNaN(t)) return null;
+  return Math.max(0, Math.floor((Date.now() - t) / 86400000));
+}
+function ageLabel(l) {
+  const d = daysAgo(l);
+  if (d == null) return '';
+  return d === 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`;
 }
 
-function setPoster(p) {
-  posterFilter = p;
-  document.getElementById('btn-poster-all').classList.toggle('active', p === 'all');
-  document.getElementById('btn-poster-private').classList.toggle('active', p === 'private');
-  document.getElementById('btn-poster-agency').classList.toggle('active', p === 'agency');
-  applyFilters();
+function fitReasons(l) {
+  const e = ext(l), r = [];
+  if (l.rent_chf > 0 && l.rent_chf <= budget - 100) r.push(`CHF ${budget - l.rent_chf} under budget`);
+  const t = l.transit_zentrum_min, th = l.transit_hoenggerberg_min;
+  const best = Math.min(t ?? 999, th ?? 999);
+  if (best <= 15) r.push(`${best} min to ETH`);
+  else if (best <= 25) r.push(`${best} min to ETH`);
+  const av = (l.available_from || '').slice(0, 10);
+  if (!av || av === 'flexible' || /^\D/.test(av)) r.push('flexible start');
+  else if (av <= moveIn) r.push('available on time');
+  const d = daysAgo(l);
+  if (d != null && d <= 2) r.push('fresh ad');
+  if (e.poster_type === 'private') r.push('private poster');
+  if (e.language === 'de') r.push('German ad'); else if (e.language === 'en') r.push('English ad');
+  (e.vibe || []).slice(0, 2).forEach(v => r.push(String(v)));
+  return r.slice(0, 4);
 }
 
-function setSort(s) {
-  sortMode = s;
-  document.getElementById('btn-sort-relevance').classList.toggle('active', s === 'relevance');
-  document.getElementById('btn-sort-match').classList.toggle('active', s === 'match');
-  document.getElementById('btn-sort-reply').classList.toggle('active', s === 'reply');
-  applyFilters();
+function relevanceScore(l) { return Math.round(((l.fit_score ?? 0) + (l.reply_score ?? 0)) / 2); }
+function commuteMin(l) { return l[`${mode}_${campus}_min`] ?? 999; }
+
+function commuteGrid(l) {
+  const row = c => {
+    const t = l[`transit_${c}_min`], b = l[`bike_${c}_min`];
+    if (t == null && b == null) return '';
+    const on = c === campus;
+    return `<span class="cn ${on ? 'on' : ''}">${CAMPUS_NAME[c]}</span>
+      <span class="t ${on && mode === 'transit' ? 'on' : ''}" title="Public transport">${t ?? '–'} min</span>
+      <span class="b ${on && mode === 'bike' ? 'on' : ''}" title="Bike">${b ?? '–'} min</span><span></span>`;
+  };
+  const h = row('zentrum') + row('hoenggerberg');
+  return h ? `<div class="commute">${h}</div>` : '';
+}
+function commuteInline(l) {
+  const t = l[`transit_${campus}_min`], b = l[`bike_${campus}_min`];
+  const p = [];
+  if (t != null) p.push(`<span class="t">transit ${t} min</span>`);
+  if (b != null) p.push(`<span class="b">bike ${b} min</span>`);
+  return p.length ? `${CAMPUS_NAME[campus]}: ${p.join(' · ')}` : '';
 }
 
-function relevanceScore(l) {
-  const fit   = l.fit_score   ?? 0;
-  const reply = l.reply_score ?? 0;
-  return Math.round((fit + reply) / 2);
+function scoreChip(s) {
+  if (s == null) return '';
+  const cls = s >= 70 ? 'score-high' : s >= 50 ? 'score-mid' : 'score-low';
+  return `<span class="badge ${cls}" title="Fit score: how well this matches your profile (0–100)"><i>FIT</i>${s}</span>`;
+}
+function replyChip(s) {
+  if (s == null) return '';
+  const cls = s >= 60 ? 'reply-high' : s >= 35 ? 'reply-mid' : 'reply-low';
+  return `<span class="badge ${cls}" title="Estimated chance the poster replies"><i>REPLY</i>${s}%</span>`;
+}
+const STATUS_LABEL = { sent: 'Sent', replied: 'Replied', rejected: 'Skipped' };
+function statusBar(l) {
+  return ['sent', 'replied', 'rejected'].map(s =>
+    `<button class="st ${s} ${l.status === s ? 'active' : ''}" data-act="status" data-s="${s}" aria-pressed="${l.status === s}" title="${l.status === s ? 'Click to clear' : 'Mark as ' + STATUS_LABEL[s].toLowerCase()}">${s === 'sent' ? '✉ ' : s === 'replied' ? '↩ ' : '✕ '}${STATUS_LABEL[s]}</button>`).join('');
 }
 
-function commuteMin(l) {
-  const key = `${mode}_${campus}_min`;
-  return l[key] ?? 999;
+// ── Toasts ───────────────────────────────────────────────────────────────────
+function toast(msg, opts = {}) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (opts.err ? ' err' : '');
+  const span = document.createElement('span'); span.textContent = msg; el.appendChild(span);
+  if (opts.action) {
+    const b = document.createElement('button'); b.textContent = opts.action.label;
+    b.onclick = () => { opts.action.fn(); el.remove(); };
+    el.appendChild(b);
+  }
+  $('toasts').appendChild(el);
+  setTimeout(() => el.remove(), opts.ms || (opts.err ? 6000 : 4000));
 }
 
-function commuteLabel(l) {
-  const t = l[`transit_${campus}_min`];
-  const b = l[`bike_${campus}_min`];
-  const campus_label = campus === 'zentrum' ? 'Zentrum' : 'Hönggerberg';
-  const parts = [];
-  if (t != null) parts.push(`🚋 ${t} min`);
-  if (b != null) parts.push(`🚴 ${b} min`);
-  return parts.length ? `${campus_label}: ${parts.join('  ')}` : '';
+function friendlyError(status, body) {
+  const raw = String((body && (body.error || body.detail)) || '');
+  const low = raw.toLowerCase();
+  if (/credit|billing|balance|payment|quota/.test(low))
+    return 'The Anthropic account is out of API credit. Top up billing at console.anthropic.com, then try again.';
+  if (status === 401 || /api[_ -]?key|authenticat|unauthor/.test(low))
+    return status === 503 || /not set/.test(low)
+      ? 'No Anthropic API key is configured on the server (ANTHROPIC_API_KEY in .env).'
+      : 'The Anthropic API key was rejected. Check ANTHROPIC_API_KEY in .env.';
+  if (status === 503 && /not set/.test(low)) return 'No Anthropic API key is configured on the server (ANTHROPIC_API_KEY in .env).';
+  if (status === 429 || /rate|overload/.test(low)) return 'Claude is rate-limited or busy right now. Wait a minute and try again.';
+  if (status === 404) return 'That listing no longer exists. Reload the page.';
+  if (status >= 500) return 'The server could not complete the request' + (raw ? ` (${raw.slice(0, 140)})` : '') + '.';
+  return raw || 'Something went wrong.';
+}
+async function api(url, opts) {
+  let r;
+  try { r = await fetch(url, opts); } catch (e) { const err = new Error('Cannot reach the server — is it running?'); err.network = true; throw err; }
+  let body = null;
+  try { body = await r.json(); } catch (_) {}
+  if (!r.ok) { const err = new Error(friendlyError(r.status, body)); err.status = r.status; throw err; }
+  return body;
 }
 
-function markerEl(id) {
-  return markers[id]?.getElement()?.querySelector('.price-marker');
+// ── Filters ──────────────────────────────────────────────────────────────────
+function seg(ids, active) { ids.forEach(([id, v]) => $(id).classList.toggle('active', v === active)); }
+function setCampus(c) { campus = c; seg([['btn-zentrum','zentrum'],['btn-hoenggerberg','hoenggerberg']], c); applyFilters(); }
+function setMode(m)   { mode = m;   seg([['btn-transit','transit'],['btn-bike','bike']], m); applyFilters(); }
+function setPoster(p) { posterFilter = p; seg([['btn-poster-all','all'],['btn-poster-private','private'],['btn-poster-agency','agency']], p); applyFilters(); }
+function setSort(s)   { sortMode = s; seg([['btn-sort-relevance','relevance'],['btn-sort-match','match'],['btn-sort-reply','reply'],['btn-sort-commute','commute'],['btn-sort-rent','rent']], s); applyFilters(); }
+function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
+function resetFilters() {
+  $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
+  $('maxCommute').value = 60; $('hideDeal').checked = false;
+  setPoster('all'); setShow('todo'); setSort('relevance');
+}
+function toggleFilters() {
+  const f = $('filters'); const c = f.classList.toggle('collapsed');
+  $('filters-toggle').setAttribute('aria-expanded', String(!c));
+  $('filters-toggle').textContent = c ? 'Filters ▾' : 'Filters ▴';
+  setTimeout(() => map.invalidateSize(), 50);
+}
+const mq = window.matchMedia('(max-width: 760px)');
+function syncFilterCollapse() { $('filters').classList.toggle('collapsed', mq.matches); $('filters-toggle').textContent = 'Filters ▾'; setTimeout(() => map.invalidateSize(), 50); }
+mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
+
+function passes(l, f) {
+  if (l.rent_chf > f.maxRent) return false;
+  if (f.filterCommute && commuteMin(l) > f.maxCommute) return false;
+  if (posterFilter !== 'all') {
+    const pt = ext(l).poster_type ?? null;
+    if (posterFilter === 'private' && pt === 'agency') return false;
+    if (posterFilter === 'agency' && pt !== 'agency') return false;
+  }
+  const st = l.status ?? null;
+  if (showFilter === 'todo' && st !== null) return false;
+  if (showFilter !== 'all' && showFilter !== 'todo' && st !== showFilter) return false;
+  if (f.hideDeal && l._deal.length) return false;
+  return true;
 }
 
-function scoreChip(score) {
-  if (score == null) return '';
-  const cls = score >= 70 ? 'score-high' : score >= 50 ? 'score-mid' : 'score-low';
-  return `<span class="card-score ${cls}" title="Match score">${score}</span>`;
+function sortFn(a, b) {
+  // dealbreakers always sink to the bottom
+  if (!!a._deal.length !== !!b._deal.length) return a._deal.length ? 1 : -1;
+  let sa, sb, asc = false;
+  if (sortMode === 'match') { sa = a.fit_score ?? -1; sb = b.fit_score ?? -1; }
+  else if (sortMode === 'reply') { sa = a.reply_score ?? -1; sb = b.reply_score ?? -1; }
+  else if (sortMode === 'commute') { sa = commuteMin(a); sb = commuteMin(b); asc = true; }
+  else if (sortMode === 'rent') { sa = a.rent_chf || 0; sb = b.rent_chf || 0; asc = true; }
+  else { sa = relevanceScore(a); sb = relevanceScore(b); }
+  if (sa !== sb) return asc ? sa - sb : sb - sa;
+  return (a.rent_chf || 0) - (b.rent_chf || 0);
 }
 
-function replyChip(score) {
-  if (score == null) return '';
-  const cls = score >= 60 ? 'reply-high' : score >= 35 ? 'reply-mid' : 'reply-low';
-  return `<span class="card-reply ${cls}" title="Reply likelihood">${score}%</span>`;
-}
-
-function renderAll(listings) {
-  listings = [...listings].sort((a, b) => {
-    let sa, sb;
-    if (sortMode === 'match') {
-      sa = a.fit_score ?? -1; sb = b.fit_score ?? -1;
-    } else if (sortMode === 'reply') {
-      sa = a.reply_score ?? -1; sb = b.reply_score ?? -1;
-    } else {
-      sa = relevanceScore(a); sb = relevanceScore(b);
-    }
-    if (sb !== sa) return sb - sa;
-    return (a.rent_chf || 0) - (b.rent_chf || 0);
+let _raf = 0;
+function applyFilters() {
+  const maxRent = parseInt($('maxRent').value), maxCommute = parseInt($('maxCommute').value);
+  $('rentLabel').textContent = `${maxRent} CHF`;
+  $('commuteLabel').textContent = maxCommute >= 60 ? 'any' : `≤ ${maxCommute} min`;
+  cancelAnimationFrame(_raf);
+  _raf = requestAnimationFrame(() => {
+    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked };
+    renderAll(allListings.filter(l => passes(l, f)).sort(sortFn));
   });
+}
+$('maxRent').addEventListener('input', applyFilters);
+$('maxCommute').addEventListener('input', applyFilters);
 
-  cluster.clearLayers();
-  markers = {};
-  document.getElementById('cards').innerHTML = '';
-  document.getElementById('count').textContent = `${listings.length} listings`;
-
-  const newMarkers = [];
-  listings.forEach(l => {
-    const tier = rentTier(l.rent_chf);
-    const sel = l.id === selectedId ? ' selected' : '';
-    // iconSize null lets the pill size itself to its text; CSS positions it above the point.
-    const icon = L.divIcon({
-      className: 'price-marker-wrap',
-      html: `<div class="price-marker tier-${tier.key}${sel}" title="${tier.label}">${l.rent_chf}<span class="cur">CHF</span></div>`,
-      iconSize: null,
-      iconAnchor: [0, 0],
-      popupAnchor: [0, -30],
-    });
-
-    const cmin = commuteMin(l);
-    const clabel = commuteLabel(l);
-    const linkHtml = l.url
-      ? `<a href="${l.url}" target="_blank" class="popup-link">↗ view listing</a>`
-      : '';
-
-    const popup = L.popup({ closeButton: false }).setContent(`
-      <div class="popup-rent">${l.rent_chf} CHF</div>
-      <div>${l.title}</div>
-      <div style="color:#666;font-size:0.7rem">${l.address}</div>
-      <div class="popup-commute">${clabel}</div>
-      ${linkHtml}
-    `);
-
-    const m = L.marker([l.lat, l.lng], { icon, zIndexOffset: sel ? 1000 : 0 }).bindPopup(popup);
+// ── Markers ──────────────────────────────────────────────────────────────────
+function markerHtml(l) {
+  const tier = rentTier(l.rent_chf);
+  const cls = ['price-marker', 'tier-' + tier.key];
+  if (l._deal.length) cls.push('dim');
+  if (l.status === 'sent') cls.push('mk-sent'); else if (l.status === 'replied') cls.push('mk-replied');
+  if (l.id === selectedId) cls.push('selected');
+  const fit = l.fit_score != null ? `<span class="fit" title="Fit score">${l.fit_score}</span>` : '';
+  return `<div class="${cls.join(' ')}">${l.rent_chf}<span class="cur">CHF</span>${fit}</div>`;
+}
+function makeIcon(l) {
+  return L.divIcon({ className: 'price-marker-wrap', html: markerHtml(l), iconSize: null, iconAnchor: [0, 0], popupAnchor: [0, -30] });
+}
+function popupHtml(l) {
+  const link = safeUrl(l.url);
+  return `<div class="popup-rent">${l.rent_chf} CHF</div><div>${esc(cleanTitle(l))}</div>
+    <div style="color:#777;font-size:.7rem">${esc(l.address)}</div>
+    <div class="popup-commute">${commuteInline(l)}</div>
+    ${link ? `<a href="${link}" target="_blank" rel="noopener" style="font-size:.7rem">↗ view listing</a>` : ''}`;
+}
+function getMarker(l) {
+  let m = markers[l.id];
+  const sig = markerHtml(l);
+  if (!m) {
+    m = L.marker([l.lat, l.lng], { icon: makeIcon(l) });
+    m.bindPopup(() => popupHtml(byId[l.id]), { closeButton: false });
     m.on('click', () => selectListing(l.id));
     markers[l.id] = m;
-    newMarkers.push(m);
+  } else if (m._sig !== sig) m.setIcon(makeIcon(l));
+  m._sig = sig;
+  return m;
+}
+function markerEl(id) { return markers[id]?.getElement()?.querySelector('.price-marker'); }
 
-    // card
-    const card = document.createElement('div');
-    card.className = 'card' + sel;
-    card.id = `card-${l.id}`;
-    card.innerHTML = `
-      <div><span class="card-dot" style="background:${tier.color}" title="${tier.label}"></span><span class="card-rent">${l.rent_chf} CHF</span>${scoreChip(l.fit_score)}${replyChip(l.reply_score)}</div>
-      <div class="card-title">${l.title}</div>
-      <div class="card-address">${l.address}</div>
-      ${clabel ? `<div class="card-commute">${clabel}</div>` : ''}
-      <div class="card-meta">
-        <span>from ${l.available_from}</span>
-        <span>
-          <span class="card-draft" onclick="event.stopPropagation(); selectListing(${l.id}); draftMessage(${l.id})">✎ draft</span>
-          ${l.url ? `<a href="${l.url}" target="_blank" class="card-link" onclick="event.stopPropagation()">↗ listing</a>` : ''}
-        </span>
+// ── Rendering ────────────────────────────────────────────────────────────────
+function cardHtml(l) {
+  const tier = rentTier(l.rent_chf);
+  const deal = l._deal;
+  const reasons = deal.length ? [] : fitReasons(l);
+  const chips = deal.length
+    ? deal.slice(0, 3).map(d => `<span class="chip bad" title="Dealbreaker">✗ ${esc(d)}</span>`).join('')
+    : reasons.map(r => `<span class="chip" title="Why this fits">✓ ${esc(r)}</span>`).join('');
+  const link = safeUrl(l.url);
+  const cls = ['card'];
+  if (l.id === selectedId) cls.push('selected');
+  if (deal.length) cls.push('dim');
+  if (l.status) cls.push('st-' + l.status);
+  const avail = l.available_from && /^\d/.test(l.available_from) ? `from ${esc(l.available_from)}` : `start: ${esc(l.available_from || 'unknown')}`;
+  return `<div class="${cls.join(' ')}" id="card-${l.id}" data-id="${l.id}">
+    <div class="card-body">
+      <div class="card-top">
+        <span class="card-dot" style="background:${deal.length ? '#777' : tier.color}" title="${tier.label}"></span>
+        <span class="card-rent">${l.rent_chf}<small>CHF</small></span>
+        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}
+        ${l.status ? `<span class="stbadge ${l.status}">${STATUS_LABEL[l.status]}</span>` : ''}
       </div>
-    `;
-    card.onclick = () => selectListing(l.id);
-    card.onmouseenter = () => markerEl(l.id)?.classList.add('hover');
-    card.onmouseleave = () => markerEl(l.id)?.classList.remove('hover');
-    document.getElementById('cards').appendChild(card);
-  });
-  cluster.addLayers(newMarkers);
+      <div class="card-title">${esc(cleanTitle(l))}</div>
+      <div class="card-address">${esc(l.address)}</div>
+      ${commuteGrid(l)}
+      ${chips ? `<div class="chips">${chips}</div>` : ''}
+      <div class="card-meta"><span>${avail}</span><span>${esc(l.source || '')}${ageLabel(l) ? ' · ' + ageLabel(l) : ''}</span></div>
+    </div>
+    <div class="card-actions">
+      ${statusBar(l)}
+      <button class="act" data-act="draft" title="Draft a message with Claude (uses API credits)">✎ draft</button>
+      ${link ? `<a class="card-link" href="${link}" target="_blank" rel="noopener">↗</a>` : ''}
+    </div>
+  </div>`;
 }
 
+const SORT_DESC = {
+  relevance: 'Best = average of fit and reply score',
+  match: 'Fit = how well it matches your profile',
+  reply: 'Reply = estimated chance of an answer',
+  commute: 'Shortest commute first',
+  rent: 'Cheapest first',
+};
+
+function renderAll(listings) {
+  const total = allListings.length;
+  $('count').textContent = loadState === 'ok' ? `${listings.length} of ${total} listings` : '— listings';
+
+  // map: diff against what is already in the cluster
+  const want = new Map(listings.map(l => [l.id, l]));
+  const toRemove = [], toAdd = [];
+  shown.forEach(id => { if (!want.has(id)) { toRemove.push(markers[id]); shown.delete(id); } });
+  want.forEach((l, id) => {
+    const m = getMarker(l);
+    if (!shown.has(id)) { toAdd.push(m); shown.add(id); }
+  });
+  if (toRemove.length) cluster.removeLayers(toRemove);
+  if (toAdd.length) cluster.addLayers(toAdd);
+
+  // sidebar
+  const head = $('sidebar-header'), cards = $('cards');
+  if (loadState === 'loading') {
+    head.textContent = 'LISTINGS';
+    cards.innerHTML = '<div class="skel"></div>'.repeat(5);
+    return;
+  }
+  if (loadState === 'error') {
+    head.textContent = 'LISTINGS';
+    cards.innerHTML = `<div class="empty err"><h3>Can't reach the server</h3>The listings request failed.<br>Is <code>uvicorn</code> running?<br><button class="linkbtn" onclick="loadListings()">retry</button></div>`;
+    return;
+  }
+  const dealN = listings.filter(l => l._deal.length).length;
+  head.innerHTML = `<b>${listings.length}</b> listing${listings.length === 1 ? '' : 's'} · sorted by <b>${sortMode === 'relevance' ? 'best' : sortMode}</b><br>${SORT_DESC[sortMode]}${dealN ? ` · ${dealN} dealbreaker${dealN === 1 ? '' : 's'} last` : ''}`;
+  if (!listings.length) {
+    if (!total) {
+      const syncing = Date.now() - pageStart < SYNC_WINDOW_MS;
+      cards.innerHTML = `<div class="empty"><h3>${syncing ? 'Fetching listings…' : 'No listings yet'}</h3>${syncing
+        ? 'The server is pulling rooms from Flatfox, WGZimmer, Ronorp and Homegate. The first run takes 1–2 minutes — this list fills in on its own.'
+        : 'Nothing has been ingested. Restart the server or POST /ingest to fetch listings.'}</div>`;
+    } else {
+      cards.innerHTML = `<div class="empty"><h3>No matches</h3>${total} listing${total === 1 ? ' is' : 's are'} hidden by your filters.<br><button class="linkbtn" onclick="resetFilters()">reset filters</button></div>`;
+    }
+    return;
+  }
+  cards.innerHTML = listings.map(cardHtml).join('');
+}
+
+// ── Card interactions (delegated) ────────────────────────────────────────────
+$('cards').addEventListener('click', e => {
+  const card = e.target.closest('.card'); if (!card) return;
+  const id = +card.dataset.id;
+  if (e.target.closest('a')) return;
+  const act = e.target.closest('[data-act]');
+  if (act?.dataset.act === 'status') { e.stopPropagation(); setStatus(id, act.dataset.s); return; }
+  if (act?.dataset.act === 'draft') { selectListing(id); draftMessage(id); return; }
+  selectListing(id);
+});
+$('cards').addEventListener('mouseover', e => { const c = e.target.closest('.card'); if (c) markerEl(+c.dataset.id)?.classList.add('hover'); });
+$('cards').addEventListener('mouseout', e => { const c = e.target.closest('.card'); if (c) markerEl(+c.dataset.id)?.classList.remove('hover'); });
+
 function selectListing(id) {
-  if (selectedId != null) {
-    markerEl(selectedId)?.classList.remove('selected');
-    markers[selectedId]?.setZIndexOffset(0);
-  }
+  if (selectedId != null) { markerEl(selectedId)?.classList.remove('selected'); markers[selectedId]?.setZIndexOffset(0); }
   selectedId = id;
-  document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
-  const card = document.getElementById(`card-${id}`);
+  document.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
+  const card = $(`card-${id}`);
   if (card) { card.classList.add('selected'); card.scrollIntoView({ block: 'nearest' }); }
-  const l = allListings.find(x => x.id === id);
-  if (!l) return;
+  const l = byId[id]; if (!l) return;
   const m = markers[id];
-  if (m) {
+  map.setView([l.lat, l.lng], Math.max(map.getZoom(), 15), { animate: false });
+  if (m && shown.has(id)) {
     m.setZIndexOffset(1000);
-    // Zoom in, then make sure the marker is out of its cluster before opening the popup.
-    map.once('moveend', () => cluster.zoomToShowLayer(m, () => {
-      markerEl(id)?.classList.add('selected');
-      m.openPopup();
-    }));
+    cluster.zoomToShowLayer(m, () => { markerEl(id)?.classList.add('selected'); m.openPopup(); });
   }
-  map.setView([l.lat, l.lng], Math.max(map.getZoom(), 15));
   showDetail(l);
 }
 
-function showDetail(l) {
-  const ext = l.extracted || {};
-
-  // link
-  const link = document.getElementById('detail-ext-link');
-  if (l.url) { link.href = l.url; link.style.display = ''; }
-  else link.style.display = 'none';
-
-  // build vibe pills
-  const vibePills = (ext.vibe || []).map(v => `<span class="pill">${v}</span>`).join('');
-  const reqPills  = (ext.hard_requirements || []).map(r => `<span class="pill red">${r}</span>`).join('');
-  const prefBullets = (ext.preferences || []).map(p => `<div class="detail-bullet">${p}</div>`).join('');
-  const includeBullets = (ext.asks_applicant_to_include || []).map(i => `<div class="detail-bullet">${i}</div>`).join('');
-  const flagPills = (ext.red_flags || []).map(f => `<span class="pill red">${f}</span>`).join('');
-
-  const clabel = commuteLabel(l);
-  const householdStr = ext.household_size ? `${ext.household_size}-person flat` : '';
-  const langStr = ext.language === 'de' ? 'German ad' : ext.language === 'en' ? 'English ad' : '';
-  const durationStr = ext.duration === 'permanent' ? 'permanent' : ext.duration === 'fixed_term' ? 'fixed term' : ext.duration === 'sublet' ? 'sublet' : '';
-  const posterStr = ext.poster_type === 'private' ? 'private person' : ext.poster_type === 'agency' ? 'agency/company' : '';
-
-  document.getElementById('detail-body').innerHTML = `
-    <div class="detail-rent">${l.rent_chf} CHF</div>
-    <div class="detail-title">${l.title}</div>
-    <div class="detail-addr">${l.address}</div>
-    ${clabel ? `<div class="detail-commute">${clabel}</div>` : ''}
-    <div class="detail-scores">${scoreChip(l.fit_score)}${replyChip(l.reply_score)}</div>
-    <div class="detail-section">
-      <div class="detail-section-label">Available</div>
-      <div style="font-size:0.75rem;color:#ccc">${l.available_from}${durationStr ? ' · ' + durationStr : ''}</div>
-    </div>
-    ${vibePills || householdStr || langStr ? `
-    <div class="detail-section">
-      <div class="detail-section-label">Vibe</div>
-      ${householdStr ? `<span class="pill green">${householdStr}</span>` : ''}
-      ${langStr ? `<span class="pill green">${langStr}</span>` : ''}
-      ${posterStr === 'private person' ? `<span class="pill green">private person</span>` : posterStr === 'agency/company' ? `<span class="pill red">agency/company</span>` : ''}
-      ${vibePills}
-    </div>` : ''}
-    ${reqPills ? `
-    <div class="detail-section">
-      <div class="detail-section-label">Hard Requirements</div>
-      ${reqPills}
-    </div>` : ''}
-    ${prefBullets ? `
-    <div class="detail-section">
-      <div class="detail-section-label">Preferences</div>
-      ${prefBullets}
-    </div>` : ''}
-    ${includeBullets ? `
-    <div class="detail-section">
-      <div class="detail-section-label">Include in Your Message</div>
-      ${includeBullets}
-    </div>` : ''}
-    ${flagPills ? `
-    <div class="detail-section">
-      <div class="detail-section-label">Red Flags</div>
-      ${flagPills}
-    </div>` : ''}
-    ${!ext.vibe && !ext.hard_requirements ? `
-    <div class="detail-section">
-      <div style="font-size:0.65rem;color:#444;padding-top:8px">Run Extract to see ad details</div>
-    </div>` : ''}
-    <button class="draft-btn" id="draft-btn" onclick="draftMessage(${l.id})">✎ Draft Message</button>
-    <div id="draft-area"></div>
-    ${l.url ? `<a class="detail-link-btn" href="${l.url}" target="_blank">↗ View Listing</a>` : ''}
-  `;
-  if (drafts[l.id]) renderDraft(l.id, drafts[l.id]);
-
-  document.getElementById('cards-view').style.display = 'none';
-  document.getElementById('detail-view').classList.add('open');
+// ── Status (Phase 6) ─────────────────────────────────────────────────────────
+async function postStatus(id, status) {
+  const l = byId[id]; if (!l) return;
+  const prev = l.status ?? null;
+  l.status = status;                 // optimistic
+  refreshAfterStatus(id);
+  try {
+    const res = await api(`/listings/${id}/status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    if (res && typeof res === 'object' && 'status' in res) l.status = res.status ?? null;
+    refreshAfterStatus(id);
+    return { prev };
+  } catch (e) {
+    l.status = prev; refreshAfterStatus(id);
+    toast(e.status === 404 || e.status === 405 ? 'Status tracking is not available on this server yet (endpoint missing).' : `Could not save status: ${e.message}`, { err: true });
+    return null;
+  }
 }
-
-function closeDetail() {
-  document.getElementById('detail-view').classList.remove('open');
-  document.getElementById('cards-view').style.display = '';
+async function setStatus(id, s) {
+  const l = byId[id]; if (!l) return;
+  const next = l.status === s ? null : s;
+  const r = await postStatus(id, next);
+  if (r) {
+    const msg = next ? `Marked as ${STATUS_LABEL[next].toLowerCase()}` : 'Status cleared';
+    const hides = next && showFilter === 'todo';
+    toast(hides ? `${msg} — moved out of "To do"` : msg, { action: { label: 'Undo', fn: () => postStatus(id, r.prev) } });
+  }
 }
-
-function applyFilters() {
-  const maxRent    = parseInt(document.getElementById('maxRent').value);
-  const maxCommute = parseInt(document.getElementById('maxCommute').value);
-
-  document.getElementById('rentLabel').textContent    = `${maxRent} CHF`;
-  document.getElementById('commuteLabel').textContent = maxCommute >= 60 ? 'any' : `${maxCommute} min`;
-
-  const filterCommute = maxCommute < 60;
-  renderAll(allListings.filter(l => {
-    if (l.rent_chf > maxRent) return false;
-    if (filterCommute && commuteMin(l) > maxCommute) return false;
-    if (posterFilter !== 'all') {
-      const pt = l.extracted?.poster_type ?? null;
-      if (posterFilter === 'private' && pt === 'agency') return false;
-      if (posterFilter === 'agency'  && pt !== 'agency') return false;
-    }
-    return true;
-  }));
+function refreshAfterStatus(id) {
+  applyFilters();
+  if (selectedId === id && $('detail-view').classList.contains('open')) { const el = $('detail-status'); if (el) el.innerHTML = statusBar(byId[id]); }
 }
-
-document.getElementById('maxRent').addEventListener('input', applyFilters);
-document.getElementById('maxCommute').addEventListener('input', applyFilters);
-
-fetch('/listings')
-  .then(r => r.json())
-  .then(data => { allListings = data; applyFilters(); })
-  .catch(e => console.error('Failed to load listings:', e));
-
-// ── Profile panel ────────────────────────────────────────────────────────────
-let _profile = {};
-
-function openProfile() {
-  fetch('/profile').then(r => r.json()).then(p => {
-    _profile = p;
-    document.getElementById('p-status').value      = p.status || '';
-    document.getElementById('p-move-in').value     = p.move_in_earliest || '';
-    document.getElementById('p-budget-max').value  = p.budget_chf?.max || '';
-    document.getElementById('p-age').value         = p.age || '';
-    document.getElementById('p-gender').value      = p.gender || '';
-    document.getElementById('p-smoker').value      = p.smoker === true ? 'no' : p.smoker === false ? 'no' : '';
-    document.getElementById('p-languages').value   = (p.languages || []).map(l => `${l.lang} ${l.level}`).join('\n');
-    document.getElementById('p-traits').value      = (p.traits || []).join('\n');
-    document.getElementById('p-wants').value       = (p.wants || []).join('\n');
-    document.getElementById('p-template').value    = p.message_template || '';
-  });
-  document.getElementById('profile-panel').classList.add('open');
-}
-
-function closeProfile() {
-  document.getElementById('profile-panel').classList.remove('open');
-}
-
-function saveProfile() {
-  const langLines = document.getElementById('p-languages').value.trim().split('\n').filter(Boolean);
-  const languages = langLines.map(line => {
-    const parts = line.trim().split(/\s+/);
-    const level = parts.pop();
-    return { lang: parts.join(' '), level };
-  });
-
-  const updated = {
-    ..._profile,
-    status:          document.getElementById('p-status').value.trim(),
-    move_in_earliest: document.getElementById('p-move-in').value,
-    budget_chf:      { min: 0, max: parseInt(document.getElementById('p-budget-max').value) || 1000 },
-    age:             parseInt(document.getElementById('p-age').value) || null,
-    gender:          document.getElementById('p-gender').value.trim(),
-    smoker:          document.getElementById('p-smoker').value.trim().toLowerCase() === 'yes',
-    languages,
-    traits:            document.getElementById('p-traits').value.trim().split('\n').filter(Boolean),
-    wants:             document.getElementById('p-wants').value.trim().split('\n').filter(Boolean),
-    message_template:  document.getElementById('p-template').value.trim(),
-  };
-
-  fetch('/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) })
-    .then(r => r.json())
-    .then(() => {
-      document.getElementById('saved-msg').style.display = 'inline';
-      setTimeout(() => document.getElementById('saved-msg').style.display = 'none', 2000);
-      // reload listings with updated scores
-      fetch('/listings').then(r => r.json()).then(data => { allListings = data; applyFilters(); });
-    });
-}
-
-// ── Best listings modal ──────────────────────────────────────────────────────
-function showBest() {
-  const modal = document.getElementById('best-modal');
-  const list  = document.getElementById('best-list');
-  modal.classList.add('open');
-  list.innerHTML = '<div id="best-loading">Analyzing top listings with AI…</div>';
-
-  fetch('/best')
-    .then(r => r.json())
-    .then(listings => {
-      if (!listings.length) {
-        list.innerHTML = '<div id="best-loading">No eligible listings yet — run Extract first.</div>';
-        return;
-      }
-      list.innerHTML = listings.map(l => {
-        const a = l.analysis || {};
-        const strengths = (a.strengths || []).map(s => `<div class="best-strength">${s}</div>`).join('');
-        const weaknesses = (a.weaknesses || []).map(w => `<div class="best-weakness">${w}</div>`).join('');
-        const tip = a.tip ? `<div class="best-tip">${a.tip}</div>` : '';
-        const clabel = commuteLabel(l);
-        return `
-          <div class="best-entry">
-            <div class="best-entry-top">
-              <span class="best-entry-rent">${l.rent_chf} CHF</span>
-              <span>${scoreChip(l.fit_score)}${replyChip(l.reply_score)}</span>
-            </div>
-            <div class="best-entry-title">${l.title}</div>
-            <div style="font-size:0.62rem;color:#555;margin:1px 0">${l.address}</div>
-            ${clabel ? `<div style="font-size:0.65rem;color:#4a9;margin:2px 0">${clabel}</div>` : ''}
-            ${strengths || weaknesses ? `
-            <div class="best-sw">
-              ${strengths ? `<div class="best-col"><div class="best-col-label">Strengths</div>${strengths}</div>` : ''}
-              ${weaknesses ? `<div class="best-col"><div class="best-col-label">Weaknesses</div>${weaknesses}</div>` : ''}
-            </div>` : ''}
-            ${tip}
-            <div style="margin-top:6px;display:flex;justify-content:space-between;align-items:center">
-              <span style="font-size:0.6rem;color:#444">from ${l.available_from}</span>
-              ${l.url ? `<a class="best-open" href="${l.url}" target="_blank">↗ open listing</a>` : ''}
-            </div>
-          </div>`;
-      }).join('');
-    })
-    .catch(() => {
-      list.innerHTML = '<div id="best-loading">Failed to load — is the server running?</div>';
-    });
-}
-
-function closeBest() {
-  document.getElementById('best-modal').classList.remove('open');
-}
-
-// close modal on backdrop click
-document.getElementById('best-modal').addEventListener('click', e => {
-  if (e.target === document.getElementById('best-modal')) closeBest();
+$('detail-body').addEventListener('click', e => {
+  const act = e.target.closest('[data-act="status"]');
+  if (act && selectedId != null) setStatus(selectedId, act.dataset.s);
 });
 
-// ── Draft message (review + copy; never sends) ───────────────────────────────
-const drafts = {};  // listing id -> latest (possibly edited) draft text
+// ── Detail ───────────────────────────────────────────────────────────────────
+function showDetail(l) {
+  const e = ext(l);
+  const link = $('detail-ext-link'), url = safeUrl(l.url);
+  if (url) { link.href = url; link.style.display = ''; } else link.style.display = 'none';
+  const list = (a, f) => (a || []).map(f).join('');
+  const vibe = list(e.vibe, v => `<span class="pill">${esc(v)}</span>`);
+  const reqs = list(e.hard_requirements, r => `<span class="pill red">${esc(r)}</span>`);
+  const prefs = list(e.preferences, p => `<div class="detail-bullet">${esc(p)}</div>`);
+  const incl = list(e.asks_applicant_to_include, i => `<div class="detail-bullet">${esc(i)}</div>`);
+  const flags = list(e.red_flags, f => `<span class="pill red">${esc(f)}</span>`);
+  const household = e.household_size ? `${e.household_size}-person flat` : '';
+  const lang = e.language === 'de' ? 'German ad' : e.language === 'en' ? 'English ad' : '';
+  const dur = { permanent: 'permanent', fixed_term: 'fixed term', sublet: 'sublet' }[e.duration] || '';
+  const deal = l._deal, reasons = deal.length ? [] : fitReasons(l);
+  const hasExt = !!(e.vibe || e.hard_requirements);
 
-function draftMessage(id) {
-  const btn  = document.getElementById('draft-btn');
-  const area = document.getElementById('draft-area');
-  if (!btn || !area) return;
-  btn.disabled = true;
-  btn.textContent = 'Drafting…';
-  fetch(`/draft/${id}`, { method: 'POST' })
-    .then(r => r.json().then(body => ({ ok: r.ok, body })))
-    .then(({ ok, body }) => {
-      if (!ok) throw new Error(body.error || 'Draft failed');
-      drafts[id] = body.draft;
-      renderDraft(id, body.draft);
-    })
-    .catch(e => {
-      area.innerHTML = '<div class="draft-error"></div>';
-      area.firstChild.textContent = `✗ ${e.message}`;
-    })
-    .finally(() => {
-      btn.disabled = false;
-      btn.textContent = drafts[id] ? '↻ Redraft' : '✎ Draft Message';
-    });
+  $('detail-body').innerHTML = `
+    <div class="detail-rent">${l.rent_chf} CHF <span style="font-size:.6rem;color:#777">/ month</span></div>
+    <div class="detail-title">${esc(cleanTitle(l))}</div>
+    <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
+    ${commuteGrid(l)}
+    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)}</div>
+    ${deal.length ? `<div class="chips">${deal.map(d => `<span class="chip bad">✗ ${esc(d)}</span>`).join('')}</div>`
+      : reasons.length ? `<div class="chips">${reasons.map(r => `<span class="chip">✓ ${esc(r)}</span>`).join('')}</div>` : ''}
+    <div class="detail-section"><div class="detail-section-label">Track</div><div class="card-actions" id="detail-status" style="margin-top:0">${statusBar(l)}</div></div>
+    <div class="detail-section"><div class="detail-section-label">Available</div>
+      <div style="font-size:.75rem;color:#ccc">${esc(l.available_from || 'unknown')}${dur ? ' · ' + dur : ''}</div></div>
+    ${vibe || household || lang ? `<div class="detail-section"><div class="detail-section-label">Vibe</div>
+      ${household ? `<span class="pill green">${household}</span>` : ''}${lang ? `<span class="pill green">${lang}</span>` : ''}
+      ${e.poster_type === 'private' ? '<span class="pill green">private person</span>' : e.poster_type === 'agency' ? '<span class="pill red">agency/company</span>' : ''}${vibe}</div>` : ''}
+    ${reqs ? `<div class="detail-section"><div class="detail-section-label">Hard Requirements</div>${reqs}</div>` : ''}
+    ${prefs ? `<div class="detail-section"><div class="detail-section-label">Preferences</div>${prefs}</div>` : ''}
+    ${incl ? `<div class="detail-section"><div class="detail-section-label">Include in Your Message</div>${incl}</div>` : ''}
+    ${flags ? `<div class="detail-section"><div class="detail-section-label">Red Flags</div>${flags}</div>` : ''}
+    ${!hasExt ? '<div class="note-inline">Ad not analysed yet — run Extract for requirements, vibe and red flags.</div>' : ''}
+    <button class="draft-btn" id="draft-btn" onclick="draftMessage(${l.id})">✎ Draft Message</button>
+    <div id="draft-area"></div>
+    ${l.raw_text ? `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>` : ''}
+    ${url ? `<a class="detail-link-btn" href="${url}" target="_blank" rel="noopener">↗ View Listing</a>` : ''}`;
+  if (drafts[l.id]) renderDraft(l.id, drafts[l.id]);
+  $('cards-view').style.display = 'none';
+  $('detail-view').classList.add('open');
+  document.body.classList.add('has-detail');
+  $('sidebar').scrollTop = 0;
+  setTimeout(() => map.invalidateSize(), 50);
+}
+function closeDetail() {
+  $('detail-view').classList.remove('open');
+  $('cards-view').style.display = '';
+  document.body.classList.remove('has-detail');
+  setTimeout(() => { map.invalidateSize(); $(`card-${selectedId}`)?.scrollIntoView({ block: 'nearest' }); }, 50);
 }
 
+// ── Loading listings (+ background-ingest polling) ───────────────────────────
+function indexListings(data) {
+  allListings = data;
+  byId = {};
+  data.forEach(l => { l.status = l.status ?? null; l._deal = dealbreakers(l); byId[l.id] = l; });
+}
+async function loadListings(silent) {
+  if (!silent) { loadState = 'loading'; applyFilters(); }
+  try {
+    const data = await api('/listings');
+    const before = allListings.length;
+    indexListings(data);
+    loadState = 'ok';
+    if (silent && data.length > before && before > 0) toast(`${data.length - before} new listing${data.length - before === 1 ? '' : 's'} arrived`);
+    applyFilters();
+    return true;
+  } catch (e) {
+    if (!silent || loadState !== 'ok') { loadState = 'error'; applyFilters(); }
+    return false;
+  }
+}
+function pollIngest() {
+  const syncing = () => Date.now() - pageStart < SYNC_WINDOW_MS;
+  if (syncing()) $('sync').classList.add('on');
+  const t = setInterval(async () => {
+    if (!syncing()) { clearInterval(t); $('sync').classList.remove('on'); if (!allListings.length) applyFilters(); return; }
+    const prevLen = allListings.length, prevMax = Math.max(0, ...allListings.map(l => l.id));
+    const ok = await fetch('/listings').then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!ok) return;
+    const max = Math.max(0, ...ok.map(l => l.id));
+    if (ok.length !== prevLen || max !== prevMax) {
+      const keepStatus = {}; allListings.forEach(l => keepStatus[l.id] = l.status);
+      indexListings(ok); ok.forEach(l => { if (l.status == null && keepStatus[l.id]) l.status = keepStatus[l.id]; });
+      loadState = 'ok';
+      if (prevLen > 0 && ok.length > prevLen) toast(`${ok.length - prevLen} new listing${ok.length - prevLen === 1 ? '' : 's'} arrived`);
+      applyFilters();
+    }
+  }, 6000);
+}
+
+// ── Profile panel ────────────────────────────────────────────────────────────
+async function loadProfileBasics() {
+  try {
+    const p = await api('/profile');
+    _profile = p;
+    if (p.budget_chf?.max) { budget = p.budget_chf.max; $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50)); }
+    if (p.move_in_earliest) moveIn = p.move_in_earliest;
+  } catch (_) {}
+}
+async function openProfile() {
+  $('profile-panel').classList.add('open');
+  try {
+    const p = await api('/profile'); _profile = p;
+    $('p-status').value = p.status || '';
+    $('p-move-in').value = p.move_in_earliest || '';
+    $('p-budget-max').value = p.budget_chf?.max || '';
+    $('p-age').value = p.age || '';
+    $('p-gender').value = p.gender || '';
+    $('p-smoker').value = p.smoker === true ? 'yes' : p.smoker === false ? 'no' : '';
+    $('p-languages').value = (p.languages || []).map(l => `${l.lang} ${l.level}`).join('\n');
+    $('p-traits').value = (p.traits || []).join('\n');
+    $('p-wants').value = (p.wants || []).join('\n');
+    $('p-template').value = p.message_template || '';
+  } catch (e) { toast('Could not load profile: ' + e.message, { err: true }); }
+}
+function closeProfile() { $('profile-panel').classList.remove('open'); }
+async function saveProfile() {
+  const lines = id => $(id).value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+  const languages = lines('p-languages').map(line => { const parts = line.split(/\s+/); const level = parts.pop(); return { lang: parts.join(' '), level }; });
+  const updated = {
+    ..._profile,
+    status: $('p-status').value.trim(), move_in_earliest: $('p-move-in').value,
+    budget_chf: { min: 0, max: parseInt($('p-budget-max').value) || 1000 },
+    age: parseInt($('p-age').value) || null, gender: $('p-gender').value.trim(),
+    smoker: $('p-smoker').value.trim().toLowerCase() === 'yes',
+    languages, traits: lines('p-traits'), wants: lines('p-wants'), message_template: $('p-template').value.trim(),
+  };
+  const btn = $('save-btn'); btn.disabled = true; btn.textContent = 'Saving…';
+  try {
+    await api('/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
+    _profile = updated; budget = updated.budget_chf.max; moveIn = updated.move_in_earliest || moveIn;
+    toast('Profile saved — listings re-scored');
+    closeProfile();
+    await loadListings(true);
+  } catch (e) { toast('Could not save profile: ' + e.message, { err: true }); }
+  finally { btn.disabled = false; btn.textContent = 'Save & Re-score'; }
+}
+
+// ── Top 5 ────────────────────────────────────────────────────────────────────
+async function showBest() {
+  $('best-modal').classList.add('open');
+  const list = $('best-list');
+  list.innerHTML = '<div id="best-loading">Analyzing your top listings with Claude…<br>This takes a few seconds.</div>';
+  try {
+    const listings = await api('/best');
+    if (!Array.isArray(listings) || !listings.length) { list.innerHTML = '<div id="best-loading">No eligible listings yet — run Extract first.</div>'; return; }
+    list.innerHTML = listings.map((l, i) => {
+      const a = l.analysis || {};
+      const s = (a.strengths || []).map(x => `<div class="best-strength">${esc(x)}</div>`).join('');
+      const w = (a.weaknesses || []).map(x => `<div class="best-weakness">${esc(x)}</div>`).join('');
+      const url = safeUrl(l.url);
+      return `<div class="best-entry">
+        <div class="best-entry-top"><span><span class="best-rank">#${i + 1}</span><span class="best-entry-rent">${l.rent_chf} CHF</span></span><span>${scoreChip(l.fit_score)} ${replyChip(l.reply_score)}</span></div>
+        <div class="best-entry-title">${esc(cleanTitle(l))}</div>
+        <div style="font-size:.64rem;color:#777;margin:1px 0">${esc(l.address)}</div>
+        ${commuteGrid(l)}
+        ${s || w ? `<div class="best-sw">${s ? `<div class="best-col"><div class="best-col-label">Strengths</div>${s}</div>` : ''}${w ? `<div class="best-col"><div class="best-col-label">Weaknesses</div>${w}</div>` : ''}</div>` : ''}
+        ${a.tip ? `<div class="best-tip">${esc(a.tip)}</div>` : ''}
+        <div class="best-foot"><span style="font-size:.6rem;color:#666">from ${esc(l.available_from)}</span>
+          <span><button class="best-open" onclick="closeBest();selectListing(${l.id})">show on map</button>${url ? ` &nbsp; <a class="best-open" href="${url}" target="_blank" rel="noopener">↗ open listing</a>` : ''}</span></div>
+      </div>`;
+    }).join('');
+  } catch (e) { list.innerHTML = `<div id="best-loading" style="color:#e57373">${esc(e.message)}</div>`; }
+}
+function closeBest() { $('best-modal').classList.remove('open'); }
+$('best-modal').addEventListener('click', e => { if (e.target === $('best-modal')) closeBest(); });
+
+// ── Draft (review + copy; never sends) ───────────────────────────────────────
+const drafts = {};
+function guessLang(text) {
+  const t = ' ' + String(text || '').toLowerCase().replace(/[^a-zäöüß ]/g, ' ') + ' ';
+  const count = ws => ws.reduce((n, w) => n + (t.split(` ${w} `).length - 1), 0);
+  const de = count(['ich', 'und', 'die', 'der', 'das', 'wir', 'ein', 'eine', 'mit', 'für', 'bin', 'hoi', 'grüsse', 'liebe', 'zimmer', 'nicht']);
+  const en = count(['i', 'and', 'the', 'we', 'you', 'with', 'for', 'am', 'hi', 'hello', 'room', 'not', 'my', 'is', 'regards']);
+  return de === en ? null : de > en ? 'de' : 'en';
+}
+const LANG_NAME = { de: 'German', en: 'English' };
+
+async function draftMessage(id) {
+  const btn = $('draft-btn'), area = $('draft-area');
+  if (!btn || !area || selectedId !== id) return;
+  if (drafts[id] && !confirm('Redraft? Your current text in the box will be replaced (and this uses API credits).')) return;
+  btn.disabled = true; btn.textContent = 'Drafting…';
+  area.innerHTML = '<div class="note-inline">Claude is writing a message in the ad\'s language…</div>';
+  try {
+    const body = await api(`/draft/${id}`, { method: 'POST' });
+    drafts[id] = body.draft;
+    if (selectedId === id) renderDraft(id, body.draft);
+  } catch (e) {
+    if (selectedId === id) { area.innerHTML = '<div class="draft-error"></div>'; area.firstChild.textContent = '✗ ' + e.message; }
+    else toast(e.message, { err: true });
+  } finally {
+    const b = $('draft-btn');
+    if (b) { b.disabled = false; b.textContent = drafts[id] ? '↻ Redraft' : '✎ Draft Message'; }
+  }
+}
 function renderDraft(id, text) {
-  const area = document.getElementById('draft-area');
-  area.innerHTML = `
+  const l = byId[id] || {};
+  $('draft-area').innerHTML = `
     <div id="draft-box">
-      <textarea id="draft-text" spellcheck="true"></textarea>
+      <div class="draft-head"><span>Draft</span><span class="lang-tag" id="draft-lang"></span><span class="lang-warn" id="draft-warn"></span><span style="margin-left:auto" id="draft-count"></span></div>
+      <textarea id="draft-text" spellcheck="true" aria-label="Draft message — editable"></textarea>
       <div class="draft-actions">
-        <button onclick="copyDraft()" id="copy-btn">⧉ Copy</button>
-        <span class="draft-note">review &amp; send it yourself</span>
+        <button class="primary" onclick="copyDraft()" id="copy-btn">⧉ Copy</button>
+        <button onclick="markSentFromDraft()" id="draft-sent-btn" title="Track this listing as sent">✉ Mark as sent</button>
+        <span class="draft-note">Edit freely. Nothing is sent — paste it into the ad yourself.</span>
       </div>
     </div>`;
-  const ta = document.getElementById('draft-text');
-  ta.value = text;
-  ta.addEventListener('input', () => { drafts[id] = ta.value; });
-  const btn = document.getElementById('draft-btn');
-  if (btn) btn.textContent = '↻ Redraft';
+  const ta = $('draft-text'); ta.value = text;
+  const meta = () => {
+    const lang = guessLang(ta.value), adLang = ext(l).language || guessLang(l.raw_text);
+    $('draft-lang').textContent = lang ? (LANG_NAME[lang] || lang).toUpperCase() : 'LANGUAGE ?';
+    $('draft-warn').textContent = lang && adLang && lang !== adLang ? `ad looks ${LANG_NAME[adLang] || adLang}` : lang && adLang ? 'matches the ad' : '';
+    $('draft-count').textContent = `${ta.value.trim().split(/\s+/).filter(Boolean).length} words`;
+  };
+  meta();
+  ta.addEventListener('input', () => { drafts[id] = ta.value; meta(); });
+  const b = $('draft-btn'); if (b) b.textContent = '↻ Redraft';
 }
-
 function copyDraft() {
-  const ta  = document.getElementById('draft-text');
-  const btn = document.getElementById('copy-btn');
+  const ta = $('draft-text'), btn = $('copy-btn');
   const done = () => { btn.textContent = 'Copied ✓'; setTimeout(() => btn.textContent = '⧉ Copy', 1500); };
-  if (navigator.clipboard) {
-    navigator.clipboard.writeText(ta.value).then(done, () => { ta.select(); document.execCommand('copy'); done(); });
-  } else { ta.select(); document.execCommand('copy'); done(); }
+  const fallback = () => { ta.select(); try { document.execCommand('copy'); done(); } catch (_) { toast('Copy failed — select the text and copy manually', { err: true }); } };
+  if (navigator.clipboard) navigator.clipboard.writeText(ta.value).then(done, fallback); else fallback();
+}
+function markSentFromDraft() { if (selectedId != null && byId[selectedId]?.status !== 'sent') setStatus(selectedId, 'sent'); }
+
+// ── Extract ──────────────────────────────────────────────────────────────────
+async function runExtract() {
+  const todo = allListings.filter(l => !l.extracted).length;
+  if (!confirm(`Extract reads each unprocessed ad with Claude and costs API credits.\n${todo} listing${todo === 1 ? '' : 's'} currently have no analysis. Continue?`)) return;
+  const btn = $('extract-btn'); btn.textContent = 'Extracting…'; btn.disabled = true;
+  try {
+    const d = await api('/extract', { method: 'POST' });
+    btn.textContent = `Extract (${d.extracted}/${d.total})`;
+    toast(`Analysed ${d.extracted} of ${d.total} listings`);
+    await loadListings(true);
+  } catch (e) { btn.textContent = 'Extract'; toast(e.message, { err: true }); }
+  finally { btn.disabled = false; }
 }
 
-// ── Extraction trigger ───────────────────────────────────────────────────────
-function runExtract() {
-  const btn = document.getElementById('extract-btn');
-  btn.textContent = 'Extracting…';
-  btn.disabled = true;
-  fetch('/extract', { method: 'POST' })
-    .then(r => r.json())
-    .then(d => {
-      btn.textContent = `Extract (${d.extracted}/${d.total})`;
-      btn.disabled = false;
-      fetch('/listings').then(r => r.json()).then(data => { allListings = data; applyFilters(); });
-    })
-    .catch(() => { btn.textContent = 'Extract'; btn.disabled = false; });
-}
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if ($('best-modal').classList.contains('open')) closeBest();
+  else if ($('profile-panel').classList.contains('open')) closeProfile();
+  else if ($('detail-view').classList.contains('open')) closeDetail();
+});
+
+// ── Boot ─────────────────────────────────────────────────────────────────────
+applyFilters();
+loadProfileBasics().finally(() => { loadListings().then(() => { applyFilters(); pollIngest(); }); });
 </script>
 </body>
 </html>
