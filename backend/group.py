@@ -12,6 +12,7 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from . import llm
+from .drafting import profile_for_draft
 from .db import get_all_listings, get_listing
 from .scoring import load_profile, _parse_date, price_implausible
 
@@ -234,7 +235,7 @@ say plainly that it is a group of {size} people who want to live together, and o
 arrangement (for example that all tenants sign the lease) and to provide proof of funds or references on request. \
 Only state that proof or references EXIST if the profile's "has" list says so; otherwise phrase it as a \
 willingness to discuss, never as a claim.
-- 4-7 sentences. Include the earliest move-in date if the profile has one, and a clear ask to view the apartment.
+- 4-7 sentences. State when they can move in using the applicant profile's "move_in" field: if it says available immediately, write "available immediately" / "from now" and never quote a past calendar date. Include a clear ask to view the apartment.
 - Include anything the ad explicitly asks applicants to state.
 - Output only the message text, no subject line, no notes, no quotes."""
 
@@ -262,7 +263,7 @@ class GroupDraftError(llm.LLMError):
 def build_group_prompt(listing: dict, profile: dict, group: dict) -> tuple[str, str, str]:
     """Returns (language, system, user)."""
     language = detect_language(listing)
-    applicant = {k: v for k, v in profile.items() if k != "group"}
+    applicant = {k: v for k, v in profile_for_draft(profile).items() if k != "group"}
     detail = group_detail(listing, group)
     system = GROUP_SYSTEM_PROMPT.format(language=language, size=group["size"])
     user = f"""GROUP PROFILE:

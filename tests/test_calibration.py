@@ -61,3 +61,26 @@ def test_group_flags_cheap_flat():
     ok = dict(l, rent_chf=2800)
     assert g.group_detail(ok, grp, TODAY)["group_dealbreakers"] == []
     assert 20 <= g.group_detail(ok, grp, TODAY)["group_fit_score"] <= 98
+
+
+# ---- drafting: past move-in dates ----
+def test_profile_for_draft_past_date_becomes_immediate():
+    from backend.drafting import profile_for_draft
+    p = profile_for_draft({"move_in_earliest": "2026-09-01", "age": 18}, TODAY)
+    assert "move_in_earliest" not in p and "immediately" in p["move_in"]
+    assert "2026-09-01" not in str(p)
+    p = profile_for_draft({"move_in_earliest": "2026-12-01"}, TODAY)
+    assert p["move_in"] == "from 2026-12-01"
+    p = profile_for_draft({"age": 18}, TODAY)
+    assert "move_in" not in p
+
+
+def test_solo_and_group_prompts_use_immediate_move_in():
+    from backend import drafting
+    prof = {"move_in_earliest": "2020-01-01", "group": {"size": 3}}
+    listing = {"title": "t", "rent_chf": 2800, "rooms": 4.5, "raw_text": "Wohnung", "extracted": {}}
+    grp = {"size": 3, "budget_per_person_chf": 1100, "members": [], "notes": ""}
+    _, system, user = g.build_group_prompt(listing, prof, grp)
+    assert "2020-01-01" not in user and "available immediately" in user
+    assert "never quote a past calendar date" in system or "past calendar date" in system
+    assert "past" in drafting.SYSTEM_PROMPT
