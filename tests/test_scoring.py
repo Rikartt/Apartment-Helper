@@ -169,3 +169,9 @@ def test_red_flags_subtract():
     a = _sc.score_detail(_l(extracted={"red_flags": []}), _P, _T)["fit"]
     b = _sc.score_detail(_l(extracted={"red_flags": ["deposit before viewing"]}), _P, _T)["fit"]
     assert b < a
+
+
+def test_unknown_rent_not_treated_as_cheap():
+    from backend.scoring import reply_likelihood
+    base = dict(lat=47.37, lng=8.54, available_from="2026-11-01", title="x", raw_text="")
+    assert reply_likelihood({**base, "rent_chf": 0}) > reply_likelihood({**base, "rent_chf": 700})

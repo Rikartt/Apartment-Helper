@@ -26,7 +26,7 @@ def test_startup_does_not_ingest_or_extract(db, profile_path, monkeypatch):
     import time
     with TestClient(m.app) as c:
         for _ in range(100):
-            if len(calls) >= len(m.STARTUP_SOURCES):
+            if len(calls) >= len(m.STARTUP_SOURCES) and not m._ingest_state["running"]:
                 break
             time.sleep(0.02)
         assert c.get("/listings").status_code == 200
@@ -34,7 +34,7 @@ def test_startup_does_not_ingest_or_extract(db, profile_path, monkeypatch):
     assert calls == [[s] for s in m.STARTUP_SOURCES]
 
 
-def test_startup_ingest_exception_is_swallowed(monkeypatch):
+def test_startup_ingest_exception_is_swallowed(db, monkeypatch):
     monkeypatch.setattr(m, "run_ingest", lambda s: (_ for _ in ()).throw(RuntimeError("x")))
     m._startup_ingest()  # must not raise
 
