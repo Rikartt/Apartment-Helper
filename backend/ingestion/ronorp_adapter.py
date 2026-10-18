@@ -20,7 +20,7 @@ from .geocode import geocode as _geocode
 
 BASE         = "https://ronorp.net"
 SEARCH_URL   = f"{BASE}/zurich/market/housing/zimmer-wg"
-MAX_PAGES    = 5       # pagination pages to walk
+MAX_PAGES    = 1       # robots.txt disallows ?page= URLs, so only the first page is read
 MAX_ADS      = 60
 SCRAPE_DELAY = 1.0    # seconds between detail-page fetches
 GEOCODE_DELAY = 1.0   # Nominatim policy: ≤1 req/sec

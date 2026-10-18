@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sicherheitscheck – uniboard.ch</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #f5f7fa 0%, #e4e9f2 100%);
+            color: #1a1a2e;
+        }
+
+        .card {
+            text-align: center;
+            padding: 2.5rem 2.5rem 2rem;
+            background: #fff;
+            border-radius: 20px;
+            box-shadow:
+                0 1px 3px rgba(0, 0, 0, 0.04),
+                0 8px 32px rgba(0, 0, 0, 0.08);
+            max-width: 420px;
+            width: 92%;
+        }
+
+        /* ── Shield icon ─────────────────────────── */
+        .shield-wrap {
+            width: 72px;
+            height: 72px;
+            margin: 0 auto 1.25rem;
+            position: relative;
+        }
+        .shield-wrap svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 2px 8px rgba(61, 208, 235, 0.25));
+            transition: filter 0.5s ease;
+        }
+        .shield-wrap.ok svg {
+            filter: drop-shadow(0 2px 8px rgba(22, 163, 74, 0.22));
+        }
+        .shield-fill {
+            fill: rgb(61, 208, 235);
+            transition: fill 0.5s ease;
+        }
+        .shield-wrap.ok .shield-fill { fill: #16a34a; }
+        .shield-icon {
+            fill: #fff;
+            transition: opacity 0.3s ease;
+        }
+        .shield-check { opacity: 0; transition: opacity 0.3s ease 0.15s; }
+        .shield-wrap.ok .shield-icon { opacity: 0; }
+        .shield-wrap.ok .shield-check { opacity: 1; }
+
+        /* ── Pulse ring around shield while working ─ */
+        .shield-wrap::before {
+            content: '';
+            position: absolute;
+            inset: -6px;
+            border-radius: 50%;
+            border: 2px solid rgba(61, 208, 235, 0.25);
+            animation: pulse-ring 2s ease-out infinite;
+        }
+        .shield-wrap.ok::before { animation: none; border-color: transparent; }
+
+        @keyframes pulse-ring {
+            0%   { transform: scale(0.95); opacity: 1; }
+            100% { transform: scale(1.25); opacity: 0; }
+        }
+
+        /* ── Typography ──────────────────────────── */
+        h1 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            margin-bottom: 0.35rem;
+            transition: color 0.4s ease;
+        }
+        h1.ok { color: #16a34a; }
+
+        .sub {
+            color: #6b7280;
+            font-size: 0.875rem;
+            line-height: 1.6;
+            max-width: 300px;
+            margin: 0 auto;
+        }
+
+        /* ── Progress bar ────────────────────────── */
+        .progress-wrap {
+            margin: 1.5rem auto 0;
+            width: 80%;
+            height: 4px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            width: 0%;
+            background: linear-gradient(90deg, rgb(61, 208, 235), rgb(120, 225, 245));
+            border-radius: 4px;
+            transition: width 0.3s ease, background 0.4s ease;
+        }
+        .progress-bar.ok {
+            width: 100% !important;
+            background: linear-gradient(90deg, #16a34a, #4ade80);
+        }
+
+        /* ── Status text ─────────────────────────── */
+        #status {
+            margin-top: 0.75rem;
+            font-size: 0.78rem;
+            color: #9ca3af;
+            min-height: 1.2em;
+            font-variant-numeric: tabular-nums;
+            transition: color 0.3s ease;
+        }
+        #status.ok {
+            color: #16a34a;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        #status.err { color: #dc2626; }
+
+        /* ── Noscript ────────────────────────────── */
+        noscript .ns-box {
+            margin-top: 1.25rem;
+            padding: 0.75rem 1rem;
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 10px;
+            color: #b91c1c;
+            font-size: 0.82rem;
+            line-height: 1.5;
+        }
+
+        /* ── Footer ──────────────────────────────── */
+        .footer {
+            margin-top: 1.5rem;
+            padding-top: 1rem;
+            border-top: 1px solid #f3f4f6;
+            font-size: 0.72rem;
+            color: #b0b5bf;
+            letter-spacing: 0.02em;
+        }
+        .footer a {
+            color: #9ca3af;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <!-- Shield icon with lock / checkmark -->
+        <div class="shield-wrap" id="shield">
+            <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+                <!-- Shield shape -->
+                <path class="shield-fill"
+                      d="M32 4 L56 16 V34 C56 48 44 58 32 62 C20 58 8 48 8 34 V16 Z"/>
+                <!-- Lock icon (visible while solving) -->
+                <g class="shield-icon" id="lockIcon">
+                    <rect x="24" y="30" width="16" height="12" rx="2" fill="#fff"/>
+                    <path d="M27 30 V25 C27 21.1 29.2 18 32 18 C34.8 18 37 21.1 37 25 V30"
+                          stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                </g>
+                <!-- Checkmark (visible after solved) -->
+                <path class="shield-check" id="checkIcon"
+                      d="M22 34 L29 41 L42 26"
+                      stroke="#fff" stroke-width="3.5" fill="none"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+
+        <h1 id="heading">Dein Browser wird überprüft</h1>
+        <p class="sub" id="message">Dies ist eine automatische Sicherheitsprüfung.<br>Bitte warte einen Moment…</p>
+
+        <div class="progress-wrap">
+            <div class="progress-bar" id="progress"></div>
+        </div>
+        <p id="status"></p>
+
+        <noscript>
+            <div class="ns-box">
+                <strong>JavaScript erforderlich.</strong><br>
+                Bitte aktiviere JavaScript in deinem Browser, um auf diese Seite zugreifen zu können.
+            </div>
+        </noscript>
+
+        <p class="footer"><img src="/res/img/logo_students.ch_04_14.png" alt="uniboard.ch" class="logo__img" title="uniboard.ch"></p>
+    </div>
+
+    <script>
+    (function () {
+        'use strict';
+
+        var DIFFICULTY = 16; // leading zero bits required in SHA-256 hash
+        var BATCH_SIZE = 512;
+        // Rough expected iterations for progress bar (2^DIFFICULTY)
+        var EXPECTED   = Math.pow(2, DIFFICULTY);
+
+        var statusEl   = document.getElementById('status');
+        var shieldEl   = document.getElementById('shield');
+        var headingEl  = document.getElementById('heading');
+        var messageEl  = document.getElementById('message');
+        var progressEl = document.getElementById('progress');
+
+        // Extract return URL from query string
+        var params    = new URLSearchParams(window.location.search);
+        var returnUrl = params.get('url') || '/';
+
+        // Generate 16-byte random hex nonce
+        var nonceArr = new Uint8Array(16);
+        crypto.getRandomValues(nonceArr);
+        var nonce = '';
+        for (var i = 0; i < nonceArr.length; i++) {
+            nonce += ('0' + nonceArr[i].toString(16)).slice(-2);
+        }
+
+        // Check if hash has N leading zero bits
+        function hasLeadingZeros(hashBytes, bits) {
+            var fullBytes = bits >>> 3;
+            var remaining = bits & 7;
+            for (var i = 0; i < fullBytes; i++) {
+                if (hashBytes[i] !== 0) return false;
+            }
+            if (remaining > 0) {
+                var mask = (0xFF << (8 - remaining)) & 0xFF;
+                if ((hashBytes[fullBytes] & mask) !== 0) return false;
+            }
+            return true;
+        }
+
+        // Solve PoW using batched crypto.subtle.digest
+        function solve() {
+            var counter   = 0;
+            var startTime = performance.now();
+            var encoder   = new TextEncoder();
+
+            function nextBatch() {
+                var promises = [];
+                var base = counter;
+                for (var i = 0; i < BATCH_SIZE; i++) {
+                    promises.push(
+                        crypto.subtle.digest('SHA-256', encoder.encode(nonce + ':' + (base + i)))
+                    );
+                }
+                counter += BATCH_SIZE;
+
+                Promise.all(promises).then(function (results) {
+                    for (var i = 0; i < results.length; i++) {
+                        var hash = new Uint8Array(results[i]);
+                        if (hasLeadingZeros(hash, DIFFICULTY)) {
+                            onSolved(base + i, startTime);
+                            return;
+                        }
+                    }
+                    // Update progress bar (cap at 95% until solved)
+                    var pct = Math.min(95, Math.round((counter / EXPECTED) * 100));
+                    progressEl.style.width = pct + '%';
+
+                    // Update hash count every few batches
+                    if (counter % (BATCH_SIZE * 4) === 0) {
+                        statusEl.textContent = counter.toLocaleString() + ' Hashes geprüft…';
+                    }
+                    // Yield to UI, then continue
+                    setTimeout(nextBatch, 0);
+                }).catch(function (err) {
+                    statusEl.textContent = 'Fehler: ' + err.message;
+                    statusEl.className = 'err';
+                });
+            }
+
+            nextBatch();
+        }
+
+        function onSolved(solution, startTime) {
+            var elapsed = ((performance.now() - startTime) / 1000).toFixed(1);
+
+            // Transition to success state
+            shieldEl.className  = 'shield-wrap ok';
+            headingEl.textContent = 'Verifiziert';
+            headingEl.className   = 'ok';
+            messageEl.textContent = 'Du wirst weitergeleitet…';
+            progressEl.className  = 'progress-bar ok';
+            statusEl.textContent  = 'Abgeschlossen in ' + elapsed + 's';
+            statusEl.className    = 'ok';
+
+            // Redirect to verification endpoint
+            var verifyUrl = '/challenge-verify.php'
+                + '?nonce='   + encodeURIComponent(nonce)
+                + '&counter=' + solution
+                + '&url='     + encodeURIComponent(returnUrl);
+
+            // Redirect immediately (skip in preview mode)
+            if (!params.has('preview')) {
+                window.location.href = verifyUrl;
+            }
+        }
+
+        // Preview mode: ?preview — shows the page without solving/redirecting
+        if (params.has('preview')) {
+            statusEl.textContent = 'Vorschaumodus – kein PoW wird ausgeführt';
+            // Simulate the success state after 3 seconds so you can see both states
+            setTimeout(function () {
+                onSolved(0, performance.now());
+            }, 3000);
+            return;
+        }
+
+        // Start solving
+        solve();
+    })();
+    </script>
+</body>
+</html>
