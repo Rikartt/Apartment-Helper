@@ -17,6 +17,7 @@ from pydantic import BaseModel
 load_dotenv()
 
 from . import llm, notify  # noqa: E402  (after load_dotenv so model env overrides apply)
+from .access import access_guard  # noqa: E402
 from .db import (  # noqa: E402
     init_db, get_all_listings, get_listing, set_status, get_stats, update_scores,
     start_run, finish_run, recent_runs, last_ok_run_age_seconds,
@@ -176,6 +177,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="WGPendler", lifespan=lifespan)
+app.middleware("http")(access_guard)
 app.include_router(group_router)  # Phase 7: /group/listings, /group/draft/{id}
 
 
