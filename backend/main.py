@@ -16,7 +16,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from . import llm  # noqa: E402  (after load_dotenv so model env overrides apply)
+from . import llm, notify  # noqa: E402  (after load_dotenv so model env overrides apply)
 from .db import (  # noqa: E402
     init_db, get_all_listings, get_listing, set_status, get_stats, update_scores,
     start_run, finish_run, recent_runs, last_ok_run_age_seconds,
@@ -98,6 +98,7 @@ def _tracked_ingest(sources: list[str], trigger: str = "manual",
                 print(f"[ingest] could not log run: {e}")
             _ingest_state.update(running=False, gone=gone,
                                  last_finished_at=datetime.now().isoformat())
+        notify.after_ingest()   # phone digest; never raises
         return {"total": total, "new": new}
     finally:
         _ingest_lock.release()
@@ -396,6 +397,22 @@ def ingest(sources: list[str] = Query(default=None)):
         return JSONResponse({"error": "an ingest is already running", **_ingest_state},
                             status_code=409)
     return JSONResponse(result)
+
+
+@app.get("/notify/status")
+def notify_status():
+    return JSONResponse(notify.status())
+
+
+@app.post("/notify/test")
+def notify_test():
+    if not notify.channels():
+        return JSONResponse({"error": "no notification channel configured "
+                             "(set WGP_NTFY_TOPIC or WGP_TELEGRAM_TOKEN + WGP_TELEGRAM_CHAT_ID in .env)"},
+                            status_code=400)
+    res = notify.send_test()
+    ok = any(v is None for v in res.values())
+    return JSONResponse({"ok": ok, "results": res}, status_code=200 if ok else 502)
 
 
 @app.get("/ingest/status")
