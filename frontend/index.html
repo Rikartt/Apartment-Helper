@@ -447,6 +447,7 @@ function cleanTitle(l) {
 function ext(l) { return (l.extracted && typeof l.extracted === 'object') ? l.extracted : {}; }
 
 function dealbreakers(l) {
+  if (Array.isArray(l.dealbreakers)) return l.dealbreakers.map(String);  // server-computed (scoring.py)
   const e = ext(l), out = [];
   if (l.rent_chf > budget) out.push(`over budget (${l.rent_chf} > ${budget})`);
   (e.hard_requirements || []).forEach(r => { if (BLOCKERS.some(b => String(r).toLowerCase().includes(b))) out.push(String(r)); });
@@ -467,6 +468,8 @@ function ageLabel(l) {
 }
 
 function fitReasons(l) {
+  const srv = l.fit_reasons || l.match_reasons;
+  if (Array.isArray(srv) && srv.length) return srv.map(String).slice(0, 4);  // server-computed
   const e = ext(l), r = [];
   if (l.rent_chf > 0 && l.rent_chf <= budget - 100) r.push(`CHF ${budget - l.rent_chf} under budget`);
   const t = l.transit_zentrum_min, th = l.transit_hoenggerberg_min;
@@ -849,9 +852,18 @@ function showDetail(l) {
     ${!hasExt ? '<div class="note-inline">Ad not analysed yet — run Extract for requirements, vibe and red flags.</div>' : ''}
     <button class="draft-btn" id="draft-btn" onclick="draftMessage(${l.id})">✎ Draft Message</button>
     <div id="draft-area"></div>
-    ${l.raw_text ? `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>` : ''}
+    <div id="rawtext-slot">${l.raw_text ? `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>` : ''}</div>
     ${url ? `<a class="detail-link-btn" href="${url}" target="_blank" rel="noopener">↗ View Listing</a>` : ''}`;
   if (drafts[l.id]) renderDraft(l.id, drafts[l.id]);
+  // /listings omits raw_text to keep the payload small; fetch it for the detail view.
+  if (!l.raw_text && l.has_raw_text) {
+    api(`/listings/${l.id}`).then(full => {
+      if (!full || !full.raw_text) return;
+      l.raw_text = full.raw_text;
+      const slot = $('rawtext-slot');
+      if (slot && selectedId === l.id) slot.innerHTML = `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>`;
+    }).catch(() => {});
+  }
   $('cards-view').style.display = 'none';
   $('detail-view').classList.add('open');
   document.body.classList.add('has-detail');
