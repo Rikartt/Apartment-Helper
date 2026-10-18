@@ -12,6 +12,8 @@ def _env(monkeypatch):
     for k in ("WGP_NTFY_TOPIC", "WGP_NTFY_SERVER", "WGP_TELEGRAM_TOKEN",
               "WGP_TELEGRAM_CHAT_ID", "WGP_NOTIFY_MIN_FIT", "WGP_NOTIFY_QUIET"):
         monkeypatch.delenv(k, raising=False)
+    # Quiet hours default to 23-07; disable them so results don't depend on the clock.
+    monkeypatch.setenv("WGP_NOTIFY_QUIET", "")
     monkeypatch.setattr(notify, "load_profile",
                         lambda: {"budget_chf": {"max": 1000}, "languages": [], "traits": [], "wants": []})
 

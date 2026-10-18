@@ -61,7 +61,7 @@ def parse_quiet(raw: str | None) -> tuple[int, int] | None:
 
 
 def in_quiet_hours(now: datetime | None = None) -> bool:
-    q = parse_quiet(os.environ.get("WGP_NOTIFY_QUIET"))
+    q = parse_quiet(os.environ.get("WGP_NOTIFY_QUIET", "23-07"))
     if not q:
         return False
     h = (now or datetime.now()).hour
@@ -235,7 +235,7 @@ def status() -> dict:
         pend = None
     last = _last_sent()
     return {"channels": channels(), "min_fit": min_fit(),
-            "quiet_hours": os.environ.get("WGP_NOTIFY_QUIET") or None,
+            "quiet_hours": os.environ.get("WGP_NOTIFY_QUIET", "23-07") or None,
             "quiet_now": in_quiet_hours(), "last_sent_at": last["sent_at"] if last else None,
             "last_sent_count": last["listings"] if last else None,
             "pending": pend, "last_error": _last_error}

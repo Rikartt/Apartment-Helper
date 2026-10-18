@@ -30,7 +30,8 @@ from .scoring import score_detail, load_profile, PROFILE_PATH  # noqa: E402
 BASE_DIR     = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
-STARTUP_SOURCES = [n for n in ADAPTERS if n != "mock"]
+# wgzimmer is reCAPTCHA-blocked (fetch is a no-op), so it is left out of the defaults.
+STARTUP_SOURCES = [n for n in ADAPTERS if n not in ("mock", "wgzimmer")]
 AUTO_EXTRACT = os.environ.get("WGP_AUTO_EXTRACT", "1") != "0"
 AUTO_EXTRACT_LIMIT = int(os.environ.get("WGP_AUTO_EXTRACT_LIMIT", "25"))
 
@@ -386,7 +387,7 @@ def draft_message(listing_id: int):
 @app.post("/ingest")
 def ingest(sources: list[str] = Query(default=None)):
     from .ingest import ADAPTERS
-    names = [x for x in (sources or list(ADAPTERS)) if x in ADAPTERS]
+    names = [x for x in (sources or STARTUP_SOURCES) if x in ADAPTERS]
     if not names:
         return JSONResponse({"error": "no valid sources", "valid": list(ADAPTERS)},
                             status_code=400)

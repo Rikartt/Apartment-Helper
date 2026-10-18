@@ -116,7 +116,7 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | `WGP_NTFY_SERVER` | `https://ntfy.sh` | ntfy server |
 | `WGP_TELEGRAM_TOKEN`, `WGP_TELEGRAM_CHAT_ID` | none | Telegram alerts (both needed) |
 | `WGP_NOTIFY_MIN_FIT` | `75` | Minimum fit score to alert on |
-| `WGP_NOTIFY_QUIET` | `23-07` suggested in `.env.example`; unset = no quiet hours | Quiet hours (local time); digests are held |
+| `WGP_NOTIFY_QUIET` | `23-07` (set it empty to disable) | Quiet hours (local time); digests are held |
 | `WGP_LIVE_API`, `E2E_INGEST_WAIT`, `RUN_E2E` | see Tests | Only used by the e2e script |
 
 ## Sources
