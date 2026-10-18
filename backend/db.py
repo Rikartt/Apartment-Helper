@@ -19,6 +19,8 @@ NEW_COLUMNS = [
     ("kind", "TEXT NOT NULL DEFAULT 'wg_room'"),  # wg_room | studio | apartment
     ("last_seen_at", "TEXT"),   # UTC; last ingest run that still returned this ad
     ("gone_at", "TEXT"),        # UTC; set when a healthy run no longer returns it
+    ("rooms", "REAL"),                  # Swiss "Zimmer" count, e.g. 4.5
+    ("living_area_m2", "REAL"),
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -113,8 +115,8 @@ def upsert_listing(ad: dict) -> bool:
                  available_from, raw_text, url,
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
-                 listed_at, fit_score, reply_score, kind, last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
+                 listed_at, fit_score, reply_score, kind, rooms, living_area_m2, last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -134,6 +136,8 @@ def upsert_listing(ad: dict) -> bool:
                 reply_score = CASE WHEN listings.extracted IS NOT NULL
                                    THEN listings.reply_score ELSE excluded.reply_score END,
                 kind        = excluded.kind,
+                rooms          = excluded.rooms,
+                living_area_m2 = excluded.living_area_m2,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 gone_at      = NULL
                 -- status / extracted / seen / created_at are deliberately untouched
@@ -146,6 +150,7 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("listed_at"),
             ad.get("fit_score"), ad.get("reply_score"),
             ad.get("kind") or "wg_room",
+            ad.get("rooms"), ad.get("living_area_m2"),
         ))
         return not existed
 
@@ -179,7 +184,8 @@ def get_listings_needing_extraction(
     Already-extracted listings are never returned (no re-extraction / no re-spend);
     listings that failed MAX_EXTRACT_ATTEMPTS times are skipped."""
     sql = ("SELECT * FROM listings WHERE extracted IS NULL AND length(raw_text) >= 10 "
-           "AND extract_attempts < ?")
+           "AND extract_attempts < ? "
+           "AND kind != 'apartment'")  # whole flats are group-mode only: no LLM spend
     params: list = [MAX_EXTRACT_ATTEMPTS]
     if max_rent:
         sql += " AND rent_chf <= ?"
