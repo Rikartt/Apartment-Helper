@@ -18,26 +18,46 @@
   a { color:var(--transit); }
   :focus-visible { outline:2px solid var(--amber); outline-offset:1px; }
 
-  #topbar { background:var(--panel); border-bottom:2px solid var(--red); padding:8px 16px; display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  #topbar { background:var(--panel); border-bottom:2px solid var(--red); padding:8px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0; }
   #topbar h1 { color:var(--red); font-size:1.1rem; letter-spacing:.15em; text-transform:uppercase; }
-  #count { color:var(--dim); font-size:.75rem; margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  #sync { color:var(--amber); font-size:.65rem; letter-spacing:.06em; display:none; white-space:nowrap; }
+  #count { color:var(--dim); font-size:.72rem; margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  #sync { color:var(--amber); font-size:.65rem; letter-spacing:.06em; text-transform:uppercase; display:none; white-space:nowrap; }
   #sync.on { display:inline; }
   #sync::before { content:"●"; margin-right:4px; animation:pulse 1.2s infinite; }
   @keyframes pulse { 50% { opacity:.2; } }
-  .topbar-btn { background:none; border:1px solid var(--line); color:#aaa; font-size:.7rem; padding:4px 10px; cursor:pointer; letter-spacing:.08em; white-space:nowrap; }
+  .tb-actions { display:flex; align-items:center; gap:6px; }
+  .tb-actions .topbar-btn + .topbar-btn { margin-left:0; }
+  .menu-wrap { position:relative; }
+  #more-menu { position:absolute; right:0; top:calc(100% + 6px); min-width:230px; background:var(--panel); border:1px solid var(--line); border-top:2px solid var(--red); box-shadow:0 6px 18px #000c; z-index:1500; display:flex; flex-direction:column; }
+  #more-menu[hidden] { display:none; }
+  #more-menu button { background:none; border:none; border-bottom:1px solid var(--line2); color:var(--txt); font-size:.72rem; text-align:left; padding:9px 12px; cursor:pointer; display:flex; justify-content:space-between; gap:12px; letter-spacing:.04em; }
+  #more-menu button:last-child { border-bottom:none; }
+  #more-menu button:hover, #more-menu button:focus-visible { background:#1c1c1c; }
+  #more-menu button small { color:var(--dim); font-size:.6rem; }
+  body.group-mode #more-menu .solo-only { display:none; }
+  .topbar-btn { background:none; border:1px solid var(--line); color:#b0b0b0; font-size:.7rem; height:26px; padding:0 10px; cursor:pointer; letter-spacing:.08em; white-space:nowrap; }
   .topbar-btn:hover { border-color:var(--red); color:var(--txt); }
   .topbar-btn:disabled { opacity:.5; cursor:wait; }
   .topbar-btn.amber { border-color:var(--amber); color:var(--amber); }
 
   #filters-toggle { display:none; }
-  #filters { background:var(--panel); border-bottom:1px solid var(--line); padding:8px 16px; display:flex; gap:8px 22px; align-items:center; flex-wrap:wrap; flex-shrink:0; }
+  #hint { display:none; background:#0d1a26; border-bottom:1px solid #1b3a58; color:#90caf9; font-size:.72rem; letter-spacing:.04em; padding:5px 16px; flex-shrink:0; align-items:center; gap:10px; }
+  #hint.on { display:flex; }
+  #hint button { background:none; border:1px solid #42a5f5; color:#90caf9; font:inherit; font-size:.68rem; padding:1px 8px; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
+  #hint button:hover { background:#42a5f5; color:#111; }
+  #hint #hint-x { margin-left:auto; border:none; font-size:.8rem; }
+  #filters { background:var(--panel); border-bottom:1px solid var(--line); padding:7px 16px; flex-shrink:0; }
+  .frow { display:flex; gap:8px 22px; align-items:center; flex-wrap:wrap; }
+  #filters-more { display:flex; gap:8px 22px; align-items:center; flex-wrap:wrap; margin-top:7px; padding-top:7px; border-top:1px dashed var(--line); }
+  #filters-more[hidden] { display:none; }
+  .fmore { margin-left:auto; }
+  #more-count { color:var(--amber); }
   .filter-group { display:flex; align-items:center; gap:8px; }
   .filter-group > label, .flabel { font-size:.68rem; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
   .filter-group input[type=range] { accent-color:var(--red); width:100px; }
   .filter-val { font-size:.8rem; font-variant-numeric:tabular-nums; min-width:58px; }
   .seg { display:flex; }
-  .seg button { background:var(--bg); color:var(--dim); border:1px solid var(--line); font-size:.7rem; padding:4px 8px; cursor:pointer; }
+  .seg button { background:var(--bg); color:var(--dim); border:1px solid var(--line); font-size:.7rem; height:26px; padding:0 8px; cursor:pointer; }
   .seg button + button { border-left:none; }
   .seg button:first-child { border-radius:2px 0 0 2px; } .seg button:last-child { border-radius:0 2px 2px 0; }
   .seg button:hover { color:var(--txt); }
@@ -46,6 +66,7 @@
   .seg.mode button#btn-bike.active { background:var(--bike); border-color:var(--bike); }
   .seg.poster button.active { background:#00695c; color:#fff; border-color:#00695c; }
   .seg.sort button.active { background:#7b1fa2; color:#fff; border-color:#7b1fa2; }
+  .seg.kind button.active, .seg.plain button.active { background:#37474f; color:#fff; border-color:#546e7a; }
   .seg.show button.active { background:#37474f; color:#fff; border-color:#546e7a; }
   .linkbtn { background:none; border:none; color:var(--dim); font-size:.68rem; text-decoration:underline; cursor:pointer; }
   .linkbtn:hover { color:var(--txt); }
@@ -54,14 +75,35 @@
 
   #main { display:flex; flex:1; overflow:hidden; min-height:0; }
   #map { flex:1; min-width:0; background:#222; }
-  #sidebar { width:330px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; display:flex; flex-direction:column; flex-shrink:0; }
+  #sidebar { width:360px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; display:flex; flex-direction:column; flex-shrink:0; }
   #cards-view { display:flex; flex-direction:column; min-height:100%; }
-  #sidebar-header { padding:6px 12px; border-bottom:1px solid var(--line); font-size:.62rem; color:var(--dim); letter-spacing:.06em; position:sticky; top:0; background:var(--panel); z-index:2; line-height:1.4; }
+  #sidebar-header { padding:7px 12px 8px; border-bottom:1px solid var(--line); font-size:.62rem; color:var(--dim); letter-spacing:.06em; position:sticky; top:0; background:var(--panel); z-index:2; line-height:1.4; }
+  #sh-summary { margin-bottom:5px; }
+  .sh-row { display:flex; align-items:center; gap:8px; margin-top:4px; }
+  .sh-row .flabel { width:34px; flex-shrink:0; font-size:.58rem; }
+  .sh-row .seg { flex:1; min-width:0; }
+  .sh-row .seg button { flex:1; padding:0 4px; height:24px; font-size:.64rem; white-space:nowrap; }
+  #today { border-bottom:1px solid var(--line); background:#0d0d0d; }
+  #today[hidden] { display:none; }
+  .today-head { display:flex; align-items:center; gap:8px; padding:6px 12px; font-size:.62rem; color:var(--amber); letter-spacing:.1em; text-transform:uppercase; cursor:pointer; background:none; border:none; width:100%; text-align:left; }
+  .today-head small { color:var(--dim); letter-spacing:.03em; text-transform:none; margin-left:auto; }
+  .today-row { display:grid; grid-template-columns:16px 52px 1fr auto; gap:0 8px; align-items:baseline; width:100%; background:none; border:none; border-top:1px solid var(--line2); color:var(--txt); font:inherit; font-size:.68rem; text-align:left; padding:5px 12px; cursor:pointer; }
+  .today-row:hover { background:#181818; }
+  .today-row .rk { color:var(--amber); font-size:.62rem; }
+  .today-row .pr { color:var(--red); font-variant-numeric:tabular-nums; font-size:.8rem; }
+  .today-row .tt { color:#bbb; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .today-row .mn { color:var(--transit); font-variant-numeric:tabular-nums; font-size:.64rem; }
+  .today-row .mn.bike { color:var(--bike); }
+  .today-row .nw { color:var(--amber); font-size:.5rem; font-weight:bold; letter-spacing:.08em; margin-left:4px; }
   #sidebar-header b { color:#c9c9c9; font-weight:normal; text-transform:uppercase; }
 
   /* cards */
   .card { padding:9px 12px 8px; border-bottom:1px solid var(--line2); cursor:pointer; transition:background .1s; border-left:3px solid transparent; }
   .card:hover { background:#181818; }
+  .card:focus-visible { outline-offset:-2px; }
+  .card.cursor { background:#1a1a1a; box-shadow:inset 0 0 0 1px #444; }
+  .more-cards { display:block; width:calc(100% - 24px); margin:10px 12px 14px; background:none; border:1px dashed var(--line); color:var(--dim); font:inherit; font-size:.7rem; padding:8px; cursor:pointer; letter-spacing:.06em; }
+  .more-cards:hover { color:var(--txt); border-color:#666; }
   .card.selected { background:#1c1c1c; border-left-color:var(--red); }
   .card.dim .card-body { opacity:.45; }
   .card.dim:hover .card-body { opacity:.8; }
@@ -193,6 +235,15 @@
   .best-open:hover { text-decoration:underline; }
   #best-loading { padding:32px; text-align:center; color:#959595; font-size:.8rem; letter-spacing:.06em; line-height:1.6; }
 
+  #help-modal { position:fixed; inset:0; background:#000a; z-index:2000; align-items:center; justify-content:center; display:flex; }
+  #help-modal[hidden] { display:none; }
+  #help-box { background:var(--panel); border:1px solid var(--line); border-top:2px solid var(--red); width:min(420px,92vw); }
+  #help-box #best-header { display:flex; }
+  #help-list { display:grid; grid-template-columns:70px 1fr; gap:8px 12px; padding:14px 16px; font-size:.74rem; }
+  #help-list dt { color:var(--amber); } #help-list dd { color:#bbb; }
+  kbd { border:1px solid #555; border-bottom-width:2px; padding:0 4px; font:inherit; font-size:.7em; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+
   /* toast */
   #toasts { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:3000; display:flex; flex-direction:column; gap:6px; align-items:center; width:max-content; max-width:92vw; }
   .toast { background:#222; border:1px solid #444; border-left:3px solid var(--amber); color:var(--txt); font-size:.74rem; padding:8px 12px; box-shadow:0 4px 14px #000a; display:flex; gap:12px; align-items:center; }
@@ -212,6 +263,8 @@
   .price-marker { position:absolute; left:0; top:0; transform:translate(-50%,calc(-100% - 6px)); background:var(--tier); color:#111; font:bold 12px/1 'Courier New',Courier,monospace; padding:4px 7px; border-radius:999px; white-space:nowrap; border:1.5px solid #111; box-shadow:0 2px 6px #000a; font-variant-numeric:tabular-nums; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease; }
   .price-marker::after { content:''; position:absolute; left:50%; bottom:-6px; margin-left:-5px; border:5px solid transparent; border-top-color:var(--tier); border-bottom:0; filter:drop-shadow(0 1.5px 0 #111); }
   .price-marker .cur { font-weight:normal; font-size:9px; opacity:.7; margin-left:2px; }
+  .z-far .price-marker .cur, .z-far .price-marker .fit { display:none; }
+  .z-far .price-marker { padding:3px 6px; font-size:11px; }
   .price-marker .fit { font-weight:normal; font-size:9px; opacity:.75; margin-left:4px; padding-left:4px; border-left:1px solid #0004; }
   .price-marker.tier-low { --tier:var(--tier-low); } .price-marker.tier-mid { --tier:var(--tier-mid); } .price-marker.tier-high { --tier:var(--tier-high); }
   .price-marker.dim { --tier:#777; opacity:.65; }
@@ -219,7 +272,7 @@
   .price-marker.mk-replied { box-shadow:0 0 0 2px #2e7d32, 0 2px 6px #000a; }
   .price-marker:hover, .price-marker.hover { transform:translate(-50%,calc(-100% - 6px)) scale(1.12); }
   .price-marker.selected { transform:translate(-50%,calc(-100% - 6px)) scale(1.18); border-color:#fff; box-shadow:0 0 0 3px #fff4, 0 3px 10px #000c; opacity:1; }
-  .price-cluster { display:flex; align-items:center; justify-content:center; border-radius:50%; background:#222e; color:#eee; border:2px solid #555; box-shadow:0 2px 8px #000a; font:bold 12px 'Courier New',Courier,monospace; }
+  .price-cluster { display:flex; align-items:center; justify-content:center; border-radius:50%; background:#222e; color:#eee; border:2px solid var(--ring,#666); box-shadow:0 2px 8px #000a; font:bold 12px 'Courier New',Courier,monospace; }
   .price-cluster:hover { border-color:#ccc; }
   .eth-marker { background:var(--red); border:2px solid #fff; border-radius:50%; width:14px; height:14px; box-shadow:0 0 0 4px #c004; }
   .map-legend { background:#111e; border:1px solid var(--line); border-radius:4px; padding:8px 10px; font-size:.68rem; color:#bbb; line-height:1.7; font-family:'Courier New',monospace; box-shadow:0 2px 8px #0008; }
@@ -230,35 +283,44 @@
   .map-legend hr { border:none; border-top:1px solid #2a2a2a; margin:4px 0; }
 
   @media (max-width:760px) {
-    #topbar { padding:6px 10px; gap:6px; }
-    #topbar h1 { font-size:.85rem; letter-spacing:.06em; }
-    .topbar-btn { padding:5px 6px; font-size:.64rem; letter-spacing:0; }
-    #sync { display:none !important; }
-    #count { display:none; }
-    #topbar h1 { margin-right:auto; }
+    #topbar { padding:6px 10px; gap:6px 8px; flex-wrap:wrap; }
+    #topbar h1 { font-size:.85rem; letter-spacing:.06em; margin-right:auto; }
+    .topbar-btn { padding:0 8px; font-size:.66rem; letter-spacing:0; height:30px; }
+    #sync { order:3; }
+    #count { order:4; margin-left:0; flex:1; font-size:.65rem; }
+    .tb-actions { order:5; width:100%; gap:6px; }
+    .tb-actions .topbar-btn:first-child { margin-right:auto; }
     #filters-toggle { display:inline-block; }
-    #filters { padding:8px 10px; gap:8px 14px; max-height:42vh; overflow-y:auto; }
+    #filters { padding:8px 10px; max-height:46vh; overflow-y:auto; }
     #filters.collapsed { display:none; }
+    .frow { gap:8px 14px; }
     .filter-group { flex-wrap:wrap; gap:6px; }
-    .filter-group.wide { width:100%; }
     .filter-group input[type=range] { flex:1; width:auto; min-width:90px; }
-    .seg button { padding:6px 10px; }
+    .fmore { margin-left:0; width:100%; justify-content:space-between; }
+    .seg button { height:32px; padding:0 10px; }
     #main { flex-direction:column; }
-    #map { flex:0 0 36%; min-height:160px; }
+    #map { flex:0 0 34%; min-height:150px; }
     #sidebar { width:100%; flex:1; border-left:none; border-top:2px solid var(--red); }
-    body.has-detail #map { flex-basis:30%; }
+    body.has-detail #map { flex-basis:28%; }
     #profile-panel, #group-panel { width:100vw; }
     .map-legend { display:none; }
-    .st { padding:5px 8px; font-size:.64rem; }
-    .act, .card-link { padding:5px 6px; font-size:.68rem; }
-    .draft-actions button { padding:8px 12px; }
+    .st { padding:6px 8px; font-size:.64rem; }
+    .act, .card-link { padding:6px 8px; font-size:.7rem; }
+    .draft-actions button { padding:9px 12px; }
     #toasts { bottom:8px; }
+    #sidebar-header { position:static; }
+    .sh-row .seg { overflow-x:auto; }
+    .sh-row .seg button { flex:0 0 auto; height:30px; padding:0 9px; }
+    #more-menu { right:0; }
+    .leaflet-control-zoom { display:none; }
+    #hint, #newnotice { padding:5px 10px; }
   }
 .kind-badge { font-size: .55rem; letter-spacing: .08em; color: var(--amber); border: 1px solid var(--amber); padding: 0 4px; margin-right: 4px; vertical-align: 2px; }
 
   /* ── Group mode (Phase 7) ── */
   .seg.gmode button.active { background:var(--amber); color:#111; border-color:var(--amber); font-weight:bold; }
   #group-edit-btn { display:none; }
+  @media (max-width:760px) { body.group-mode #group-edit-btn { display:inline-block; } }
   body.group-mode #group-edit-btn { display:inline-block; }
   body.group-mode .solo-only { display:none !important; }
   .group-line { font-size:.68rem; color:#bbb; margin:3px 0 2px; letter-spacing:.02em; }
@@ -270,24 +332,32 @@
   .member-row button { background:none; border:1px solid var(--line); color:#888; cursor:pointer; padding:0 8px; }
   .member-row button:hover { border-color:var(--red); color:var(--txt); }
   .g-hint { font-size:.62rem; color:#959595; margin-top:4px; }
-  @media (max-width:760px) { #mode-seg button { padding:5px 8px; font-size:.64rem; } }
+  @media (max-width:760px) { #mode-seg button { height:30px; padding:0 10px; font-size:.66rem; } }
 </style>
 </head>
 <body>
 
 <div id="topbar">
   <h1>WGPendler</h1>
-  <span id="sync" title="The server fetches new listings in the background on startup">syncing sources…</span>
-  <span id="count">— listings</span>
   <div class="seg gmode" id="mode-seg" role="group" aria-label="Search mode">
     <button data-m="solo" class="active" onclick="setGroupMode(false)" title="Find a room in a shared flat for yourself">Solo</button>
     <button data-m="group" onclick="setGroupMode(true)" title="Find a whole apartment to start a new WG with your cohort">Group</button>
   </div>
-  <button class="topbar-btn" id="group-edit-btn" onclick="openGroup()" title="Group size, per-person budget and members">Group ✎</button>
-  <button class="topbar-btn" id="filters-toggle" onclick="toggleFilters()" aria-expanded="false">Filters ▾</button>
-  <button class="topbar-btn solo-only" onclick="runExtract()" id="extract-btn" title="Reads every unprocessed ad with Claude (uses API credits)">Extract</button>
-  <button class="topbar-btn amber solo-only" onclick="showBest()" title="Claude analyses your 5 best listings (uses API credits)">Top 5</button>
-  <button class="topbar-btn" onclick="openProfile()">Profile</button>
+  <span id="sync" title="The server is fetching new listings in the background">syncing</span>
+  <span id="count" aria-live="polite">— listings</span>
+  <div class="tb-actions">
+    <button class="topbar-btn" id="filters-toggle" onclick="toggleFilters()" aria-expanded="false" aria-controls="filters">Filters ▾</button>
+    <button class="topbar-btn" id="group-edit-btn" onclick="openGroup()" title="Group size, per-person budget and members">Group ✎</button>
+    <button class="topbar-btn amber solo-only" onclick="showBest()" title="Claude analyses your 5 best listings (uses API credits)">Top 5</button>
+    <button class="topbar-btn" id="profile-btn" onclick="openProfile()">Profile</button>
+    <div class="menu-wrap">
+      <button class="topbar-btn" id="more-btn" onclick="toggleMenu()" aria-haspopup="true" aria-expanded="false" aria-label="More actions" title="More actions">⋯</button>
+      <div id="more-menu" role="menu" hidden>
+        <button role="menuitem" class="solo-only" onclick="closeMenu();runExtract()" id="extract-btn" title="Reads every unprocessed ad with Claude (uses API credits)">Extract ads <small>uses API credits</small></button>
+        <button role="menuitem" onclick="closeMenu();showHelp()">Keyboard shortcuts <small>?</small></button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <div id="group-panel" role="dialog" aria-label="Group profile">
@@ -334,82 +404,90 @@
   </div>
 </div>
 
-<div id="newnotice" role="status" aria-live="polite"><span id="newnotice-text"></span><button onclick="showNewArrivals()">Show</button></div>
+<div id="newnotice" role="status" aria-live="polite"><span id="newnotice-text"></span><button onclick="showNewArrivals()">Show</button><button id="newnotice-x" aria-label="Dismiss" onclick="$('newnotice').classList.remove('on')" style="margin-left:auto;border:none">✕</button></div>
+
+<div id="hint" role="note"><span id="hint-text"></span><button id="hint-act" type="button"></button><button id="hint-x" type="button" aria-label="Dismiss">✕</button></div>
 
 <div id="filters">
-  <div class="filter-group">
-    <label for="maxRent" id="rent-label-name">Max Rent</label>
-    <input type="range" id="maxRent" min="400" max="1500" step="50" value="1000">
-    <span class="filter-val" id="rentLabel">1000 CHF</span>
-  </div>
-  <div class="filter-group">
-    <label for="maxCommute">Max Commute</label>
-    <input type="range" id="maxCommute" min="5" max="60" step="5" value="60">
-    <span class="filter-val" id="commuteLabel">any</span>
-  </div>
-  <div class="filter-group">
-    <label>Campus</label>
-    <div class="seg campus">
-      <button id="btn-zentrum" class="active" onclick="setCampus('zentrum')">Zentrum</button>
-      <button id="btn-hoenggerberg" onclick="setCampus('hoenggerberg')">Hönggerberg</button>
+  <div class="frow">
+    <div class="filter-group">
+      <label for="maxRent" id="rent-label-name">Max Rent</label>
+      <input type="range" id="maxRent" min="400" max="1500" step="50" value="1000">
+      <span class="filter-val" id="rentLabel">1000 CHF</span>
+    </div>
+    <div class="filter-group">
+      <label for="maxCommute">Max Commute</label>
+      <input type="range" id="maxCommute" min="5" max="60" step="5" value="60">
+      <span class="filter-val" id="commuteLabel">any</span>
+    </div>
+    <div class="filter-group">
+      <span class="flabel" id="lbl-campus">Campus</span>
+      <div class="seg campus" role="group" aria-labelledby="lbl-campus">
+        <button id="btn-zentrum" class="active" onclick="setCampus('zentrum')">Zentrum</button>
+        <button id="btn-hoenggerberg" onclick="setCampus('hoenggerberg')">Hönggerberg</button>
+      </div>
+    </div>
+    <div class="filter-group">
+      <span class="flabel" id="lbl-mode">Mode</span>
+      <div class="seg mode" role="group" aria-labelledby="lbl-mode">
+        <button id="btn-transit" class="active" onclick="setMode('transit')">Transit</button>
+        <button id="btn-bike" onclick="setMode('bike')">Bike</button>
+      </div>
+    </div>
+    <div class="filter-group fmore">
+      <button class="topbar-btn" id="more-filters-btn" onclick="toggleMoreFilters()" aria-expanded="false" aria-controls="filters-more">More filters <span id="more-count"></span>▾</button>
+      <button class="linkbtn" onclick="resetFilters()">reset</button>
     </div>
   </div>
-  <div class="filter-group">
-    <label>Mode</label>
-    <div class="seg mode">
-      <button id="btn-transit" class="active" onclick="setMode('transit')">Transit</button>
-      <button id="btn-bike" onclick="setMode('bike')">Bike</button>
+  <div id="filters-more" hidden>
+    <div class="filter-group solo-only">
+      <span class="flabel" id="lbl-type">Type</span>
+      <div class="seg kind" role="group" aria-labelledby="lbl-type">
+        <button id="btn-kind-wg" class="active" onclick="setKind('wg')" title="Rooms in shared flats only">WG rooms</button>
+        <button id="btn-kind-studio" onclick="setKind('studio')" title="WG rooms plus small studios">+ Studios</button>
+      </div>
     </div>
-  </div>
-  <div class="filter-group solo-only">
-    <label>Type</label>
-    <div class="seg kind">
-      <button id="btn-kind-wg" class="active" onclick="setKind('wg')" title="Rooms in shared flats only">WG rooms</button>
-      <button id="btn-kind-studio" onclick="setKind('studio')" title="WG rooms plus small studios">+ Studios</button>
+    <div class="filter-group solo-only">
+      <span class="flabel" id="lbl-poster">Posted by</span>
+      <div class="seg poster" role="group" aria-labelledby="lbl-poster">
+        <button id="btn-poster-all" class="active" onclick="setPoster('all')">All</button>
+        <button id="btn-poster-private" onclick="setPoster('private')">Private</button>
+        <button id="btn-poster-agency" onclick="setPoster('agency')">Agency</button>
+      </div>
     </div>
-  </div>
-  <div class="filter-group solo-only">
-    <label>Posted by</label>
-    <div class="seg poster">
-      <button id="btn-poster-all" class="active" onclick="setPoster('all')">All</button>
-      <button id="btn-poster-private" onclick="setPoster('private')">Private</button>
-      <button id="btn-poster-agency" onclick="setPoster('agency')">Agency</button>
+    <div class="filter-group">
+      <span class="flabel" id="lbl-new">New</span>
+      <div class="seg plain" role="group" aria-labelledby="lbl-new"><button id="btn-new-only" onclick="setNewOnly(!newOnly)" title="Only listings first seen since your last visit">New only</button></div>
     </div>
+    <label class="chk"><input type="checkbox" id="hideDeal" onchange="applyFilters()"> Hide dealbreakers</label>
   </div>
-  <div class="filter-group">
-    <label>Show</label>
-    <div class="seg show" id="show-seg">
-      <button data-v="todo" class="active" onclick="setShow('todo')" title="Listings you have not acted on yet">To do</button>
-      <button data-v="all" onclick="setShow('all')">All</button>
-      <button data-v="sent" onclick="setShow('sent')">Sent</button>
-      <button data-v="replied" onclick="setShow('replied')">Replied</button>
-      <button data-v="rejected" onclick="setShow('rejected')">Skipped</button>
-    </div>
-  </div>
-  <div class="filter-group">
-    <label>New</label>
-    <div class="seg"><button id="btn-new-only" onclick="setNewOnly(!newOnly)" title="Only listings first seen since your last visit">New only</button></div>
-  </div>
-  <div class="filter-group">
-    <label>Sort</label>
-    <div class="seg sort">
-      <button id="btn-sort-relevance" class="active" onclick="setSort('relevance')" title="Average of fit and reply score">Best</button>
-      <button id="btn-sort-match" onclick="setSort('match')" title="Fit score: how well the listing matches your profile">Fit</button>
-      <button id="btn-sort-reply" class="solo-only" onclick="setSort('reply')" title="Estimated chance the poster replies">Reply</button>
-      <button id="btn-sort-commute" onclick="setSort('commute')" title="Shortest commute to the selected campus and mode">Commute</button>
-      <button id="btn-sort-rent" onclick="setSort('rent')" title="Cheapest first">Rent</button>
-    </div>
-  </div>
-  <label class="chk"><input type="checkbox" id="hideDeal" onchange="applyFilters()"> Hide dealbreakers</label>
-  <button class="linkbtn" onclick="resetFilters()">reset</button>
 </div>
 
 <div id="main">
   <div id="map"></div>
   <div id="sidebar">
     <div id="cards-view">
-      <div id="sidebar-header">LISTINGS</div>
-      <div id="cards"></div>
+      <div id="sidebar-header">
+        <div id="sh-summary">LISTINGS</div>
+        <div class="sh-row"><span class="flabel" id="lbl-sort">Sort</span>
+          <div class="seg sort" role="group" aria-labelledby="lbl-sort">
+            <button id="btn-sort-relevance" class="active" onclick="setSort('relevance')" title="Average of fit and reply score">Best</button>
+            <button id="btn-sort-match" onclick="setSort('match')" title="Fit score: how well the listing matches your profile">Fit</button>
+            <button id="btn-sort-reply" class="solo-only" onclick="setSort('reply')" title="Estimated chance the poster replies">Reply</button>
+            <button id="btn-sort-commute" onclick="setSort('commute')" title="Shortest commute to the selected campus and mode">Commute</button>
+            <button id="btn-sort-rent" onclick="setSort('rent')" title="Cheapest first">Rent</button>
+          </div></div>
+        <div class="sh-row"><span class="flabel" id="lbl-show">Show</span>
+          <div class="seg show" id="show-seg" role="group" aria-labelledby="lbl-show">
+            <button data-v="todo" class="active" onclick="setShow('todo')" title="Listings you have not acted on yet">To do</button>
+            <button data-v="all" onclick="setShow('all')">All</button>
+            <button data-v="sent" onclick="setShow('sent')">Sent</button>
+            <button data-v="replied" onclick="setShow('replied')">Replied</button>
+            <button data-v="rejected" onclick="setShow('rejected')">Skipped</button>
+          </div></div>
+      </div>
+      <div id="today" hidden></div>
+      <div id="cards" role="list" aria-label="Listings"></div>
     </div>
     <div id="detail-view">
       <div id="detail-topbar">
@@ -421,13 +499,28 @@
   </div>
 </div>
 
-<div id="best-modal" role="dialog" aria-label="Top 5 picks">
+<div id="best-modal" role="dialog" aria-modal="true" aria-label="Top 5 picks">
   <div id="best-box">
     <div id="best-header">
       <h2>Top 5 Picks</h2>
       <button class="cancel-btn" onclick="closeBest()" aria-label="Close">✕</button>
     </div>
     <div id="best-list"><div id="best-loading">Analyzing listings…</div></div>
+  </div>
+</div>
+<div id="help-modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" hidden>
+  <div id="help-box">
+    <div id="best-header"><h2>Keyboard shortcuts</h2><button class="cancel-btn" onclick="closeHelp()" aria-label="Close">✕</button></div>
+    <dl id="help-list">
+      <dt>j / k</dt><dd>next / previous listing</dd>
+      <dt>Enter</dt><dd>open the highlighted listing</dd>
+      <dt>s</dt><dd>mark as sent (again to clear)</dd>
+      <dt>x</dt><dd>mark as skipped</dd>
+      <dt>d</dt><dd>draft a message for the open listing</dd>
+      <dt>o</dt><dd>open the ad in a new tab</dd>
+      <dt>Esc</dt><dd>close panel / back to list</dd>
+      <dt>?</dt><dd>this help</dd>
+    </dl>
   </div>
 </div>
 <div id="toasts" aria-live="polite"></div>
@@ -476,12 +569,17 @@ function fmtChf(n) { return String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/
 function priceOf(l) { return groupMode ? (l.per_person_chf ?? l.rent_chf) : l.rent_chf; }
 
 const cluster = L.markerClusterGroup({
-  maxClusterRadius: 45, disableClusteringAtZoom: 15, showCoverageOnHover: false,
+  maxClusterRadius: 58, disableClusteringAtZoom: 16, showCoverageOnHover: false,
   spiderfyOnMaxZoom: true, chunkedLoading: true, removeOutsideVisibleBounds: true,
   iconCreateFunction: c => {
     const n = c.getChildCount();
     const size = n < 10 ? 32 : n < 50 ? 38 : 44;
-    return L.divIcon({ className: 'price-marker-wrap', html: `<div class="price-cluster" style="width:${size}px;height:${size}px">${n}</div>`, iconSize: [size, size] });
+    // ring colour = tier of the average rent inside, so cheap areas stand out at city zoom
+    let sum = 0, lo = Infinity;
+    const kids = c.getAllChildMarkers();
+    for (const m of kids) { sum += m._price; if (m._price < lo) lo = m._price; }
+    const ring = kids.length ? rentTier(sum / kids.length).color : '#666';
+    return L.divIcon({ className: 'price-marker-wrap', html: `<div class="price-cluster" style="width:${size}px;height:${size}px;--ring:${ring}" title="${n} listings, from ${isFinite(lo) ? fmtChf(lo) : '?'}">${n}</div>`, iconSize: [size, size] });
   },
 }).addTo(map);
 
@@ -498,6 +596,8 @@ legend.onAdd = () => {
   return div;
 };
 legend.addTo(map);
+const syncZoomClass = () => $('map').classList.toggle('z-far', map.getZoom() <= 14);
+map.on('zoomend', syncZoomClass); syncZoomClass();
 
 // ── State ────────────────────────────────────────────────────────────────────
 let allListings = [];
@@ -644,6 +744,7 @@ async function api(url, opts) {
 
 // ── Filters ──────────────────────────────────────────────────────────────────
 function seg(ids, active) { ids.forEach(([id, v]) => $(id).classList.toggle('active', v === active)); }
+function syncPressed() { document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.classList.contains('active')))); }
 function setCampus(c) { campus = c; seg([['btn-zentrum','zentrum'],['btn-hoenggerberg','hoenggerberg']], c); applyFilters(); }
 function setMode(m)   { mode = m;   seg([['btn-transit','transit'],['btn-bike','bike']], m); applyFilters(); }
 function setKind(k)   { kindFilter = k; seg([['btn-kind-wg','wg'],['btn-kind-studio','studio']], k); applyFilters(); }
@@ -684,6 +785,16 @@ function toggleFilters() {
   $('filters-toggle').textContent = c ? 'Filters ▾' : 'Filters ▴';
   setTimeout(() => map.invalidateSize(), 50);
 }
+function toggleMoreFilters(force) {
+  const box = $('filters-more'), open = force ?? box.hidden;
+  box.hidden = !open; $('more-filters-btn').setAttribute('aria-expanded', String(open));
+  setTimeout(() => map.invalidateSize(), 50);
+}
+function toggleMenu() { const m = $('more-menu'); m.hidden = !m.hidden; $('more-btn').setAttribute('aria-expanded', String(!m.hidden)); if (!m.hidden) m.querySelector('button:not([style*=none])')?.focus(); }
+function closeMenu() { $('more-menu').hidden = true; $('more-btn').setAttribute('aria-expanded', 'false'); }
+document.addEventListener('click', e => { if (!e.target.closest('.menu-wrap')) closeMenu(); });
+function showHelp() { $('help-modal').hidden = false; $('help-modal').querySelector('.cancel-btn').focus(); }
+function closeHelp() { $('help-modal').hidden = true; }
 const mq = window.matchMedia('(max-width: 760px)');
 function syncFilterCollapse() { $('filters').classList.toggle('collapsed', mq.matches); $('filters-toggle').textContent = 'Filters ▾'; setTimeout(() => map.invalidateSize(), 50); }
 mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
@@ -731,6 +842,9 @@ function applyFilters() {
   const maxRent = parseInt($('maxRent').value), maxCommute = parseInt($('maxCommute').value);
   $('rentLabel').textContent = `${maxRent} CHF`;
   $('commuteLabel').textContent = maxCommute >= 60 ? 'any' : `≤ ${maxCommute} min`;
+  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0);
+  $('more-count').textContent = nMore ? `(${nMore}) ` : '';
+  syncPressed();
   cancelAnimationFrame(_raf);
   _raf = requestAnimationFrame(() => {
     const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked };
@@ -766,12 +880,12 @@ function getMarker(l) {
   let m = markers[l.id];
   const sig = markerHtml(l);
   if (!m) {
-    m = L.marker([l.lat, l.lng], { icon: makeIcon(l) });
+    m = L.marker([l.lat, l.lng], { icon: makeIcon(l), keyboard: false });
     m.bindPopup(() => popupHtml(byId[l.id]), { closeButton: false });
     m.on('click', () => selectListing(l.id));
     markers[l.id] = m;
   } else if (m._sig !== sig) m.setIcon(makeIcon(l));
-  m._sig = sig;
+  m._sig = sig; m._price = priceOf(l);
   return m;
 }
 function markerEl(id) { return markers[id]?.getElement()?.querySelector('.price-marker'); }
@@ -786,6 +900,7 @@ function groupLine(l) {
   if (l.worst_commute_min != null) bits.push(`worst commute <b>${l.worst_commute_min}</b> min`);
   return bits.join(' · ');
 }
+function headPriceText(l) { return groupMode ? `CHF ${fmtChf(priceOf(l))} per person` : `CHF ${l.rent_chf}`; }
 function headPrice(l) {
   return groupMode
     ? `${fmtChf(priceOf(l))}<small>pp</small>`
@@ -806,7 +921,7 @@ function cardHtml(l) {
   if (deal.length) cls.push('dim');
   if (l.status) cls.push('st-' + l.status);
   const avail = l.available_from && /^\d/.test(l.available_from) ? `from ${esc(l.available_from)}` : `start: ${esc(l.available_from || 'unknown')}`;
-  return `<div class="${cls.join(' ')}" id="card-${l.id}" data-id="${l.id}">
+  return `<div class="${cls.join(' ')}" id="card-${l.id}" data-id="${l.id}" role="listitem" tabindex="0" aria-label="${esc(cleanTitle(l))}, ${esc(String(headPriceText(l)))}">
     <div class="card-body">
       <div class="card-top">
         <span class="card-dot" style="background:${deal.length ? '#777' : tier.color}" title="${tier.label}"></span>
@@ -837,9 +952,65 @@ const SORT_DESC = {
   rent: 'Cheapest first',
 };
 
+const CHUNK = 80;
+let curList = [], renderedN = 0, cursorId = null;
+
+// "What should I message today?": best fit, boosted by freshness, not yet acted on.
+function todayPicks(list) {
+  const pick = [];
+  for (const l of list) {
+    if (l._deal.length || l.status) continue;
+    const d = daysAgo(l);
+    const boost = (isNew(l) ? 6 : 0) + (d == null ? 0 : d <= 1 ? 10 : d <= 3 ? 6 : d <= 7 ? 2 : 0);
+    pick.push([relevanceScore(l) + boost, l]);
+  }
+  pick.sort((x, y) => y[0] - x[0]);
+  return pick.slice(0, 5).map(x => x[1]);
+}
+let todayOpen = true;
+try { const v = localStorage.getItem('wgp_today'); todayOpen = v == null ? !window.matchMedia('(max-width:760px)').matches : v === '1'; } catch (_) {}
+function renderToday(list) {
+  const box = $('today');
+  const picks = (loadState === 'ok' && showFilter === 'todo' && !newOnly) ? todayPicks(list) : [];
+  if (picks.length < 2) { box.hidden = true; return; }
+  const c = campus, m = mode;
+  box.hidden = false;
+  box.innerHTML = `<button class="today-head" aria-expanded="${todayOpen}" onclick="toggleToday()">${todayOpen ? '▾' : '▸'} Message today <small>${picks.length} best fresh picks</small></button>` +
+    (todayOpen ? picks.map((l, i) => {
+      const mins = commuteMin(l);
+      return `<button class="today-row" data-id="${l.id}"><span class="rk">${i + 1}</span><span class="pr">${fmtChf(priceOf(l))}</span><span class="tt">${esc(cleanTitle(l))}${isNew(l) ? '<span class="nw">NEW</span>' : ''}</span><span class="mn ${!groupMode && m === 'bike' ? 'bike' : ''}">${mins < 999 ? mins + ' min' : ''}</span></button>`;
+    }).join('') : '');
+}
+function toggleToday() { todayOpen = !todayOpen; try { localStorage.setItem('wgp_today', todayOpen ? '1' : '0'); } catch (_) {} renderToday(curList); }
+$('today').addEventListener('click', e => { const r = e.target.closest('.today-row'); if (r) { ensureRendered(+r.dataset.id); selectListing(+r.dataset.id); } });
+
+function moreBtnHtml() {
+  const left = curList.length - renderedN;
+  return left > 0 ? `<button class="more-cards" id="more-cards" onclick="renderMoreCards()">Show ${Math.min(CHUNK, left)} more <span style="color:#777">(${left} not shown)</span></button>` : '';
+}
+function renderMoreCards(upto) {
+  $('more-cards')?.remove();
+  const end = Math.min(curList.length, upto != null ? upto : renderedN + CHUNK);
+  if (end <= renderedN) return;
+  const html = curList.slice(renderedN, end).map(cardHtml).join('');
+  renderedN = end;
+  $('cards').insertAdjacentHTML('beforeend', html + moreBtnHtml());
+  if (cursorId != null) $(`card-${cursorId}`)?.classList.add('cursor');
+}
+function ensureRendered(id) {
+  if ($(`card-${id}`)) return;
+  const i = curList.findIndex(l => l.id === id);
+  if (i >= 0) renderMoreCards(i + 1);
+}
+$('sidebar').addEventListener('scroll', () => {
+  const sb = $('sidebar');
+  if ($('more-cards') && sb.scrollTop + sb.clientHeight > sb.scrollHeight - 400) renderMoreCards();
+}, { passive: true });
+
 function renderAll(listings) {
   const total = groupMode ? allListings.length : allListings.filter(l => l.kind !== 'apartment').length;
-  $('count').textContent = loadState === 'ok' ? `${listings.length} of ${total} listings` : '— listings';
+  $('count').textContent = loadState === 'ok' ? `${listings.length} shown · ${total} total` : '— listings';
+  curList = listings;
 
   // map: diff against what is already in the cluster
   const want = new Map(listings.map(l => [l.id, l]));
@@ -853,23 +1024,25 @@ function renderAll(listings) {
   if (toAdd.length) cluster.addLayers(toAdd);
 
   // sidebar
-  const head = $('sidebar-header'), cards = $('cards');
+  const head = $('sh-summary'), cards = $('cards');
   if (loadState === 'loading') {
-    head.textContent = 'LISTINGS';
+    head.textContent = 'LISTINGS'; $('today').hidden = true;
     cards.innerHTML = '<div class="skel"></div>'.repeat(5);
     return;
   }
   if (loadState === 'error') {
-    head.textContent = 'LISTINGS';
+    head.textContent = 'LISTINGS'; $('today').hidden = true;
     cards.innerHTML = `<div class="empty err"><h3>Can't reach the server</h3>The listings request failed.<br>Is <code>uvicorn</code> running?<br><button class="linkbtn" onclick="loadListings()">retry</button></div>`;
     return;
   }
   const dealN = listings.filter(l => l._deal.length).length;
   const gTag = groupMode && groupInfo?.group ? `group of <b>${groupInfo.group.size}</b> · CHF ${fmtChf(groupInfo.group.budget_per_person_chf)} pp<br>` : '';
-  head.innerHTML = `${gTag}<b>${listings.length}</b> ${groupMode ? 'apartment' : 'listing'}${listings.length === 1 ? '' : 's'} · sorted by <b>${sortMode === 'relevance' ? 'best' : sortMode}</b><br>${groupMode && sortMode === 'relevance' ? 'Best = group fit score' : SORT_DESC[sortMode]}${dealN ? ` · ${dealN} dealbreaker${dealN === 1 ? '' : 's'} last` : ''}`;
+  head.innerHTML = `${gTag}<b>${listings.length}</b> ${groupMode ? 'apartment' : 'listing'}${listings.length === 1 ? '' : 's'} · ${groupMode && sortMode === 'relevance' ? 'best = group fit score' : esc(SORT_DESC[sortMode])}${dealN ? ` · ${dealN} dealbreaker${dealN === 1 ? '' : 's'} last` : ''}`;
+  renderToday(listings);
   if (!listings.length) {
+    renderedN = 0;
     if (!total) {
-      const syncing = Date.now() - pageStart < SYNC_WINDOW_MS;
+      const syncing = $('sync').classList.contains('on') || Date.now() - pageStart < SYNC_WINDOW_MS;
       cards.innerHTML = `<div class="empty"><h3>${syncing ? 'Fetching listings…' : 'No listings yet'}</h3>${syncing
         ? 'The server is pulling rooms from Flatfox, WGZimmer, Ronorp and Homegate. The first run takes 1–2 minutes — this list fills in on its own.'
         : 'Nothing has been ingested. Restart the server or POST /ingest to fetch listings.'}</div>`;
@@ -878,7 +1051,10 @@ function renderAll(listings) {
     }
     return;
   }
-  cards.innerHTML = listings.map(cardHtml).join('');
+  renderedN = Math.min(CHUNK, listings.length);
+  cards.innerHTML = listings.slice(0, renderedN).map(cardHtml).join('') + moreBtnHtml();
+  if (cursorId != null && !want.has(cursorId)) cursorId = null;
+  if (cursorId != null) { ensureRendered(cursorId); $(`card-${cursorId}`)?.classList.add('cursor'); }
 }
 
 // ── Card interactions (delegated) ────────────────────────────────────────────
@@ -894,7 +1070,19 @@ $('cards').addEventListener('click', e => {
 $('cards').addEventListener('mouseover', e => { const c = e.target.closest('.card'); if (c) markerEl(+c.dataset.id)?.classList.add('hover'); });
 $('cards').addEventListener('mouseout', e => { const c = e.target.closest('.card'); if (c) markerEl(+c.dataset.id)?.classList.remove('hover'); });
 
+function setCursor(id, scroll) {
+  if (cursorId != null) $(`card-${cursorId}`)?.classList.remove('cursor');
+  if (cursorId != null) markerEl(cursorId)?.classList.remove('hover');
+  cursorId = id;
+  if (id == null) return;
+  ensureRendered(id);
+  const c = $(`card-${id}`);
+  if (c) { c.classList.add('cursor'); if (scroll) c.scrollIntoView({ block: 'nearest' }); }
+  markerEl(id)?.classList.add('hover');
+}
 function selectListing(id) {
+  ensureRendered(id);
+  cursorId = id;
   if (selectedId != null) { markerEl(selectedId)?.classList.remove('selected'); markers[selectedId]?.setZIndexOffset(0); }
   selectedId = id;
   document.querySelectorAll('.card.selected').forEach(c => c.classList.remove('selected'));
@@ -905,7 +1093,7 @@ function selectListing(id) {
   map.setView([l.lat, l.lng], Math.max(map.getZoom(), 15), { animate: false });
   if (m && shown.has(id)) {
     m.setZIndexOffset(1000);
-    cluster.zoomToShowLayer(m, () => { markerEl(id)?.classList.add('selected'); m.openPopup(); });
+    cluster.zoomToShowLayer(m, () => { markerEl(id)?.classList.add('selected'); if (!mq.matches) m.openPopup(); });
   }
   showDetail(l);
 }
@@ -1007,7 +1195,7 @@ function closeDetail() {
   $('detail-view').classList.remove('open');
   $('cards-view').style.display = '';
   document.body.classList.remove('has-detail');
-  setTimeout(() => { map.invalidateSize(); $(`card-${selectedId}`)?.scrollIntoView({ block: 'nearest' }); }, 50);
+  setTimeout(() => { map.invalidateSize(); setCursor(selectedId, true); }, 50);
 }
 
 // ── Loading listings (+ background-ingest polling) ───────────────────────────
@@ -1040,43 +1228,34 @@ async function loadListings(silent) {
     return false;
   }
 }
-function pollIngest() {
-  const syncing = () => Date.now() - pageStart < SYNC_WINDOW_MS;
-  if (syncing()) $('sync').classList.add('on');
-  const t = setInterval(async () => {
-    if (!syncing()) { clearInterval(t); $('sync').classList.remove('on'); if (!allListings.length) applyFilters(); return; }
-    const prevLen = allListings.length, prevMax = Math.max(0, ...allListings.map(l => l.id));
-    const ok = await fetchListings().catch(() => null);
-    if (!ok) return;
-    const max = Math.max(0, ...ok.map(l => l.id));
-    if (ok.length !== prevLen || max !== prevMax) {
-      const keepStatus = {}; allListings.forEach(l => keepStatus[l.id] = l.status);
-      indexListings(ok); ok.forEach(l => { if (l.status == null && keepStatus[l.id]) l.status = keepStatus[l.id]; });
-      loadState = 'ok';
-      if (prevLen > 0 && ok.length > prevLen) toast(`${ok.length - prevLen} new listing${ok.length - prevLen === 1 ? '' : 's'} arrived`);
-      applyFilters();
-    }
-  }, 6000);
-}
-
-// ── Live notice when the periodic ingest adds listings while the page is open ─
-let _pendingNew = null, _lastIngestSeen = null;
-async function checkNewArrivals() {
+// Background-ingest awareness: /ingest/status is polled while a scrape runs (fast) and
+// otherwise once a minute. A finished run either fills an empty list or raises the notice.
+let _pendingNew = null, _lastIngestSeen = null, _statusTimer = 0;
+function setSyncing(on) { $('sync').classList.toggle('on', !!on); }
+async function checkIngest() {
+  let next = 60000;
   try {
     const st = await fetch('/ingest/status').then(r => r.ok ? r.json() : null);
-    if (!st) return;
-    const fin = st.last_finished_at;
-    if (_lastIngestSeen === null) { _lastIngestSeen = fin; return; }   // baseline on first poll
-    if (st.running || fin === _lastIngestSeen) return;
-    _lastIngestSeen = fin;
-    const data = await fetch('/listings').then(r => r.ok ? r.json() : null);
-    if (!data) return;
-    const fresh = data.filter(l => !byId[l.id]);
-    if (!fresh.length) return;
-    _pendingNew = data;
-    $('newnotice-text').textContent = `${fresh.length} new listing${fresh.length === 1 ? '' : 's'}`;
-    $('newnotice').classList.add('on');
+    if (st) {
+      setSyncing(st.running);
+      if (st.running) next = 10000;
+      const fin = st.last_finished_at ?? null;
+      if (_lastIngestSeen === undefined || _lastIngestSeen === 'init') { _lastIngestSeen = fin; }
+      else if (!st.running && fin !== _lastIngestSeen) { _lastIngestSeen = fin; await onIngestFinished(); }
+      if (st.running && loadState === 'ok' && !allListings.length) { const d = await fetchListings().catch(() => null); if (d && d.length) { indexListings(d); applyFilters(); } }
+    }
   } catch (e) { /* offline: try again next tick */ }
+  clearTimeout(_statusTimer); _statusTimer = setTimeout(checkIngest, next);
+}
+async function onIngestFinished() {
+  const data = await fetchListings().catch(() => null);
+  if (!data) return;
+  const fresh = data.filter(l => !byId[l.id]);
+  if (!fresh.length) return;
+  if (!allListings.length) { indexListings(data); loadState = 'ok'; applyFilters(); return; }
+  _pendingNew = data;
+  $('newnotice-text').textContent = `${fresh.length} new ${groupMode ? 'flat' : 'listing'}${fresh.length === 1 ? '' : 's'}`;
+  $('newnotice').classList.add('on');
 }
 function showNewArrivals() {
   if (_pendingNew) {
@@ -1087,8 +1266,20 @@ function showNewArrivals() {
   $('newnotice').classList.remove('on');
   if (visitCutoff != null) setNewOnly(true); else applyFilters();
 }
-setInterval(checkNewArrivals, 60000);
-checkNewArrivals();
+_lastIngestSeen = 'init';
+
+// ── First-run hint ───────────────────────────────────────────────────────────
+function hintDismissed(k) { try { return localStorage.getItem('wgp_hint_' + k) === '1'; } catch (_) { return false; } }
+let _hintKey = null;
+function updateHint() {
+  let key = null, text = '', label = '', fn = null;
+  if (groupMode && !_profile.group) { key = 'group'; text = 'Using a default group of 3 at CHF 1100 per person.'; label = 'Set up group'; fn = openGroup; }
+  else if (!groupMode && !String(_profile.message_template || '').trim()) { key = 'profile'; text = 'Add a short intro in your profile so drafted messages sound like you.'; label = 'Open profile'; fn = openProfile; }
+  const box = $('hint');
+  if (!key || hintDismissed(key)) { box.classList.remove('on'); _hintKey = null; return; }
+  _hintKey = key; $('hint-text').textContent = text; $('hint-act').textContent = label; $('hint-act').onclick = fn; box.classList.add('on');
+}
+$('hint-x').onclick = () => { try { localStorage.setItem('wgp_hint_' + _hintKey, '1'); } catch (_) {} $('hint').classList.remove('on'); };
 
 // ── Profile panel ────────────────────────────────────────────────────────────
 async function loadProfileBasics() {
@@ -1098,10 +1289,10 @@ async function loadProfileBasics() {
     if (p.budget_chf?.max) { budget = p.budget_chf.max; $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50)); }
     if (p.move_in_earliest) moveIn = p.move_in_earliest;
   } catch (_) {}
-  applyModeUI();
+  applyModeUI(); updateHint();
 }
 async function openProfile() {
-  $('profile-panel').classList.add('open');
+  $('profile-panel').classList.add('open'); focusPanel('p-status');
   try {
     const p = await api('/profile'); _profile = p;
     $('p-status').value = p.status || '';
@@ -1116,7 +1307,10 @@ async function openProfile() {
     $('p-template').value = p.message_template || '';
   } catch (e) { toast('Could not load profile: ' + e.message, { err: true }); }
 }
-function closeProfile() { $('profile-panel').classList.remove('open'); }
+function closeProfile() { $('profile-panel').classList.remove('open'); restoreFocus(); }
+let _lastFocus = null;
+function focusPanel(id) { _lastFocus = document.activeElement; setTimeout(() => $(id)?.focus(), 220); }
+function restoreFocus() { try { _lastFocus?.focus(); } catch (_) {} _lastFocus = null; }
 async function saveProfile() {
   const lines = id => $(id).value.trim().split('\n').map(s => s.trim()).filter(Boolean);
   const languages = lines('p-languages').map(line => { const parts = line.split(/\s+/); const level = parts.pop(); return { lang: parts.join(' '), level }; });
@@ -1131,7 +1325,7 @@ async function saveProfile() {
   const btn = $('save-btn'); btn.disabled = true; btn.textContent = 'Saving…';
   try {
     await api('/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-    _profile = updated; budget = updated.budget_chf.max; moveIn = updated.move_in_earliest || moveIn;
+    _profile = updated; budget = updated.budget_chf.max; moveIn = updated.move_in_earliest || moveIn; updateHint();
     toast('Profile saved — listings re-scored');
     closeProfile();
     await loadListings(true);
@@ -1160,10 +1354,11 @@ async function setGroupMode(g) {
   groupMode = g;
   try { localStorage.setItem('wgp_mode', g ? 'group' : 'solo'); } catch (_) {}
   if ($('detail-view').classList.contains('open')) closeDetail();
-  selectedId = null; allListings = []; byId = {};
+  selectedId = null; cursorId = null; allListings = []; byId = {};
+  map.closePopup(); map.setView([47.388, 8.527], 13, { animate: false });
   applyModeUI();
   await loadListings();
-  if (g && !_profile.group) { toast('Using a default group of 3 at CHF 1100 pp. Set yours with Group ✎.'); }
+  updateHint();
 }
 function memberRow(m = {}) {
   const d = document.createElement('div'); d.className = 'member-row';
@@ -1187,9 +1382,9 @@ function openGroup() {
   $('g-members').innerHTML = '';
   (g.members || []).forEach(m => $('g-members').appendChild(memberRow(m)));
   syncAddBtn();
-  $('group-panel').classList.add('open');
+  $('group-panel').classList.add('open'); focusPanel('g-size');
 }
-function closeGroup() { $('group-panel').classList.remove('open'); }
+function closeGroup() { $('group-panel').classList.remove('open'); restoreFocus(); }
 async function saveGroup() {
   const size = parseInt($('g-size').value), budget = parseInt($('g-budget').value);
   const members = [...$('g-members').children].map(r => ({ label: r.querySelector('input').value.trim(), campus: r.querySelector('select').value }));
@@ -1201,7 +1396,7 @@ async function saveGroup() {
   try {
     const updated = { ..._profile, group };
     await api('/profile', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(updated) });
-    _profile = updated;
+    _profile = updated; updateHint();
     toast('Group saved');
     closeGroup();
     applyModeUI();
@@ -1212,7 +1407,7 @@ async function saveGroup() {
 
 // ── Top 5 ────────────────────────────────────────────────────────────────────
 async function showBest() {
-  $('best-modal').classList.add('open');
+  $('best-modal').classList.add('open'); _lastFocus = document.activeElement; $('best-box').querySelector('.cancel-btn').focus();
   const list = $('best-list');
   list.innerHTML = '<div id="best-loading">Analyzing your top listings with Claude…<br>This takes a few seconds.</div>';
   try {
@@ -1236,7 +1431,7 @@ async function showBest() {
     }).join('');
   } catch (e) { list.innerHTML = `<div id="best-loading" style="color:#e57373">${esc(e.message)}</div>`; }
 }
-function closeBest() { $('best-modal').classList.remove('open'); }
+function closeBest() { $('best-modal').classList.remove('open'); restoreFocus(); }
 $('best-modal').addEventListener('click', e => { if (e.target === $('best-modal')) closeBest(); });
 
 // ── Draft (review + copy; never sends) ───────────────────────────────────────
@@ -1315,18 +1510,45 @@ async function runExtract() {
   finally { btn.disabled = false; }
 }
 
+function step(delta) {
+  if (!curList.length) return;
+  const base = $('detail-view').classList.contains('open') ? selectedId : cursorId;
+  let i = curList.findIndex(l => l.id === base);
+  i = i < 0 ? (delta > 0 ? 0 : curList.length - 1) : Math.max(0, Math.min(curList.length - 1, i + delta));
+  const id = curList[i].id;
+  if ($('detail-view').classList.contains('open')) selectListing(id); else setCursor(id, true);
+}
 document.addEventListener('keydown', e => {
-  if (e.key !== 'Escape') return;
-  if ($('best-modal').classList.contains('open')) closeBest();
-  else if ($('group-panel').classList.contains('open')) closeGroup();
-  else if ($('profile-panel').classList.contains('open')) closeProfile();
-  else if ($('detail-view').classList.contains('open')) closeDetail();
+  if (e.key === 'Escape') {
+    if (!$('more-menu').hidden) closeMenu();
+    else if (!$('help-modal').hidden) closeHelp();
+    else if ($('best-modal').classList.contains('open')) closeBest();
+    else if ($('group-panel').classList.contains('open')) closeGroup();
+    else if ($('profile-panel').classList.contains('open')) closeProfile();
+    else if ($('detail-view').classList.contains('open')) closeDetail();
+    return;
+  }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const t = e.target, tag = t.tagName;
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+  if ($('profile-panel').classList.contains('open') || $('group-panel').classList.contains('open') || $('best-modal').classList.contains('open')) return;
+  const k = e.key, detail = $('detail-view').classList.contains('open');
+  const target = detail ? selectedId : cursorId;
+  if (k === 'j' || k === 'ArrowDown' && t === document.body) { e.preventDefault(); step(1); }
+  else if (k === 'k' || k === 'ArrowUp' && t === document.body) { e.preventDefault(); step(-1); }
+  else if (k === '?') showHelp();
+  else if (k === 'Enter' && !detail && cursorId != null && (t === document.body || t.classList?.contains('card'))) { e.preventDefault(); selectListing(cursorId); }
+  else if (k === 'Enter' && t.classList?.contains('card')) { e.preventDefault(); selectListing(+t.dataset.id); }
+  else if (target != null && (k === 's' || k === 'x')) setStatus(target, k === 's' ? 'sent' : 'rejected');
+  else if (target != null && k === 'o') { const u = byId[target]?.url; if (/^https?:\/\//i.test(u || '')) window.open(u, '_blank', 'noopener'); }
+  else if (detail && k === 'd') draftMessage(selectedId);
 });
+$('cards').addEventListener('focusin', e => { const c = e.target.closest?.('.card'); if (c && +c.dataset.id !== cursorId) setCursor(+c.dataset.id, false); });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 applyModeUI();
 applyFilters();
-loadProfileBasics().finally(() => { loadListings().then(() => { applyFilters(); pollIngest(); }); });
+loadProfileBasics().finally(() => { loadListings().then(() => { applyFilters(); checkIngest(); updateHint(); }); });
 </script>
 </body>
 </html>
