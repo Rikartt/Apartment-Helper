@@ -12,12 +12,27 @@ NEW_COLUMNS = [
     ("transit_hoenggerberg_min", "INTEGER"),
     ("listed_at", "TEXT"),
     ("reply_score", "INTEGER"),
+    ("status", "TEXT"),                 # NULL | sent | replied | rejected
+    ("status_updated_at", "TEXT"),
+    ("extract_attempts", "INTEGER NOT NULL DEFAULT 0"),
+    ("extracted_at", "TEXT"),
+]
+
+VALID_STATUSES = ("sent", "replied", "rejected")
+
+INDEXES = [
+    "CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status)",
+    "CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_listings_rent ON listings(rent_chf)",
+    "CREATE INDEX IF NOT EXISTS idx_listings_extract "
+    "ON listings(extracted IS NULL, extract_attempts)",
 ]
 
 
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
@@ -51,16 +66,30 @@ def init_db():
         """)
         # migrate existing DBs that predate new columns
         existing = {row[1] for row in conn.execute("PRAGMA table_info(listings)")}
+        status_was_missing = "status" not in existing
         for col, typedef in NEW_COLUMNS:
             if col not in existing:
                 conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {typedef}")
+        if status_was_missing:
+            # carry over the legacy boolean flags into the new status column
+            conn.execute("""
+                UPDATE listings SET status = CASE WHEN replied = 1 THEN 'replied'
+                                                  WHEN sent = 1 THEN 'sent' END,
+                                    status_updated_at = datetime('now')
+                WHERE sent = 1 OR replied = 1
+            """)
+        for stmt in INDEXES:
+            conn.execute(stmt)
         conn.commit()
 
 
 def upsert_listing(ad: dict) -> bool:
     """Insert or update a listing. Returns True if it was a new row."""
     with get_conn() as conn:
-        cur = conn.execute("""
+        existed = conn.execute(
+            "SELECT 1 FROM listings WHERE source = ? AND external_id = ?",
+            (ad["source"], ad["external_id"])).fetchone() is not None
+        conn.execute("""
             INSERT INTO listings
                 (source, external_id, title, address, lat, lng, rent_chf,
                  available_from, raw_text, url,
@@ -82,8 +111,11 @@ def upsert_listing(ad: dict) -> bool:
                 bike_hoenggerberg_min    = excluded.bike_hoenggerberg_min,
                 transit_hoenggerberg_min = excluded.transit_hoenggerberg_min,
                 listed_at                = excluded.listed_at,
-                fit_score                = excluded.fit_score,
-                reply_score              = excluded.reply_score
+                fit_score   = CASE WHEN listings.extracted IS NOT NULL
+                                   THEN listings.fit_score ELSE excluded.fit_score END,
+                reply_score = CASE WHEN listings.extracted IS NOT NULL
+                                   THEN listings.reply_score ELSE excluded.reply_score END
+                -- status / extracted / seen / created_at are deliberately untouched
         """, (
             ad["source"], ad["external_id"], ad["title"], ad["address"],
             ad["lat"], ad["lng"], ad["rent_chf"], ad["available_from"],
@@ -93,50 +125,124 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("listed_at"),
             ad.get("fit_score"), ad.get("reply_score"),
         ))
-        conn.commit()
-        return cur.lastrowid is not None and conn.execute(
-            "SELECT changes()"
-        ).fetchone()[0] > 0
+        return not existed
 
 
 def save_extraction(listing_id: int, extracted: dict, fit_score: int, reply_score: int):
     with get_conn() as conn:
         conn.execute(
-            "UPDATE listings SET extracted = ?, fit_score = ?, reply_score = ? WHERE id = ?",
+            "UPDATE listings SET extracted = ?, fit_score = ?, reply_score = ?, "
+            "extracted_at = datetime('now') WHERE id = ?",
             (json.dumps(extracted, ensure_ascii=False), fit_score, reply_score, listing_id),
         )
-        conn.commit()
 
 
-def get_listings_needing_extraction() -> list[dict]:
+def record_extraction_failure(listing_id: int):
     with get_conn() as conn:
-        rows = conn.execute(
-            "SELECT id, raw_text FROM listings WHERE extracted IS NULL AND raw_text != '' ORDER BY id"
-        ).fetchall()
-        return [dict(r) for r in rows]
+        conn.execute(
+            "UPDATE listings SET extract_attempts = extract_attempts + 1 WHERE id = ?",
+            (listing_id,),
+        )
 
 
-def get_all_listings() -> list[dict]:
+MAX_EXTRACT_ATTEMPTS = 3
+
+
+def get_listings_needing_extraction(
+    max_rent: int | None = None,
+    max_transit_min: int | None = None,
+    limit: int | None = None,
+) -> list[dict]:
+    """Un-extracted listings that pass cheap prefilters, newest first.
+    Already-extracted listings are never returned (no re-extraction / no re-spend);
+    listings that failed MAX_EXTRACT_ATTEMPTS times are skipped."""
+    sql = ("SELECT * FROM listings WHERE extracted IS NULL AND length(raw_text) >= 40 "
+           "AND extract_attempts < ?")
+    params: list = [MAX_EXTRACT_ATTEMPTS]
+    if max_rent:
+        sql += " AND rent_chf <= ?"
+        params.append(max_rent)
+    if max_transit_min:
+        # keep rows with unknown commute; drop those far from both campuses
+        sql += (" AND (transit_zentrum_min IS NULL OR transit_zentrum_min <= ?"
+                " OR transit_hoenggerberg_min <= ?)")
+        params += [max_transit_min, max_transit_min]
+    sql += " ORDER BY COALESCE(listed_at, created_at) DESC, id DESC"
+    if limit:
+        sql += " LIMIT ?"
+        params.append(limit)
     with get_conn() as conn:
-        rows = conn.execute("SELECT * FROM listings ORDER BY id").fetchall()
-        result = []
-        for row in rows:
-            d = dict(row)
-            if d.get("extracted"):
-                d["extracted"] = json.loads(d["extracted"])
-            d["seen"] = bool(d["seen"])
-            d["sent"] = bool(d["sent"])
-            d["replied"] = bool(d["replied"])
-            result.append(d)
-        return result
+        return [dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
-def get_listing(listing_id: int) -> dict | None:
-    with get_conn() as conn:
-        row = conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
-    if row is None:
-        return None
+def _row_to_dict(row, include_raw: bool = True) -> dict:
     d = dict(row)
     if d.get("extracted"):
-        d["extracted"] = json.loads(d["extracted"])
+        try:
+            d["extracted"] = json.loads(d["extracted"])
+        except ValueError:
+            d["extracted"] = None
+    if not include_raw:
+        d["has_raw_text"] = bool(d.get("raw_text"))
+        d.pop("raw_text", None)
+    d["seen"] = bool(d.get("seen"))
+    d["sent"] = bool(d.get("sent"))
+    d["replied"] = bool(d.get("replied"))
     return d
+
+
+def get_all_listings(include_raw: bool = True) -> list[dict]:
+    """One query, no per-row work beyond JSON decoding."""
+    with get_conn() as conn:
+        rows = conn.execute("SELECT * FROM listings ORDER BY id").fetchall()
+    return [_row_to_dict(r, include_raw) for r in rows]
+
+
+def get_listing(listing_id: int, include_raw: bool = True) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
+    return _row_to_dict(row, include_raw) if row else None
+
+
+def set_status(listing_id: int, status: str | None) -> bool:
+    """Set outcome status (None clears). Keeps legacy sent/replied flags in sync."""
+    if status is not None and status not in VALID_STATUSES:
+        raise ValueError(status)
+    contacted = 1 if status in VALID_STATUSES else 0
+    with get_conn() as conn:
+        cur = conn.execute(
+            "UPDATE listings SET status = ?, status_updated_at = datetime('now'), "
+            "sent = ?, replied = ? WHERE id = ?",
+            (status, contacted, 1 if status == "replied" else 0, listing_id),
+        )
+        return cur.rowcount > 0
+
+
+def update_scores(rows: list[tuple[int, int, int]]):
+    """rows: (fit_score, reply_score, id)"""
+    with get_conn() as conn:
+        conn.executemany(
+            "UPDATE listings SET fit_score = ?, reply_score = ? WHERE id = ?", rows)
+
+
+def get_stats() -> dict:
+    with get_conn() as conn:
+        by_status = {r[0] or "none": r[1] for r in conn.execute(
+            "SELECT status, COUNT(*) FROM listings GROUP BY status")}
+        by_source = {}
+        for src, st, n in conn.execute(
+                "SELECT source, status, COUNT(*) FROM listings WHERE status IS NOT NULL "
+                "GROUP BY source, status"):
+            by_source.setdefault(src, {})[st] = n
+        total = conn.execute("SELECT COUNT(*) FROM listings").fetchone()[0]
+    counts = {k: by_status.get(k, 0) for k in ("sent", "replied", "rejected")}
+    counts["none"] = by_status.get("none", 0)
+    contacted = counts["sent"] + counts["replied"] + counts["rejected"]
+    return {
+        "total": total,
+        "counts": counts,
+        "contacted": contacted,
+        # replies per message sent (replied / all listings I have contacted)
+        "reply_rate": round(counts["replied"] / contacted, 3) if contacted else None,
+        "by_source": by_source,
+    }
