@@ -355,6 +355,7 @@
       <div id="more-menu" role="menu" hidden>
         <button role="menuitem" class="solo-only" onclick="closeMenu();runExtract()" id="extract-btn" title="Reads every unprocessed ad with Claude (uses API credits)">Extract ads <small>uses API credits</small></button>
         <button role="menuitem" onclick="closeMenu();showHelp()">Keyboard shortcuts <small>?</small></button>
+        <button role="menuitem" onclick="closeMenu();phoneAlerts()" id="alerts-btn">Phone alerts <small id="alerts-state">…</small></button>
       </div>
     </div>
   </div>
@@ -796,6 +797,20 @@ function toggleMoreFilters(force) {
 function toggleMenu() { const m = $('more-menu'); m.hidden = !m.hidden; $('more-btn').setAttribute('aria-expanded', String(!m.hidden)); if (!m.hidden) m.querySelector('button:not([style*=none])')?.focus(); }
 function closeMenu() { $('more-menu').hidden = true; $('more-btn').setAttribute('aria-expanded', 'false'); }
 document.addEventListener('click', e => { if (!e.target.closest('.menu-wrap')) closeMenu(); });
+// Phone alerts (backend/notify.py): show status; send a test when configured.
+async function refreshAlertsState() {
+  try { const st = await api('/notify/status'); const ch = st.channels || [];
+    $('alerts-state').textContent = ch.length ? `on · ${ch.join(', ')} · fit ≥ ${st.min_fit}` : 'not set up';
+    return st; } catch (_) { $('alerts-state').textContent = 'unavailable'; return null; }
+}
+async function phoneAlerts() {
+  const st = await refreshAlertsState();
+  if (!st) return toast('Alerts status unavailable');
+  if (!(st.channels || []).length) return toast('Phone alerts are off. Install the ntfy app, subscribe to a long random topic, put WGP_NTFY_TOPIC=<topic> in .env and restart the server.', { ms: 9000 });
+  try { await api('/notify/test', { method: 'POST' }); toast('Test alert sent. Check your phone.'); }
+  catch (e) { toast(e.message || 'Test alert failed'); }
+}
+refreshAlertsState();
 function showHelp() { $('help-modal').hidden = false; $('help-modal').querySelector('.cancel-btn').focus(); }
 function closeHelp() { $('help-modal').hidden = true; }
 const mq = window.matchMedia('(max-width: 760px)');
