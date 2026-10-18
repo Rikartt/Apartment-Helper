@@ -29,6 +29,18 @@ never invent a name, and never use placeholders like [Name].
 profile, do not claim to meet it.
 - Output only the message text — no subject line, no notes, no quotes around it."""
 
+FOLLOWUP_SYSTEM_PROMPT = """You draft a SHORT follow-up to a room ad poster who has not answered the \
+applicant's first message yet. Rules:
+- Write in the ad's language ({language}), at the applicant's real level: simple and natural.
+- 2-3 sentences. Polite, friendly, zero pressure; no guilt-tripping, no "as I wrote before".
+- Do NOT repeat the first message: do not re-introduce the applicant or restate their \
+background, and do not copy its phrases. Just refer lightly to having written earlier, \
+say they are still interested, and offer to answer questions or view the room at any time.
+- Use ONLY facts in the ad, the profile and the first message. Invent nothing; no placeholders.
+- Sign off the same way the first message did (name only if it signed with one).
+- Output only the message text - no subject line, no notes, no quotes."""
+
+
 def profile_for_draft(profile: dict, today: date | None = None) -> dict:
     """Copy of the profile safe to show the model: a move_in_earliest that is today or in
     the past becomes an explicit "available immediately" (a past date in a message would
@@ -50,13 +62,32 @@ class DraftError(llm.LLMError):
     pass
 
 
-def draft(listing: dict, profile: dict) -> str:
-    """Return a draft opener for this listing. Raises DraftError on failure."""
+def build_followup_prompt(listing: dict, first_message: str, language: str) -> tuple[str, str]:
+    """(system, user) for a follow-up draft. Kept small on purpose: the ad title and the
+    first message are all the model needs."""
+    user = f"""THE AD: {listing.get("title", "")}, {listing.get("address", "")}
+
+MY FIRST MESSAGE (sent {listing.get("last_sent_at") or "a few days ago"}, no reply yet):
+<<<
+{first_message}
+>>>"""
+    return FOLLOWUP_SYSTEM_PROMPT.format(language=language), user
+
+
+def draft(listing: dict, profile: dict, followup_of: str | None = None) -> str:
+    """Return a draft opener for this listing (or, with followup_of=<the message already
+    sent>, a short follow-up). Raises DraftError on failure."""
     ext = listing.get("extracted") or {}
     lang_code = ext.get("language") or "other"
     language = LANG_NAMES.get(lang_code, "the same language the ad is written in")
 
-    user_prompt = f"""MY PROFILE:
+    if followup_of:
+        system, user_prompt = build_followup_prompt(listing, followup_of, language)
+    else:
+        system = SYSTEM_PROMPT.format(language=language)
+        user_prompt = None
+    if user_prompt is None:
+        user_prompt = f"""MY PROFILE:
 {json.dumps(profile_for_draft(profile), ensure_ascii=False, indent=2)}
 
 THE AD (raw):
@@ -76,7 +107,7 @@ EXTRACTED:
             model=MODEL,
             max_tokens=4000,
             output_config={"effort": "medium"},
-            system=SYSTEM_PROMPT.format(language=language),
+            system=system,
             messages=[{"role": "user", "content": user_prompt}],
             # if Sonnet declines on a safety classifier, retry on another model server-side
             betas=["server-side-fallback-2026-07-01"],
