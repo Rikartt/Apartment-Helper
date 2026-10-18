@@ -27,7 +27,8 @@ from .scoring import score_detail, load_profile, PROFILE_PATH  # noqa: E402
 BASE_DIR     = Path(__file__).parent.parent
 FRONTEND_DIR = BASE_DIR / "frontend"
 
-STARTUP_SOURCES = ["flatfox", "wgzimmer", "ronorp", "homegate"]
+from .ingest import ADAPTERS as _ADAPTERS
+STARTUP_SOURCES = [n for n in _ADAPTERS if n != "mock"]
 AUTO_EXTRACT = os.environ.get("WGP_AUTO_EXTRACT", "1") != "0"
 AUTO_EXTRACT_LIMIT = int(os.environ.get("WGP_AUTO_EXTRACT_LIMIT", "25"))
 
