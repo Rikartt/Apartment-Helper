@@ -2,7 +2,7 @@ import json
 import os
 import random
 import threading
-from datetime import datetime
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal, Optional
@@ -21,6 +21,7 @@ from .access import access_guard  # noqa: E402
 from .db import (  # noqa: E402
     init_db, get_all_listings, get_listing, set_status, get_stats, update_scores,
     start_run, finish_run, recent_runs, last_ok_run_age_seconds,
+    add_sent_message, get_sent_messages, delete_sent_message,
 )
 from .drafting import draft, DraftError  # noqa: E402
 from .extraction import extract_batch  # noqa: E402
@@ -38,6 +39,37 @@ _DEFAULT_OFF = {"mock", "wgzimmer"} | (set() if os.environ.get("WGP_ENABLE_RONOR
 STARTUP_SOURCES = [n for n in ADAPTERS if n not in _DEFAULT_OFF]
 AUTO_EXTRACT = os.environ.get("WGP_AUTO_EXTRACT", "1") != "0"
 AUTO_EXTRACT_LIMIT = int(os.environ.get("WGP_AUTO_EXTRACT_LIMIT", "25"))
+
+
+def followup_days() -> float:
+    """WGP_FOLLOWUP_DAYS: days after sending with no reply before 'Follow up?' (default 3)."""
+    try:
+        return max(0.0, float(os.environ.get("WGP_FOLLOWUP_DAYS", "3")))
+    except ValueError:
+        return 3.0
+
+
+def _parse_utc(s) -> datetime | None:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(str(s).replace(" ", "T")).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+def _sent_info(l: dict, now: datetime | None = None) -> dict:
+    """sent_at = latest message we stored, else when the status was set to sent.
+    followup_due: still 'sent' (no reply, not skipped) for more than WGP_FOLLOWUP_DAYS."""
+    if l.get("status") != "sent":
+        return {"sent_at": l.get("last_sent_at"), "days_since_sent": None, "followup_due": False}
+    # the later of "status became sent" and the last stored message (a follow-up restarts it)
+    at = max(filter(None, [l.get("last_sent_at"), l.get("status_updated_at")]), default=None)
+    t = _parse_utc(at)
+    if not t:
+        return {"sent_at": at, "days_since_sent": None, "followup_due": False}
+    days = ((now or datetime.now(timezone.utc)) - t).total_seconds() / 86400
+    return {"sent_at": at, "days_since_sent": round(days, 1), "followup_due": days > followup_days()}
 
 
 _ingest_state = {"running": False, "sources_done": [], "sources_total": 0, "count": 0,
@@ -199,6 +231,7 @@ def _decorate(l: dict, profile: dict) -> dict:
     l["is_dealbreaker"] = bool(d["dealbreakers"])
     l["status"] = l.get("status") or None
     l["status_updated_at"] = l.get("status_updated_at")
+    l.update(_sent_info(l))
     return l
 
 
@@ -222,7 +255,36 @@ def listing_detail(listing_id: int):
     l = get_listing(listing_id, include_raw=True)
     if not l:
         return JSONResponse({"error": "listing not found"}, status_code=404)
+    l["messages"] = get_sent_messages(listing_id)
     return JSONResponse(_decorate(l, _load_profile()))
+
+
+class SentBody(BaseModel):
+    text: str
+    kind: Literal["first", "followup"] = "first"
+
+
+@app.post("/listings/{listing_id}/sent")
+def post_sent(listing_id: int, body: SentBody):
+    """Record the final text the user sent (they sent it themselves; we never do).
+    kind=first also marks the listing Sent; kind=followup only logs it and restarts
+    the follow-up timer."""
+    text = body.text.strip()
+    if not text:
+        return JSONResponse({"error": "message text is empty"}, status_code=422)
+    msg = add_sent_message(listing_id, text, body.kind)
+    if not msg:
+        return JSONResponse({"error": "listing not found"}, status_code=404)
+    l = _decorate(get_listing(listing_id, include_raw=False), _load_profile())
+    l["messages"] = get_sent_messages(listing_id)
+    return JSONResponse({"message": msg, "listing": l})
+
+
+@app.delete("/listings/{listing_id}/sent/{msg_id}")
+def delete_sent(listing_id: int, msg_id: int):
+    if not delete_sent_message(listing_id, msg_id):
+        return JSONResponse({"error": "message not found"}, status_code=404)
+    return JSONResponse({"ok": True})
 
 
 class StatusUpdate(BaseModel):
@@ -373,20 +435,32 @@ def best_listings():
 
 
 @app.post("/draft/{listing_id}")
-def draft_message(listing_id: int):
-    """Draft a first message for one listing. Never sends anything."""
+def draft_message(listing_id: int, followup: bool = Query(False)):
+    """Draft a first message for one listing (or, with ?followup=1, a short follow-up to
+    the message already sent). Never sends anything."""
     if not llm.has_key():
         return JSONResponse({"error": "ANTHROPIC_API_KEY is not set"}, status_code=503)
     listing = get_listing(listing_id)
     if not listing:
         return JSONResponse({"error": "listing not found"}, status_code=404)
+    first = None
+    if followup:
+        sent = [m for m in get_sent_messages(listing_id) if m["kind"] == "first"]
+        if not sent:
+            return JSONResponse({"error": "No sent message is stored for this listing, so there is "
+                                 "nothing to follow up on. Mark a draft as sent first."},
+                                status_code=409)
+        first = sent[-1]["text"]
+        listing["last_sent_at"] = sent[-1]["sent_at"]
     try:
-        text = draft(listing, _load_profile())
+        text = (draft(listing, _load_profile(), followup_of=first) if followup
+                else draft(listing, _load_profile()))
     except DraftError as e:
         print(f"[draft] failed for {listing_id}: {e}")
         return _llm_error_response(e)
     lang = (listing.get("extracted") or {}).get("language")
-    return JSONResponse({"id": listing_id, "draft": text, "language": lang})
+    return JSONResponse({"id": listing_id, "draft": text, "language": lang,
+                         "followup": followup})
 
 
 @app.post("/ingest")

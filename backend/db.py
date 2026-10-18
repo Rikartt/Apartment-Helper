@@ -114,6 +114,18 @@ def init_db():
                 errors      TEXT NOT NULL DEFAULT '[]'        -- JSON [str]
             )
         """)
+        # what the user actually sent (final draft text), kept as history even if the
+        # status is later cleared; kind is 'first' or 'followup'
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS sent_messages (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                listing_id INTEGER NOT NULL,
+                kind       TEXT NOT NULL DEFAULT 'first',
+                text       TEXT NOT NULL,
+                sent_at    TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_sent_listing ON sent_messages(listing_id)")
         for stmt in INDEXES:
             conn.execute(stmt)
         conn.commit()
@@ -239,7 +251,8 @@ def _row_to_dict(row, include_raw: bool = True) -> dict:
 def get_all_listings(include_raw: bool = True, include_gone: bool = False) -> list[dict]:
     """One query, no per-row work beyond JSON decoding. Listings that vanished
     from their source (gone_at set) are hidden unless include_gone."""
-    sql = "SELECT * FROM listings"
+    sql = ("SELECT listings.*, (SELECT MAX(sent_at) FROM sent_messages "
+           "WHERE listing_id = listings.id) AS last_sent_at FROM listings")
     if not include_gone:
         sql += " WHERE gone_at IS NULL"
     with get_conn() as conn:
@@ -249,8 +262,50 @@ def get_all_listings(include_raw: bool = True, include_gone: bool = False) -> li
 
 def get_listing(listing_id: int, include_raw: bool = True) -> dict | None:
     with get_conn() as conn:
-        row = conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
+        row = conn.execute(
+            "SELECT listings.*, (SELECT MAX(sent_at) FROM sent_messages "
+            "WHERE listing_id = listings.id) AS last_sent_at FROM listings WHERE id = ?",
+            (listing_id,)).fetchone()
     return _row_to_dict(row, include_raw) if row else None
+
+
+SENT_KINDS = ("first", "followup")
+
+
+def add_sent_message(listing_id: int, text: str, kind: str = "first") -> dict | None:
+    """Store the final text the user sent. A first message also marks the listing sent
+    (status_updated_at = now); a follow-up leaves the status alone. Returns the stored
+    row, or None if the listing does not exist."""
+    if kind not in SENT_KINDS:
+        raise ValueError(kind)
+    with get_conn() as conn:
+        if not conn.execute("SELECT 1 FROM listings WHERE id = ?", (listing_id,)).fetchone():
+            return None
+        now = utc_now()
+        cur = conn.execute(
+            "INSERT INTO sent_messages (listing_id, kind, text, sent_at) VALUES (?,?,?,?)",
+            (listing_id, kind, text, now))
+        if kind == "first":
+            conn.execute(
+                "UPDATE listings SET status = 'sent', sent = 1, replied = 0, "
+                "status_updated_at = ? WHERE id = ? AND (status IS NULL OR status != 'sent')",
+                (now, listing_id))
+        return {"id": cur.lastrowid, "listing_id": listing_id, "kind": kind,
+                "text": text, "sent_at": now}
+
+
+def get_sent_messages(listing_id: int) -> list[dict]:
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM sent_messages WHERE listing_id = ? ORDER BY id", (listing_id,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def delete_sent_message(listing_id: int, msg_id: int) -> bool:
+    with get_conn() as conn:
+        return conn.execute("DELETE FROM sent_messages WHERE id = ? AND listing_id = ?",
+                            (msg_id, listing_id)).rowcount > 0
 
 
 def set_status(listing_id: int, status: str | None) -> bool:
