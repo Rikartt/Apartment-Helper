@@ -15,7 +15,7 @@ def test_geocode_cache_hits_and_misses(tmp_path, monkeypatch):
 
     def fake(addr):
         calls.append(addr)
-        return (47.1, 8.1) if "gut" in addr else None
+        return (47.1, 8.1) if "gut" in addr.lower() else None
 
     monkeypatch.setattr(geocode, "_swisstopo", fake)
     monkeypatch.setattr(geocode, "_nominatim", lambda a: None)
