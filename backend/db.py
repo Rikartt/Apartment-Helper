@@ -22,6 +22,7 @@ NEW_COLUMNS = [
     ("missed_runs", "INTEGER NOT NULL DEFAULT 0"),  # consecutive such runs without seeing it
     ("rooms", "REAL"),                  # Swiss "Zimmer" count, e.g. 4.5
     ("living_area_m2", "REAL"),
+    ("notified_at", "TEXT"),            # UTC; when a phone-alert digest included this ad
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
