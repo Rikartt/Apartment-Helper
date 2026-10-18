@@ -1,6 +1,7 @@
 import json
 import os
 import threading
+from datetime import datetime
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal, Optional
@@ -31,9 +32,35 @@ AUTO_EXTRACT = os.environ.get("WGP_AUTO_EXTRACT", "1") != "0"
 AUTO_EXTRACT_LIMIT = int(os.environ.get("WGP_AUTO_EXTRACT_LIMIT", "25"))
 
 
+_ingest_state = {"running": False, "sources_done": [], "sources_total": 0, "count": 0,
+                 "new": 0, "last_finished_at": None}
+_ingest_lock = threading.Lock()
+
+
+def _tracked_ingest(sources: list[str]) -> dict:
+    """Run sources one by one so /ingest/status can report real progress."""
+    with _ingest_lock:  # one ingest at a time
+        _ingest_state.update(running=True, sources_done=[], sources_total=len(sources),
+                             count=0, new=0)
+        total = new = 0
+        try:
+            for name in sources:
+                try:
+                    r = run_ingest([name])
+                    total += r.get("total", 0)
+                    new += r.get("new", 0)
+                except Exception as e:
+                    print(f"[ingest] {name} failed: {e}")
+                _ingest_state.update(count=total, new=new)
+                _ingest_state["sources_done"].append(name)
+        finally:
+            _ingest_state.update(running=False, last_finished_at=datetime.now().isoformat())
+        return {"total": total, "new": new}
+
+
 def _startup_ingest():
     try:
-        run_ingest(STARTUP_SOURCES)
+        _tracked_ingest(STARTUP_SOURCES)
     except Exception as e:  # never let a scraper crash bring the server down
         print(f"[startup] ingest failed: {e}")
     if AUTO_EXTRACT and llm.has_key():
@@ -72,6 +99,7 @@ def _decorate(l: dict, profile: dict) -> dict:
     l["fit_score"] = d["fit"]
     l["reply_score"] = d["reply"]
     l["match_reasons"] = d["reasons"]
+    l["fit_reasons"] = d["reasons"]          # alias of match_reasons
     l["dealbreakers"] = d["dealbreakers"]
     l["is_dealbreaker"] = bool(d["dealbreakers"])
     l["status"] = l.get("status") or None
@@ -85,6 +113,15 @@ def listings(include_raw: bool = Query(False)):
     (about 1.3 kB per ad and not needed to render the map)."""
     profile = _load_profile()
     return JSONResponse([_decorate(l, profile) for l in get_all_listings(include_raw)])
+
+
+@app.get("/listings/{listing_id}")
+def listing_detail(listing_id: int):
+    """One listing including raw_text (for the detail view)."""
+    l = get_listing(listing_id, include_raw=True)
+    if not l:
+        return JSONResponse({"error": "listing not found"}, status_code=404)
+    return JSONResponse(_decorate(l, _load_profile()))
 
 
 class StatusUpdate(BaseModel):
@@ -236,13 +273,23 @@ def draft_message(listing_id: int):
     except DraftError as e:
         print(f"[draft] failed for {listing_id}: {e}")
         return _llm_error_response(e)
-    return JSONResponse({"id": listing_id, "draft": text})
+    lang = (listing.get("extracted") or {}).get("language")
+    return JSONResponse({"id": listing_id, "draft": text, "language": lang})
 
 
 @app.post("/ingest")
 def ingest(sources: list[str] = Query(default=None)):
-    result = run_ingest(list(sources) if sources else None)
-    return JSONResponse(result)
+    from .ingest import ADAPTERS
+    names = [x for x in (sources or list(ADAPTERS)) if x in ADAPTERS]
+    if _ingest_state["running"]:
+        return JSONResponse({"error": "an ingest is already running", **_ingest_state},
+                            status_code=409)
+    return JSONResponse(_tracked_ingest(names))
+
+
+@app.get("/ingest/status")
+def ingest_status():
+    return JSONResponse(dict(_ingest_state))
 
 
 app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")

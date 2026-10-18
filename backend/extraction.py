@@ -13,7 +13,8 @@ matching the schema the user provides — no prose, no markdown fences. If a fie
 stated in the ad, use null or an empty array. Do not infer facts that aren't there. \
 Detect the ad's language. Separate HARD requirements (things the poster says an applicant \
 must be/have) from soft PREFERENCES (things they'd like). Flag anything that reads like a \
-scam (payment before viewing, implausible price, no address). \
+scam (payment before viewing, implausible price, no address). red_flags is ONLY for scam \
+signals; never list merely missing information (unstated rent, date or duration). \
 For poster_type: "private" if written by actual flatmates (uses "wir", "ich", personal tone, \
 mentions their own habits/jobs); "agency" if posted by a property management company, \
 real estate agent, or landlord (company name, formal tone, "verfügbare Einheiten", \

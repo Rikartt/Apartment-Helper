@@ -25,13 +25,13 @@ def test_startup_does_not_ingest_or_extract(db, profile_path, monkeypatch):
     monkeypatch.setattr(m, "extract_batch", lambda *a, **k: calls.append("EXTRACT") or {})
     import time
     with TestClient(m.app) as c:
-        for _ in range(50):
-            if calls:
+        for _ in range(100):
+            if len(calls) >= len(m.STARTUP_SOURCES):
                 break
             time.sleep(0.02)
         assert c.get("/listings").status_code == 200
     assert "EXTRACT" not in calls
-    assert calls == [m.STARTUP_SOURCES]
+    assert calls == [[s] for s in m.STARTUP_SOURCES]
 
 
 def test_startup_ingest_exception_is_swallowed(monkeypatch):
@@ -247,3 +247,17 @@ def test_commute_values(db):
     t = commute_times(*ETH_ZENTRUM)
     assert t["bike_zentrum_min"] == 1 and t["transit_zentrum_min"] == 1
     assert commute_times(47.45, 8.45)["bike_zentrum_min"] > 5
+
+
+def test_listing_detail_and_ingest_status(client, seeded):
+    d = client.get("/listings/1").json()
+    assert d["id"] == 1 and "raw_text" in d and "fit_reasons" in d
+    assert client.get("/listings/9999").status_code == 404
+    s = client.get("/ingest/status").json()
+    assert set(["running", "sources_done", "count"]) <= set(s)
+
+
+def test_draft_returns_language(client, seeded, monkeypatch):
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
+    monkeypatch.setattr(m, "draft", lambda l, p: "Hi!")
+    assert "language" in client.post("/draft/1").json()
