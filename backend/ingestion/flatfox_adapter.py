@@ -14,9 +14,19 @@ BBOX = {"west": 8.22, "east": 8.88, "north": 47.60, "south": 47.15}
 BATCH = 50    # PKs per detail request
 DELAY = 1.5   # seconds between batches
 MAX_PINS = 1000
-INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS") == "1"
+# Whole apartments (group mode) are on by default; set WGPENDLER_INCLUDE_APARTMENTS=0 to skip.
+INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS", "1") != "0"
 MAX_PIN_PRICE = 2500
+MAX_APARTMENT_PRICE = 6000  # CHF/month; anything dearer is not a student-group flat
 PIN_DELAY = 0.5  # API hard cap (requests above this return a 400 ValidationError)
+
+
+def _num(v) -> float | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 else None
 
 
 class FlatfoxAdapter(BaseAdapter):
@@ -44,8 +54,8 @@ class FlatfoxAdapter(BaseAdapter):
         pins = self._collect_pins(session, BBOX)
         # Shared rooms are cheap; skip pins priced far above any WG room to
         # save detail requests (price_display is monthly total for rentals).
-        if not INCLUDE_APARTMENTS:
-            pins = [p for p in pins if not p.get("price_display") or p["price_display"] <= MAX_PIN_PRICE]
+        cap = MAX_APARTMENT_PRICE if INCLUDE_APARTMENTS else MAX_PIN_PRICE
+        pins = [p for p in pins if not p.get("price_display") or p["price_display"] <= cap]
         print(f"[flatfox] {len(pins)} candidate pins after tiling + price prefilter")
 
         ads = []
@@ -62,6 +72,8 @@ class FlatfoxAdapter(BaseAdapter):
                 if l.get("object_category") != "SHARED" and not INCLUDE_APARTMENTS:
                     continue
                 ad = self._to_ad(l)
+                if ad and ad["kind"] == "apartment" and ad["rent_chf"] > MAX_APARTMENT_PRICE:
+                    continue
                 if ad:
                     ads.append(ad)
 
@@ -136,4 +148,6 @@ class FlatfoxAdapter(BaseAdapter):
             "url":          url,
             "listed_at":    l.get("published") or l.get("created") or None,
             "kind":         "wg_room" if l.get("object_category") == "SHARED" else "apartment",
+            "rooms":        _num(l.get("number_of_rooms")),
+            "living_area_m2": _num(l.get("surface_living")),
         }

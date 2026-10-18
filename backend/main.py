@@ -21,6 +21,7 @@ from .db import (  # noqa: E402
 )
 from .drafting import draft, DraftError  # noqa: E402
 from .extraction import extract_batch  # noqa: E402
+from .group import router as group_router, validate_group  # noqa: E402
 from .ingest import run_ingest  # noqa: E402
 from .scoring import score_detail, load_profile, PROFILE_PATH  # noqa: E402
 
@@ -85,6 +86,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="WGPendler", lifespan=lifespan)
+app.include_router(group_router)  # Phase 7: /group/listings, /group/draft/{id}
 
 
 def _load_profile() -> dict:
@@ -153,6 +155,11 @@ async def put_profile(request: Request):
         return JSONResponse({"error": "body must be valid JSON"}, status_code=400)
     if not isinstance(body, dict):
         return JSONResponse({"error": "profile must be a JSON object"}, status_code=422)
+    if "group" in body:
+        grp, gerr = validate_group(body["group"])
+        if gerr:
+            return JSONResponse({"error": gerr}, status_code=422)
+        body["group"] = grp
     PROFILE_PATH.write_text(json.dumps(body, indent=2, ensure_ascii=False))
     profile = _load_profile()
     rows = get_all_listings(include_raw=False)

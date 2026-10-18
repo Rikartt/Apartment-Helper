@@ -29,9 +29,10 @@ SEARCH_BASE  = (
 )
 MAX_PAGES    = 40       # pages of ~20 listings each; stops early when a page adds nothing
 MAX_ADS      = 400
-# Whole apartments are only kept (kind="apartment") when explicitly enabled,
-# so they do not clutter the WG-room map until a group mode exists.
-INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS") == "1"
+# Whole apartments (kind="apartment") feed group mode; on by default,
+# WGPENDLER_INCLUDE_APARTMENTS=0 turns them off. Capped to a sane student-group rent.
+INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS", "1") != "0"
+MAX_APARTMENT_PRICE = 6000
 SCRAPE_DELAY = 1.0
 GEOCODE_DELAY = 1.0
 
@@ -211,6 +212,8 @@ class HomegateAdapter(BaseAdapter):
         rent = card["rent_chf"]
         if not rent or rent < 200:
             return None
+        if card.get("kind") == "apartment" and rent > MAX_APARTMENT_PRICE:
+            return None
 
         address = card["address"] or "Zürich"
 
@@ -245,4 +248,6 @@ class HomegateAdapter(BaseAdapter):
             "url":            card["url"],
             "listed_at":      None,
             "kind":           card.get("kind", "wg_room"),
+            "rooms":          card.get("rooms"),
+            "living_area_m2": float(card["space_m2"]) if card.get("space_m2") else None,
         }
