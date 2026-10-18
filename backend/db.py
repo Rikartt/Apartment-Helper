@@ -129,3 +129,14 @@ def get_all_listings() -> list[dict]:
             d["replied"] = bool(d["replied"])
             result.append(d)
         return result
+
+
+def get_listing(listing_id: int) -> dict | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT * FROM listings WHERE id = ?", (listing_id,)).fetchone()
+    if row is None:
+        return None
+    d = dict(row)
+    if d.get("extracted"):
+        d["extracted"] = json.loads(d["extracted"])
+    return d

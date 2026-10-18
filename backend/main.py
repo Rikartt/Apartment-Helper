@@ -10,10 +10,11 @@ from dotenv import load_dotenv
 
 from .db import (
     init_db, get_all_listings, save_extraction,
-    get_listings_needing_extraction,
+    get_listings_needing_extraction, get_listing,
 )
 from .ingest import run_ingest
 from .extraction import extract
+from .drafting import draft, DraftError
 from .scoring import score, reply_likelihood
 
 load_dotenv()
@@ -179,6 +180,23 @@ def best_listings():
             l.setdefault("analysis", {})
 
     return JSONResponse(top5)
+
+
+@app.post("/draft/{listing_id}")
+def draft_message(listing_id: int):
+    """Draft a first message for one listing. Never sends anything."""
+    import os
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        return JSONResponse({"error": "ANTHROPIC_API_KEY is not set"}, status_code=503)
+    listing = get_listing(listing_id)
+    if not listing:
+        return JSONResponse({"error": "listing not found"}, status_code=404)
+    try:
+        text = draft(listing, _load_profile())
+    except DraftError as e:
+        print(f"[draft] failed for {listing_id}: {e}")
+        return JSONResponse({"error": str(e)}, status_code=502)
+    return JSONResponse({"id": listing_id, "draft": text})
 
 
 @app.post("/ingest")

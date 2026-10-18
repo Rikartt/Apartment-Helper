@@ -183,6 +183,31 @@
   .detail-link-btn:hover { background:#e00; }
   .detail-scores { margin:6px 0; }
 
+  /* ── draft message ────────────────────────────────────────────── */
+  .draft-btn {
+    display:block; width:100%; margin-top:14px; background:none; color:#ffc107;
+    border:1px solid #ffc107; font-family:inherit; font-size:0.75rem; padding:6px;
+    letter-spacing:0.08em; cursor:pointer;
+  }
+  .draft-btn:hover { background:#2a2000; }
+  .draft-btn:disabled { opacity:0.5; cursor:wait; }
+  #draft-box { margin-top:8px; }
+  #draft-text {
+    width:100%; min-height:220px; background:#0a0a0a; color:#e0e0e0; border:1px solid #333;
+    font-family:inherit; font-size:0.72rem; line-height:1.45; padding:8px; resize:vertical;
+  }
+  #draft-text:focus { outline:none; border-color:#ffc107; }
+  .draft-actions { display:flex; gap:6px; margin-top:4px; align-items:center; }
+  .draft-actions button {
+    background:none; border:1px solid #444; color:#aaa; font-family:inherit;
+    font-size:0.65rem; padding:3px 8px; cursor:pointer; letter-spacing:0.05em;
+  }
+  .draft-actions button:hover { border-color:#ffc107; color:#ffc107; }
+  .draft-note { font-size:0.6rem; color:#555; margin-left:auto; }
+  .draft-error { font-size:0.65rem; color:#e57373; margin-top:6px; }
+  .card-draft { color:#ffc107; cursor:pointer; margin-left:8px; }
+  .card-draft:hover { text-decoration:underline; }
+
   /* ── best listings modal ──────────────────────────────────────── */
   #best-modal {
     display:none; position:fixed; inset:0; background:#0009; z-index:2000;
@@ -522,7 +547,10 @@ function renderAll(listings) {
       ${clabel ? `<div class="card-commute">${clabel}</div>` : ''}
       <div class="card-meta">
         <span>from ${l.available_from}</span>
-        ${l.url ? `<a href="${l.url}" target="_blank" class="card-link" onclick="event.stopPropagation()">↗ listing</a>` : ''}
+        <span>
+          <span class="card-draft" onclick="event.stopPropagation(); selectListing(${l.id}); draftMessage(${l.id})">✎ draft</span>
+          ${l.url ? `<a href="${l.url}" target="_blank" class="card-link" onclick="event.stopPropagation()">↗ listing</a>` : ''}
+        </span>
       </div>
     `;
     card.onclick = () => selectListing(l.id);
@@ -605,8 +633,11 @@ function showDetail(l) {
     <div class="detail-section">
       <div style="font-size:0.65rem;color:#444;padding-top:8px">Run Extract to see ad details</div>
     </div>` : ''}
+    <button class="draft-btn" id="draft-btn" onclick="draftMessage(${l.id})">✎ Draft Message</button>
+    <div id="draft-area"></div>
     ${l.url ? `<a class="detail-link-btn" href="${l.url}" target="_blank">↗ View Listing</a>` : ''}
   `;
+  if (drafts[l.id]) renderDraft(l.id, drafts[l.id]);
 
   document.getElementById('cards-view').style.display = 'none';
   document.getElementById('detail-view').classList.add('open');
@@ -756,6 +787,58 @@ function closeBest() {
 document.getElementById('best-modal').addEventListener('click', e => {
   if (e.target === document.getElementById('best-modal')) closeBest();
 });
+
+// ── Draft message (review + copy; never sends) ───────────────────────────────
+const drafts = {};  // listing id -> latest (possibly edited) draft text
+
+function draftMessage(id) {
+  const btn  = document.getElementById('draft-btn');
+  const area = document.getElementById('draft-area');
+  if (!btn || !area) return;
+  btn.disabled = true;
+  btn.textContent = 'Drafting…';
+  fetch(`/draft/${id}`, { method: 'POST' })
+    .then(r => r.json().then(body => ({ ok: r.ok, body })))
+    .then(({ ok, body }) => {
+      if (!ok) throw new Error(body.error || 'Draft failed');
+      drafts[id] = body.draft;
+      renderDraft(id, body.draft);
+    })
+    .catch(e => {
+      area.innerHTML = '<div class="draft-error"></div>';
+      area.firstChild.textContent = `✗ ${e.message}`;
+    })
+    .finally(() => {
+      btn.disabled = false;
+      btn.textContent = drafts[id] ? '↻ Redraft' : '✎ Draft Message';
+    });
+}
+
+function renderDraft(id, text) {
+  const area = document.getElementById('draft-area');
+  area.innerHTML = `
+    <div id="draft-box">
+      <textarea id="draft-text" spellcheck="true"></textarea>
+      <div class="draft-actions">
+        <button onclick="copyDraft()" id="copy-btn">⧉ Copy</button>
+        <span class="draft-note">review &amp; send it yourself</span>
+      </div>
+    </div>`;
+  const ta = document.getElementById('draft-text');
+  ta.value = text;
+  ta.addEventListener('input', () => { drafts[id] = ta.value; });
+  const btn = document.getElementById('draft-btn');
+  if (btn) btn.textContent = '↻ Redraft';
+}
+
+function copyDraft() {
+  const ta  = document.getElementById('draft-text');
+  const btn = document.getElementById('copy-btn');
+  const done = () => { btn.textContent = 'Copied ✓'; setTimeout(() => btn.textContent = '⧉ Copy', 1500); };
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(ta.value).then(done, () => { ta.select(); document.execCommand('copy'); done(); });
+  } else { ta.select(); document.execCommand('copy'); done(); }
+}
 
 // ── Extraction trigger ───────────────────────────────────────────────────────
 function runExtract() {
