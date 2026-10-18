@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WGPendler</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css"/>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Courier New', Courier, monospace; background: #1a1a1a; color: #e0e0e0; display: flex; flex-direction: column; height: 100vh; }
@@ -250,6 +251,67 @@
   .popup-rent { color: #c00; font-size: 1rem; font-variant-numeric: tabular-nums; }
   .popup-commute { color: #4a9; font-size: 0.7rem; margin-top: 4px; }
   .popup-link { color: #2196f3; font-size: 0.7rem; display: block; margin-top: 4px; }
+
+  /* ── map markers ──────────────────────────────────────────────── */
+  :root {
+    --tier-low:  #66bb6a;   /* ≤ 800 CHF */
+    --tier-mid:  #42a5f5;   /* 801–1000 CHF */
+    --tier-high: #ffa726;   /* > 1000 CHF */
+  }
+  .price-marker-wrap { background: none; border: none; }
+  /* pill sits above the point, with its tail tip on the exact location */
+  .price-marker {
+    position: absolute; left: 0; top: 0;
+    transform: translate(-50%, calc(-100% - 6px));
+    background: var(--tier); color: #111;
+    font: bold 12px/1 'Courier New', Courier, monospace;
+    padding: 4px 7px; border-radius: 999px; white-space: nowrap;
+    border: 1.5px solid #111; box-shadow: 0 2px 6px #000a;
+    font-variant-numeric: tabular-nums; cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+  .price-marker::after {
+    content: ''; position: absolute; left: 50%; bottom: -6px; margin-left: -5px;
+    border: 5px solid transparent; border-top-color: var(--tier); border-bottom: 0;
+    filter: drop-shadow(0 1.5px 0 #111);
+  }
+  .price-marker .cur { font-weight: normal; font-size: 9px; opacity: 0.7; margin-left: 2px; }
+  .price-marker.tier-low  { --tier: var(--tier-low); }
+  .price-marker.tier-mid  { --tier: var(--tier-mid); }
+  .price-marker.tier-high { --tier: var(--tier-high); }
+  .price-marker:hover, .price-marker.hover {
+    transform: translate(-50%, calc(-100% - 6px)) scale(1.12);
+  }
+  .price-marker.selected {
+    transform: translate(-50%, calc(-100% - 6px)) scale(1.18);
+    border-color: #fff; box-shadow: 0 0 0 3px #fff4, 0 3px 10px #000c;
+  }
+
+  .price-cluster {
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: #222e; color: #eee;
+    border: 2px solid #555; box-shadow: 0 2px 8px #000a;
+    font: bold 12px 'Courier New', Courier, monospace;
+  }
+  .price-cluster:hover { border-color: #ccc; }
+
+  .eth-marker {
+    background: #c00; border: 2px solid #fff; border-radius: 50%;
+    width: 14px; height: 14px; box-shadow: 0 0 0 4px #c004;
+  }
+
+  .map-legend {
+    background: #111e; border: 1px solid #333; border-radius: 4px;
+    padding: 8px 10px; font-size: 0.68rem; color: #bbb; line-height: 1.7;
+    font-family: 'Courier New', Courier, monospace; box-shadow: 0 2px 8px #0008;
+  }
+  .map-legend-title { font-size: 0.6rem; color: #777; letter-spacing: 0.1em; text-transform: uppercase; }
+  .map-legend .row { display: flex; align-items: center; gap: 7px; }
+  .map-legend .swatch { width: 18px; height: 10px; border-radius: 999px; border: 1px solid #111; }
+  .map-legend .eth-marker { width: 10px; height: 10px; box-shadow: none; margin: 0 4px; }
+  .map-legend hr { border: none; border-top: 1px solid #2a2a2a; margin: 4px 0; }
+
+  .card-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
 </style>
 </head>
 <body>
@@ -395,6 +457,7 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script>
 const ETH_ZENTRUM      = [47.3769, 8.5481];
 const ETH_HOENGGERBERG = [47.4083, 8.5075];
@@ -406,17 +469,55 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_D
 
 function ethMarker(pos, label) {
   const icon = L.divIcon({
-    className: '',
-    html: `<div style="background:#c00;border:2px solid #fff;border-radius:50%;width:12px;height:12px"></div>`,
-    iconSize: [12, 12], iconAnchor: [6, 6]
+    className: 'price-marker-wrap',
+    html: `<div class="eth-marker"></div>`,
+    iconSize: [14, 14], iconAnchor: [7, 7]
   });
-  L.marker(pos, { icon }).addTo(map).bindTooltip(label, { permanent: false });
+  L.marker(pos, { icon, zIndexOffset: -500 }).addTo(map).bindTooltip(label, { direction: 'top', offset: [0, -8] });
 }
 ethMarker(ETH_ZENTRUM,      'ETH Zentrum');
 ethMarker(ETH_HOENGGERBERG, 'ETH Hönggerberg');
 
+// Rent tiers — shared by map pills, legend and sidebar cards.
+const RENT_TIERS = [
+  { key: 'low',  max: 800,      label: '≤ 800 CHF',     color: '#66bb6a' },
+  { key: 'mid',  max: 1000,     label: '801–1000 CHF',  color: '#42a5f5' },
+  { key: 'high', max: Infinity, label: '> 1000 CHF',    color: '#ffa726' },
+];
+function rentTier(rent) { return RENT_TIERS.find(t => rent <= t.max) ?? RENT_TIERS[2]; }
+
+// Nearby listings collapse into a count bubble when zoomed out.
+const cluster = L.markerClusterGroup({
+  maxClusterRadius: 45,
+  disableClusteringAtZoom: 15,
+  showCoverageOnHover: false,
+  spiderfyOnMaxZoom: true,
+  iconCreateFunction: c => {
+    const n = c.getChildCount();
+    const size = n < 10 ? 32 : n < 50 ? 38 : 44;
+    return L.divIcon({
+      className: 'price-marker-wrap',
+      html: `<div class="price-cluster" style="width:${size}px;height:${size}px">${n}</div>`,
+      iconSize: [size, size],
+    });
+  },
+}).addTo(map);
+
+const legend = L.control({ position: 'bottomleft' });
+legend.onAdd = () => {
+  const div = L.DomUtil.create('div', 'map-legend');
+  div.innerHTML = `
+    <div class="map-legend-title">Monthly rent</div>
+    ${RENT_TIERS.map(t => `<div class="row"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`).join('')}
+    <hr>
+    <div class="row"><span class="eth-marker"></span>ETH campus</div>`;
+  return div;
+};
+legend.addTo(map);
+
 let allListings = [];
 let markers = {};
+let selectedId = null;
 let campus       = 'zentrum';
 let mode         = 'transit';
 let sortMode     = 'relevance';
@@ -473,10 +574,8 @@ function commuteLabel(l) {
   return parts.length ? `${campus_label}: ${parts.join('  ')}` : '';
 }
 
-function rentColor(rent) {
-  if (rent <= 800)  return '#4caf50';
-  if (rent <= 1000) return '#2196f3';
-  return '#ff9800';
+function markerEl(id) {
+  return markers[id]?.getElement()?.querySelector('.price-marker');
 }
 
 function scoreChip(score) {
@@ -505,17 +604,22 @@ function renderAll(listings) {
     return (a.rent_chf || 0) - (b.rent_chf || 0);
   });
 
-  Object.values(markers).forEach(m => map.removeLayer(m));
+  cluster.clearLayers();
   markers = {};
   document.getElementById('cards').innerHTML = '';
   document.getElementById('count').textContent = `${listings.length} listings`;
 
+  const newMarkers = [];
   listings.forEach(l => {
-    const color = rentColor(l.rent_chf);
+    const tier = rentTier(l.rent_chf);
+    const sel = l.id === selectedId ? ' selected' : '';
+    // iconSize null lets the pill size itself to its text; CSS positions it above the point.
     const icon = L.divIcon({
-      className: '',
-      html: `<div style="background:${color};border:2px solid #fff;border-radius:3px;padding:1px 5px;font-family:'Courier New',monospace;font-size:11px;color:#111;font-weight:bold;white-space:nowrap;box-shadow:0 1px 3px #0008">${l.rent_chf}</div>`,
-      iconAnchor: [0, 0]
+      className: 'price-marker-wrap',
+      html: `<div class="price-marker tier-${tier.key}${sel}" title="${tier.label}">${l.rent_chf}<span class="cur">CHF</span></div>`,
+      iconSize: null,
+      iconAnchor: [0, 0],
+      popupAnchor: [0, -30],
     });
 
     const cmin = commuteMin(l);
@@ -532,16 +636,17 @@ function renderAll(listings) {
       ${linkHtml}
     `);
 
-    const m = L.marker([l.lat, l.lng], { icon }).addTo(map).bindPopup(popup);
+    const m = L.marker([l.lat, l.lng], { icon, zIndexOffset: sel ? 1000 : 0 }).bindPopup(popup);
     m.on('click', () => selectListing(l.id));
     markers[l.id] = m;
+    newMarkers.push(m);
 
     // card
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = 'card' + sel;
     card.id = `card-${l.id}`;
     card.innerHTML = `
-      <div><span class="card-rent">${l.rent_chf} CHF</span>${scoreChip(l.fit_score)}${replyChip(l.reply_score)}</div>
+      <div><span class="card-dot" style="background:${tier.color}" title="${tier.label}"></span><span class="card-rent">${l.rent_chf} CHF</span>${scoreChip(l.fit_score)}${replyChip(l.reply_score)}</div>
       <div class="card-title">${l.title}</div>
       <div class="card-address">${l.address}</div>
       ${clabel ? `<div class="card-commute">${clabel}</div>` : ''}
@@ -554,20 +659,35 @@ function renderAll(listings) {
       </div>
     `;
     card.onclick = () => selectListing(l.id);
+    card.onmouseenter = () => markerEl(l.id)?.classList.add('hover');
+    card.onmouseleave = () => markerEl(l.id)?.classList.remove('hover');
     document.getElementById('cards').appendChild(card);
   });
+  cluster.addLayers(newMarkers);
 }
 
 function selectListing(id) {
+  if (selectedId != null) {
+    markerEl(selectedId)?.classList.remove('selected');
+    markers[selectedId]?.setZIndexOffset(0);
+  }
+  selectedId = id;
   document.querySelectorAll('.card').forEach(c => c.classList.remove('selected'));
   const card = document.getElementById(`card-${id}`);
   if (card) { card.classList.add('selected'); card.scrollIntoView({ block: 'nearest' }); }
   const l = allListings.find(x => x.id === id);
-  if (l) {
-    map.setView([l.lat, l.lng], 15);
-    markers[id]?.openPopup();
-    showDetail(l);
+  if (!l) return;
+  const m = markers[id];
+  if (m) {
+    m.setZIndexOffset(1000);
+    // Zoom in, then make sure the marker is out of its cluster before opening the popup.
+    map.once('moveend', () => cluster.zoomToShowLayer(m, () => {
+      markerEl(id)?.classList.add('selected');
+      m.openPopup();
+    }));
   }
+  map.setView([l.lat, l.lng], Math.max(map.getZoom(), 15));
+  showDetail(l);
 }
 
 function showDetail(l) {
