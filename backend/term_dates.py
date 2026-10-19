@@ -34,10 +34,13 @@ _PATTERNS = [
 ]
 # what may come right before an END date: "bis (zum|Ende|Mitte)", "until", "to", "–", ...
 # ("Ende"/"end" alone is no lead: "Bezug ab Ende September 2026" is a start; markdown ** allowed)
+# A hyphen glued to "mid"/"early"/... is part of the date ("as early as mid-November 2026" is a
+# start, live), not a range dash; "until end-March 2027" still ends via "until".
 _END_LEAD = re.compile(
-    r"(?:(?<![a-zäöü])(?:bis|until|till|to|through|thru)(?![a-zäöü])|[-–—])"
+    r"(?:(?<![a-zäöü])(?:bis|until|till|to|through|thru)(?![a-zäöü])|"
+    r"(?<!mid)(?<!early)(?<!late)(?<!end)(?<!mitte)(?<!ende)(?<!anfang)[-–—])"
     r"[\s.,:(*_]*(?:(?:zum|zur|am|ende|mitte|anfang|spätestens|the|ca|approx|approximately|about|of|"
-    r"early|mid|end|latest)(?![a-zäöü])[\s.,:*_]*){0,3}$", re.I)
+    r"early|mid|end|latest)(?![a-zäöü])[\s.,:*_-]*){0,3}$", re.I)
 _LEAD_CHARS = 30
 
 
@@ -170,10 +173,13 @@ def _start_date(f: dict, mod: str, published: date) -> date | None:
         day = 15 if m.startswith(("mitte", "mid")) else 31 if m.startswith(("ende", "end", "late", "fin")) else 1
     if f["year"] is not None:
         return _to_date(f["year"], f["month"], day)
-    d = _to_date(published.year, f["month"], day)
-    if d and (published - d).days > _YEAR_SLACK_DAYS:   # next occurrence after publication
-        d = _to_date(published.year + 1, f["month"], day)
-    return d
+    # the first occurrence no more than the slack before publication ("ab 20. Dezember" in an
+    # ad published 5 January is last December, not next)
+    for y in (published.year - 1, published.year, published.year + 1):
+        d = _to_date(y, f["month"], day)
+        if d and (published - d).days <= _YEAR_SLACK_DAYS:
+            return d
+    return None
 
 
 def stated_starts(published: date, text: str) -> list[date]:
