@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-19: accessibility and keyboard pass
+
+### Fixed
+- Keyboard: Esc now returns focus to whatever opened the thing it closes (⋯ menu, Keyboard shortcuts, Top 5, Profile/Group panels; closing the detail puts focus back on the card). Tab stays inside an open modal or side panel. Space opens a focused card like Enter, and focus moves into the detail ("← Listings") instead of getting lost when the list hides. ↑/↓/Home/End move through the ⋯ menu, and tabbing out of it closes it.
+- Contrast (WCAG AA on the dark theme): red text (rents, headings) uses a new `--red-txt` (#f44336); `#c00` stays for borders and buttons. Active Transit/Bike buttons use darker blue/green under the white text. The FIT/REPLY labels inside badges are no longer faded. Commute times, "CHF" after rents, greys in the detail/Top 5/popup, map ring labels, popup links and the stats page's outcome counts were nudged until they pass.
+- Screen readers: the ↗ link on cards, the Tone/Language toggles and the map now have names; the ETH campus pins are no longer unnamed tab stops; the page has header/main/filters landmarks. The listing count is announced once when filtering settles (a debounced hidden live region), not on every slider step.
+- At phone width the main actions (top bar, filter and sort toggles, detail back, Draft, draft actions, panel buttons) are at least 40px tall; the card's Sent/Replied/Skipped/draft/↗ buttons keep their look but get an invisible 40px hit area.
+- `tests/ui_smoke.py` checks all of the above at 1440 and 390 (`run_a11y`).
+
 ## 2026-10-19: fixes from a live Flatfox end-to-end run
 
 ### Fixed
