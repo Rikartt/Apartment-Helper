@@ -33,16 +33,38 @@ def _forbid_live_commute_api(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _backups_in_tmp(tmp_path, monkeypatch):
+    """The app's backup thread starts with every TestClient: keep its files out of the repo's
+    backups/ (a test file named for today would make the real app skip today's backup)."""
+    monkeypatch.setenv("WGP_BACKUP_DIR", str(tmp_path / "backups"))
+
+
+@pytest.fixture(autouse=True)
 def _forbid_live_anthropic(monkeypatch):
     """Hard guard: any attempt to build a real Anthropic client fails the test."""
     import anthropic
+    # import first: llm.py uses anthropic.Anthropic in a module-level annotation
+    import backend.extraction as e, backend.drafting as d
+    from backend import llm
 
     def boom(*a, **k):
         raise AssertionError("live Anthropic client constructed in a test (zero live API calls allowed)")
     monkeypatch.setattr(anthropic, "Anthropic", boom)
-    import backend.extraction as e, backend.drafting as d
-    from backend import llm
     monkeypatch.setattr(llm, "_client", None)
+
+
+@pytest.fixture(autouse=True)
+def _offline_geocode_and_scratch_state(tmp_path, monkeypatch):
+    """No test may reach swisstopo/Nominatim, write the real geocache, or read the real DB."""
+    from backend.ingestion import geocode as g
+    from backend import db as dbm
+
+    def no_net(*a, **k):
+        raise RuntimeError("network geocoding is disabled in tests")
+    monkeypatch.setattr(g, "_swisstopo", no_net)
+    monkeypatch.setattr(g, "_nominatim", no_net)
+    monkeypatch.setattr(g, "CACHE_PATH", tmp_path / "geocache.sqlite")
+    monkeypatch.setattr(dbm, "DB_PATH", tmp_path / "scratch.db")
 
 
 @pytest.fixture

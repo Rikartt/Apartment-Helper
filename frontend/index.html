@@ -18,6 +18,8 @@
   :root {
     --bg:#1a1a1a; --panel:#111; --line:#333; --line2:#1e1e1e; --txt:#e0e0e0; --dim:#888; --faint:#555;
     --red:#c00; --transit:#2196f3; --bike:#4caf50; --amber:#ffc107;
+    /* type scale: 4 steps (hero rent .detail-rent and map-pin px sizes are the only exceptions) */
+    --fs-xs:.62rem; --fs-sm:.72rem; --fs-md:.8rem; --fs-lg:1.1rem;
     --tier-low:#66bb6a; --tier-mid:#42a5f5; --tier-high:#ffa726;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -28,10 +30,12 @@
   :focus-visible { outline:2px solid var(--amber); outline-offset:1px; }
 
   #topbar { background:var(--panel); border-bottom:2px solid var(--red); padding:8px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0; }
-  #topbar h1 { color:var(--red); font-size:1.1rem; letter-spacing:.15em; text-transform:uppercase; }
-  #count { color:var(--dim); font-size:.72rem; margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
-  #sync { color:var(--amber); font-size:.65rem; letter-spacing:.06em; text-transform:uppercase; display:none; white-space:nowrap; }
-  #sync.on { display:inline; }
+  #topbar h1 { color:var(--red); font-size:var(--fs-lg); letter-spacing:.15em; text-transform:uppercase; }
+  #count { color:var(--dim); font-size:var(--fs-sm); margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
+  #sync { color:var(--amber); font-size:var(--fs-xs); letter-spacing:.06em; text-transform:uppercase; display:none; white-space:nowrap; }
+  #sync.on { display:inline-block; padding-bottom:3px;   /* thin progress bar under the text: sources done / total */
+    background:linear-gradient(var(--amber),var(--amber)) left bottom / calc(var(--sync-p,0) * 100%) 2px no-repeat,
+               linear-gradient(#3a3200,#3a3200) left bottom / 100% 2px no-repeat; }
   #sync::before { content:"●"; margin-right:4px; animation:pulse 1.2s infinite; }
   @keyframes pulse { 50% { opacity:.2; } }
   .tb-actions { display:flex; align-items:center; gap:6px; }
@@ -39,22 +43,24 @@
   .menu-wrap { position:relative; }
   #more-menu { position:absolute; right:0; top:calc(100% + 6px); min-width:230px; background:var(--panel); border:1px solid var(--line); border-top:2px solid var(--red); box-shadow:0 6px 18px #000c; z-index:1500; display:flex; flex-direction:column; }
   #more-menu[hidden] { display:none; }
-  #more-menu button { background:none; border:none; border-bottom:1px solid var(--line2); color:var(--txt); font-size:.72rem; text-align:left; padding:9px 12px; cursor:pointer; display:flex; justify-content:space-between; gap:12px; letter-spacing:.04em; }
+  #more-menu button { background:none; border:none; border-bottom:1px solid var(--line2); color:var(--txt); font-size:var(--fs-sm); text-align:left; padding:9px 12px; cursor:pointer; display:flex; justify-content:space-between; gap:12px; letter-spacing:.04em; }
   #more-menu button:last-child { border-bottom:none; }
   #more-menu button:hover, #more-menu button:focus-visible { background:#1c1c1c; }
-  #more-menu button small { color:var(--dim); font-size:.6rem; }
+  #more-menu button small { color:var(--dim); font-size:var(--fs-xs); }
   body.group-mode #more-menu .solo-only { display:none; }
-  .topbar-btn { background:none; border:1px solid var(--line); color:#b0b0b0; font-size:.7rem; height:26px; padding:0 10px; cursor:pointer; letter-spacing:.08em; white-space:nowrap; }
+  .topbar-btn { background:none; border:1px solid var(--line); color:#b0b0b0; font-size:var(--fs-sm); height:26px; padding:0 10px; cursor:pointer; letter-spacing:.08em; white-space:nowrap; }
   .topbar-btn:hover { border-color:var(--red); color:var(--txt); }
   .topbar-btn:disabled { opacity:.5; cursor:wait; }
   .topbar-btn.amber { border-color:var(--amber); color:var(--amber); }
 
   #filters-toggle { display:none; }
-  #hint { display:none; background:#0d1a26; border-bottom:1px solid #1b3a58; color:#90caf9; font-size:.72rem; letter-spacing:.04em; padding:5px 16px; flex-shrink:0; align-items:center; gap:10px; }
+  #hint { display:none; background:#0d1a26; border-bottom:1px solid #1b3a58; color:#90caf9; font-size:var(--fs-sm); letter-spacing:.04em; padding:5px 16px; flex-shrink:0; align-items:center; gap:10px; }
   #hint.on { display:flex; }
-  #hint button { background:none; border:1px solid #42a5f5; color:#90caf9; font:inherit; font-size:.68rem; padding:1px 8px; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
+  #hint button { background:none; border:1px solid #42a5f5; color:#90caf9; font:inherit; font-size:var(--fs-sm); padding:1px 8px; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
   #hint button:hover { background:#42a5f5; color:#111; }
-  #hint #hint-x { margin-left:auto; border:none; font-size:.8rem; }
+  #hint #hint-step { color:var(--txt); font-weight:normal; letter-spacing:.1em; text-transform:uppercase; font-variant-numeric:tabular-nums; white-space:nowrap; flex-shrink:0; }
+  #hint #hint-next { border-color:#1b3a58; color:var(--dim); }
+  #hint #hint-x { margin-left:auto; border:none; font-size:var(--fs-md); }
   #filters { background:var(--panel); border-bottom:1px solid var(--line); padding:7px 16px; flex-shrink:0; }
   .frow { display:flex; gap:8px 22px; align-items:center; flex-wrap:wrap; }
   #filters-more { display:flex; gap:8px 22px; align-items:center; flex-wrap:wrap; margin-top:7px; padding-top:7px; border-top:1px dashed var(--line); }
@@ -62,11 +68,11 @@
   .fmore { margin-left:auto; }
   #more-count { color:var(--amber); }
   .filter-group { display:flex; align-items:center; gap:8px; }
-  .filter-group > label, .flabel { font-size:.68rem; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
+  .filter-group > label, .flabel { font-size:var(--fs-sm); color:var(--dim); letter-spacing:.08em; text-transform:uppercase; white-space:nowrap; }
   .filter-group input[type=range] { accent-color:var(--red); width:100px; }
-  .filter-val { font-size:.8rem; font-variant-numeric:tabular-nums; min-width:58px; }
+  .filter-val { font-size:var(--fs-md); font-variant-numeric:tabular-nums; min-width:58px; }
   .seg { display:flex; }
-  .seg button { background:var(--bg); color:var(--dim); border:1px solid var(--line); font-size:.7rem; height:26px; padding:0 8px; cursor:pointer; }
+  .seg button { background:var(--bg); color:var(--dim); border:1px solid var(--line); font-size:var(--fs-sm); height:26px; padding:0 8px; cursor:pointer; }
   .seg button + button { border-left:none; }
   .seg button:first-child { border-radius:2px 0 0 2px; } .seg button:last-child { border-radius:0 2px 2px 0; }
   .seg button:hover { color:var(--txt); }
@@ -77,33 +83,33 @@
   .seg.sort button.active { background:#7b1fa2; color:#fff; border-color:#7b1fa2; }
   .seg.kind button.active, .seg.plain button.active { background:#37474f; color:#fff; border-color:#546e7a; }
   .seg.show button.active { background:#37474f; color:#fff; border-color:#546e7a; }
-  .linkbtn { background:none; border:none; color:var(--dim); font-size:.68rem; text-decoration:underline; cursor:pointer; }
+  .linkbtn { background:none; border:none; color:var(--dim); font-size:var(--fs-sm); text-decoration:underline; cursor:pointer; }
   .linkbtn:hover { color:var(--txt); }
-  .chk { display:flex; align-items:center; gap:5px; font-size:.68rem; color:var(--dim); text-transform:uppercase; letter-spacing:.06em; cursor:pointer; white-space:nowrap; }
+  .chk { display:flex; align-items:center; gap:5px; font-size:var(--fs-sm); color:var(--dim); text-transform:uppercase; letter-spacing:.06em; cursor:pointer; white-space:nowrap; }
   .chk input { accent-color:var(--red); }
 
   #main { display:flex; flex:1; overflow:hidden; min-height:0; }
   #map { flex:1; min-width:0; background:#222; }
   #sidebar { width:360px; background:var(--panel); border-left:1px solid var(--line); overflow-y:auto; display:flex; flex-direction:column; flex-shrink:0; }
   #cards-view { display:flex; flex-direction:column; min-height:100%; }
-  #sidebar-header { padding:7px 12px 8px; border-bottom:1px solid var(--line); font-size:.62rem; color:var(--dim); letter-spacing:.06em; position:sticky; top:0; background:var(--panel); z-index:2; line-height:1.4; }
+  #sidebar-header { padding:7px 12px 8px; border-bottom:1px solid var(--line); font-size:var(--fs-xs); color:var(--dim); letter-spacing:.06em; position:sticky; top:0; background:var(--panel); z-index:2; line-height:1.4; }
   #sh-summary { margin-bottom:5px; }
   .sh-row { display:flex; align-items:center; gap:8px; margin-top:4px; }
-  .sh-row .flabel { width:34px; flex-shrink:0; font-size:.58rem; }
+  .sh-row .flabel { width:34px; flex-shrink:0; font-size:var(--fs-xs); }
   .sh-row .seg { flex:1; min-width:0; }
-  .sh-row .seg button { flex:1; padding:0 4px; height:24px; font-size:.64rem; white-space:nowrap; }
+  .sh-row .seg button { flex:1; padding:0 4px; height:24px; font-size:var(--fs-xs); white-space:nowrap; }
   #today { border-bottom:1px solid var(--line); background:#0d0d0d; }
   #today[hidden] { display:none; }
-  .today-head { display:flex; align-items:center; gap:8px; padding:6px 12px; font-size:.62rem; color:var(--amber); letter-spacing:.1em; text-transform:uppercase; cursor:pointer; background:none; border:none; width:100%; text-align:left; }
+  .today-head { display:flex; align-items:center; gap:8px; padding:6px 12px; font-size:var(--fs-xs); color:var(--amber); letter-spacing:.1em; text-transform:uppercase; cursor:pointer; background:none; border:none; width:100%; text-align:left; }
   .today-head small { color:var(--dim); letter-spacing:.03em; text-transform:none; margin-left:auto; }
-  .today-row { display:grid; grid-template-columns:16px 52px 1fr auto; gap:0 8px; align-items:baseline; width:100%; background:none; border:none; border-top:1px solid var(--line2); color:var(--txt); font:inherit; font-size:.68rem; text-align:left; padding:5px 12px; cursor:pointer; }
+  .today-row { display:grid; grid-template-columns:16px 52px 1fr auto; gap:0 8px; align-items:baseline; width:100%; background:none; border:none; border-top:1px solid var(--line2); color:var(--txt); font:inherit; font-size:var(--fs-sm); text-align:left; padding:5px 12px; cursor:pointer; }
   .today-row:hover { background:#181818; }
-  .today-row .rk { color:var(--amber); font-size:.62rem; }
-  .today-row .pr { color:var(--red); font-variant-numeric:tabular-nums; font-size:.8rem; }
+  .today-row .rk { color:var(--amber); font-size:var(--fs-xs); }
+  .today-row .pr { color:var(--red); font-variant-numeric:tabular-nums; font-size:var(--fs-md); }
   .today-row .tt { color:#bbb; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .today-row .mn { color:var(--transit); font-variant-numeric:tabular-nums; font-size:.64rem; }
+  .today-row .mn { color:var(--transit); font-variant-numeric:tabular-nums; font-size:var(--fs-xs); }
   .today-row .mn.bike { color:var(--bike); }
-  .today-row .nw { color:var(--amber); font-size:.5rem; font-weight:bold; letter-spacing:.08em; margin-left:4px; }
+  .today-row .nw { color:var(--amber); font-size:var(--fs-xs); font-weight:bold; letter-spacing:.08em; margin-left:4px; }
   #sidebar-header b { color:#c9c9c9; font-weight:normal; text-transform:uppercase; }
 
   /* cards */
@@ -111,57 +117,64 @@
   .card:hover { background:#181818; }
   .card:focus-visible { outline-offset:-2px; }
   .card.cursor { background:#1a1a1a; box-shadow:inset 0 0 0 1px #444; }
-  .more-cards { display:block; width:calc(100% - 24px); margin:10px 12px 14px; background:none; border:1px dashed var(--line); color:var(--dim); font:inherit; font-size:.7rem; padding:8px; cursor:pointer; letter-spacing:.06em; }
+  .more-cards { display:block; width:calc(100% - 24px); margin:10px 12px 14px; background:none; border:1px dashed var(--line); color:var(--dim); font:inherit; font-size:var(--fs-sm); padding:8px; cursor:pointer; letter-spacing:.06em; }
   .more-cards:hover { color:var(--txt); border-color:#666; }
   .card.selected { background:#1c1c1c; border-left-color:var(--red); }
   .card.dim .card-body { opacity:.45; }
   .card.dim:hover .card-body { opacity:.8; }
   .card.st-sent { border-left-color:#1565c0; } .card.st-replied { border-left-color:#2e7d32; } .card.st-rejected .card-body { opacity:.35; }
   .card-top { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
-  .card-rent { font-size:1.1rem; color:var(--red); font-variant-numeric:tabular-nums; }
-  .card-rent small { font-size:.6rem; color:#b05555; margin-left:2px; }
+  .card-rent { font-size:var(--fs-lg); color:var(--red); font-variant-numeric:tabular-nums; }
+  .card-rent small { font-size:var(--fs-xs); color:#b05555; margin-left:2px; }
   .card-dot { width:8px; height:8px; border-radius:50%; align-self:center; }
-  .badge { font-size:.65rem; padding:1px 5px; border-radius:2px; font-variant-numeric:tabular-nums; white-space:nowrap; cursor:help; }
-  .badge i { font-style:normal; font-size:.55rem; opacity:.7; margin-right:3px; letter-spacing:.05em; }
+  .badge { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; font-variant-numeric:tabular-nums; white-space:nowrap; cursor:help; }
+  .badge i { font-style:normal; font-size:var(--fs-xs); opacity:.7; margin-right:3px; letter-spacing:.05em; }
   .score-high { background:#1a3a1a; color:#4caf50; } .score-mid { background:#1a2a3a; color:#2196f3; } .score-low { background:#2a2a1a; color:#999; }
   .reply-high { background:#241a00; color:var(--amber); } .reply-mid { background:#1e1400; color:#a07820; } .reply-low { background:#1e1a1a; color:#8c8c8c; }
-  .newbadge { font-size:.56rem; font-weight:700; letter-spacing:.1em; padding:1px 4px; border-radius:2px; background:var(--amber); color:#111; }
-  #newnotice { display:none; background:#2a2208; border-bottom:1px solid #5a4a10; color:var(--amber); font-size:.72rem; letter-spacing:.04em; padding:5px 16px; flex-shrink:0; align-items:center; gap:10px; }
+  .newbadge { font-size:var(--fs-xs); font-weight:700; letter-spacing:.1em; padding:1px 4px; border-radius:2px; background:var(--amber); color:#111; }
+  #newnotice { display:none; background:#2a2208; border-bottom:1px solid #5a4a10; color:var(--amber); font-size:var(--fs-sm); letter-spacing:.04em; padding:5px 16px; flex-shrink:0; align-items:center; gap:10px; }
   #newnotice.on { display:flex; }
   #newnotice button, #hint button { white-space:nowrap; flex-shrink:0; }
   #newnotice-text, #hint-text { min-width:0; }
-  #newnotice #newnotice-x { margin-left:auto; border:none; font-size:.8rem; }
-  #newnotice button { background:none; border:1px solid var(--amber); color:var(--amber); font:inherit; font-size:.68rem; padding:1px 8px; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
+  #newnotice #newnotice-x { margin-left:auto; border:none; font-size:var(--fs-md); }
+  #newnotice button { background:none; border:1px solid var(--amber); color:var(--amber); font:inherit; font-size:var(--fs-sm); padding:1px 8px; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
   #newnotice button:hover { background:var(--amber); color:#111; }
-  .stbadge { margin-left:auto; font-size:.58rem; text-transform:uppercase; letter-spacing:.08em; padding:1px 5px; border:1px solid; border-radius:2px; }
+  .stbadge { margin-left:auto; font-size:var(--fs-xs); text-transform:uppercase; letter-spacing:.08em; padding:1px 5px; border:1px solid; border-radius:2px; }
   .stbadge.sent { color:#64b5f6; border-color:#1565c0; } .stbadge.replied { color:#81c784; border-color:#2e7d32; } .stbadge.rejected { color:#959595; border-color:#444; }
-  .card-title { font-size:.74rem; color:#ccc; margin-top:2px; line-height:1.3; }
-  .card-address { font-size:.64rem; color:#959595; margin-top:1px; }
-  .commute { display:grid; grid-template-columns:auto auto auto 1fr; gap:1px 8px; align-items:center; margin-top:5px; font-size:.66rem; font-variant-numeric:tabular-nums; }
-  .commute .cn { color:#8c8c8c; text-transform:uppercase; letter-spacing:.05em; font-size:.58rem; }
+  .card-title { font-size:var(--fs-sm); color:#ccc; margin-top:2px; line-height:1.3; }
+  .card-address { font-size:var(--fs-xs); color:#959595; margin-top:1px; }
+  .commute { display:grid; grid-template-columns:auto auto auto 1fr; gap:1px 8px; align-items:center; margin-top:5px; font-size:var(--fs-sm); font-variant-numeric:tabular-nums; }
+  .commute .cn { color:#8c8c8c; text-transform:uppercase; letter-spacing:.05em; font-size:var(--fs-xs); }
   .commute .cn.on { color:#e0e0e0; }
   .commute .t { color:#3a7fc0; } .commute .b { color:#3a8a4a; }
   .commute .t.on { color:#64b5f6; font-weight:bold; } .commute .b.on { color:#81c784; font-weight:bold; }
   .commute .t::before, .commute .b::before { content:""; display:inline-block; width:10px; height:3px; margin-right:4px; vertical-align:middle; background:currentColor; border-radius:1px; }
   .chips { margin-top:5px; display:flex; flex-wrap:wrap; gap:3px; }
-  .chip { font-size:.6rem; padding:1px 5px; border-radius:2px; background:#10261a; color:#66bb6a; border:1px solid #1a4a20; white-space:nowrap; }
+  .chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; background:#10261a; color:#66bb6a; border:1px solid #1a4a20; white-space:nowrap; }
   .chip.bad { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .trust-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid; }
+  .trust-chip.high { background:#10261a; color:#66bb6a; border-color:#1a4a20; }
+  .trust-chip.medium { background:#2a2000; color:var(--amber); border-color:#5a4a10; }
+  .trust-chip.low { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .trust-warn { margin-top:14px; border:1px solid #5a1010; background:#1a0a0a; color:#e57373; padding:8px; font-size:var(--fs-sm); line-height:1.45; }
+  .trust-warn b { letter-spacing:.06em; text-transform:uppercase; font-size:var(--fs-xs); }
+  .trust-warn ul { margin:4px 0 0 16px; padding:0; color:#ccc; }
   .chip.dealbreaker { text-decoration:none; }
-  .card-meta { font-size:.6rem; color:#8c8c8c; margin-top:5px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
+  .card-meta { font-size:var(--fs-xs); color:#8c8c8c; margin-top:5px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
   .card-actions { display:flex; gap:4px; margin-top:6px; align-items:center; flex-wrap:wrap; }
-  .st { background:none; border:1px solid #2c2c2c; color:#959595; font-size:.6rem; padding:2px 6px; cursor:pointer; letter-spacing:.04em; text-transform:uppercase; }
+  .st { background:none; border:1px solid #2c2c2c; color:#959595; font-size:var(--fs-xs); padding:2px 6px; cursor:pointer; letter-spacing:.04em; text-transform:uppercase; }
   .st:hover { color:var(--txt); border-color:#8c8c8c; }
   .st.sent.active { background:#0d2a4a; color:#64b5f6; border-color:#1565c0; }
   .st.replied.active { background:#0d2e14; color:#81c784; border-color:#2e7d32; }
   .st.rejected.active { background:#2a2a2a; color:#aaa; border-color:#8c8c8c; }
-  .act { background:none; border:none; color:var(--amber); font-size:.62rem; cursor:pointer; padding:2px 3px; margin-left:auto; }
+  .act { background:none; border:none; color:var(--amber); font-size:var(--fs-xs); cursor:pointer; padding:2px 3px; margin-left:auto; }
   .act:hover { text-decoration:underline; }
-  .card-link { font-size:.62rem; color:var(--transit); text-decoration:none; padding:2px 3px; }
+  .card-link { font-size:var(--fs-xs); color:var(--transit); text-decoration:none; padding:2px 3px; }
   .card-link:hover { text-decoration:underline; }
 
-  .empty { padding:28px 18px; text-align:center; color:#959595; font-size:.75rem; line-height:1.6; }
-  .empty h3 { color:#bbb; font-size:.8rem; letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; font-weight:normal; }
-  .empty .linkbtn { font-size:.75rem; margin-top:8px; }
+  .empty { padding:28px 18px; text-align:center; color:#959595; font-size:var(--fs-sm); line-height:1.6; }
+  .empty h3 { color:#bbb; font-size:var(--fs-md); letter-spacing:.08em; text-transform:uppercase; margin-bottom:6px; font-weight:normal; }
+  .empty .linkbtn { font-size:var(--fs-sm); margin-top:8px; }
   .empty.err h3 { color:#e57373; }
   .skel { height:92px; margin:0; border-bottom:1px solid var(--line2); background:linear-gradient(90deg,#141414,#1b1b1b,#141414); background-size:200% 100%; animation:sk 1.3s infinite linear; }
   @keyframes sk { to { background-position:-200% 0; } }
@@ -170,123 +183,131 @@
   #profile-panel, #group-panel { position:fixed; top:0; right:0; width:380px; max-width:100vw; height:calc(100vh - var(--ob,0px)); height:calc(100dvh - var(--ob,0px)); background:var(--panel); border-left:1px solid var(--line); z-index:1100; display:flex; flex-direction:column; transform:translateX(100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
   #profile-panel.open, #group-panel.open { transform:none; visibility:visible; }
   #profile-panel-header, #group-panel-header { padding:12px 16px; border-bottom:2px solid var(--red); display:flex; justify-content:space-between; align-items:center; }
-  #profile-panel-header h2, #group-panel-header h2 { color:var(--red); font-size:.85rem; letter-spacing:.1em; text-transform:uppercase; }
+  #profile-panel-header h2, #group-panel-header h2 { color:var(--red); font-size:var(--fs-md); letter-spacing:.1em; text-transform:uppercase; }
   #profile-panel-body, #group-panel-body { flex:1; overflow-y:auto; padding:12px 16px; }
   #profile-panel-footer, #group-panel-footer { padding:12px 16px; border-top:1px solid var(--line); display:flex; gap:8px; }
   .pfield { margin-bottom:12px; }
-  .pfield label { display:block; font-size:.65rem; color:var(--dim); letter-spacing:.08em; text-transform:uppercase; margin-bottom:3px; }
-  .pfield input, .pfield textarea { width:100%; background:var(--bg); border:1px solid var(--line); color:var(--txt); font-family:inherit; font-size:.8rem; padding:6px 8px; outline:none; }
+  .pfield label { display:block; font-size:var(--fs-xs); color:var(--dim); letter-spacing:.08em; text-transform:uppercase; margin-bottom:3px; }
+  .pfield input, .pfield textarea { width:100%; background:var(--bg); border:1px solid var(--line); color:var(--txt); font-family:inherit; font-size:var(--fs-md); padding:6px 8px; outline:none; }
   .pfield input:focus, .pfield textarea:focus { border-color:var(--red); }
   .pfield textarea { resize:vertical; min-height:60px; }
-  .pfield .hint { font-size:.6rem; color:#8c8c8c; text-transform:none; letter-spacing:0; }
-  .save-btn { flex:1; background:var(--red); color:#fff; border:none; font-size:.75rem; padding:8px; cursor:pointer; letter-spacing:.08em; }
+  .pfield .hint { font-size:var(--fs-xs); color:#8c8c8c; text-transform:none; letter-spacing:0; }
+  .save-btn { flex:1; background:var(--red); color:#fff; border:none; font-size:var(--fs-sm); padding:8px; cursor:pointer; letter-spacing:.08em; }
   .save-btn:hover { background:#e00; } .save-btn:disabled { opacity:.5; }
-  .cancel-btn { background:none; border:1px solid var(--line); color:var(--dim); font-size:.75rem; padding:6px 14px; cursor:pointer; }
+  .cancel-btn { background:none; border:1px solid var(--line); color:var(--dim); font-size:var(--fs-sm); padding:6px 14px; cursor:pointer; }
   .cancel-btn:hover { border-color:#8c8c8c; color:var(--txt); }
 
   /* detail */
   #detail-view { display:none; flex-direction:column; min-height:100%; }
   #detail-view.open { display:flex; }
   #detail-topbar { padding:6px 12px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; background:var(--panel); z-index:2; }
-  .detail-back { background:none; border:none; color:#aaa; font-size:.72rem; cursor:pointer; padding:4px 0; letter-spacing:.05em; }
+  .detail-back { background:none; border:none; color:#aaa; font-size:var(--fs-sm); cursor:pointer; padding:4px 0; letter-spacing:.05em; }
   .detail-back:hover { color:#fff; }
   #detail-body { padding:12px; }
   .detail-rent { font-size:1.5rem; color:var(--red); font-variant-numeric:tabular-nums; }
-  .detail-title { font-size:.8rem; color:#ccc; margin:2px 0; line-height:1.35; }
-  .detail-addr { font-size:.66rem; color:#959595; }
+  .detail-title { font-size:var(--fs-md); color:#ccc; margin:2px 0; line-height:1.35; }
+  .detail-addr { font-size:var(--fs-sm); color:#959595; }
   .detail-section { margin-top:10px; }
-  .detail-section-label { font-size:.6rem; color:#8c8c8c; letter-spacing:.1em; text-transform:uppercase; margin-bottom:4px; border-top:1px solid var(--line2); padding-top:8px; }
-  .pill { display:inline-block; background:#1e1e1e; color:#aaa; border:1px solid #2a2a2a; border-radius:2px; font-size:.65rem; padding:1px 6px; margin:2px 2px 0 0; }
+  .detail-section-label { font-size:var(--fs-xs); color:#8c8c8c; letter-spacing:.1em; text-transform:uppercase; margin-bottom:4px; border-top:1px solid var(--line2); padding-top:8px; }
+  .pill { display:inline-block; background:#1e1e1e; color:#aaa; border:1px solid #2a2a2a; border-radius:2px; font-size:var(--fs-xs); padding:1px 6px; margin:2px 2px 0 0; }
   .pill.red { background:#2a0000; color:#e57373; border-color:#5a1010; }
   .pill.green { background:#0a2010; color:#66bb6a; border-color:#1a4a20; }
-  .detail-bullet { font-size:.7rem; color:#aaa; margin:2px 0; padding-left:8px; }
+  .detail-bullet { font-size:var(--fs-sm); color:#aaa; margin:2px 0; padding-left:8px; }
   .detail-bullet::before { content:"• "; color:#8c8c8c; }
-  .detail-link-btn { display:block; margin-top:14px; text-align:center; background:var(--red); color:#fff; font-size:.75rem; padding:8px; text-decoration:none; letter-spacing:.08em; }
+  .detail-link-btn { display:block; margin-top:14px; text-align:center; background:var(--red); color:#fff; font-size:var(--fs-sm); padding:8px; text-decoration:none; letter-spacing:.08em; }
   .detail-link-btn:hover { background:#e00; }
   details.rawtext { margin-top:10px; border-top:1px solid var(--line2); padding-top:8px; }
-  details.rawtext summary { font-size:.6rem; color:#8c8c8c; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; }
-  details.rawtext pre { white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:.68rem; color:#999; margin-top:6px; max-height:260px; overflow:auto; line-height:1.4; }
-  .note-inline { font-size:.66rem; color:#959595; margin-top:8px; }
+  details.rawtext summary { font-size:var(--fs-xs); color:#8c8c8c; letter-spacing:.1em; text-transform:uppercase; cursor:pointer; }
+  details.rawtext pre { white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:var(--fs-sm); color:#999; margin-top:6px; max-height:260px; overflow:auto; line-height:1.4; }
+  .note-inline { font-size:var(--fs-sm); color:#959595; margin-top:8px; }
 
   /* draft */
-  .draft-btn { display:block; width:100%; margin-top:14px; background:none; color:var(--amber); border:1px solid var(--amber); font-size:.78rem; padding:8px; letter-spacing:.08em; cursor:pointer; }
+  .draft-btn { display:block; width:100%; margin-top:14px; background:none; color:var(--amber); border:1px solid var(--amber); font-size:var(--fs-md); padding:8px; letter-spacing:.08em; cursor:pointer; }
   .draft-btn:hover { background:#2a2000; } .draft-btn:disabled { opacity:.5; cursor:wait; }
-  .draft-btn.has-draft { color:var(--dim); border-color:var(--line); font-size:.7rem; padding:6px; margin-top:12px; }
+  .draft-btn.has-draft { color:var(--dim); border-color:var(--line); font-size:var(--fs-sm); padding:6px; margin-top:12px; }
   .draft-btn.has-draft:hover { color:var(--amber); border-color:var(--amber); background:none; }
   #draft-box { margin-top:8px; }
-  .draft-head { display:flex; align-items:center; gap:8px; font-size:.62rem; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; }
+  .draft-head { display:flex; align-items:center; gap:8px; font-size:var(--fs-xs); color:var(--dim); letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; }
   .lang-tag { background:#241a00; color:var(--amber); border:1px solid #5a4400; padding:0 5px; border-radius:2px; font-weight:bold; }
   .lang-warn { color:#ff9800; text-transform:none; letter-spacing:0; }
-  #draft-text { width:100%; min-height:240px; background:#0a0a0a; color:var(--txt); border:1px solid var(--line); font-family:inherit; font-size:.76rem; line-height:1.5; padding:8px; resize:vertical; }
+  #draft-text { width:100%; min-height:240px; background:#0a0a0a; color:var(--txt); border:1px solid var(--line); font-family:inherit; font-size:var(--fs-md); line-height:1.5; padding:8px; resize:vertical; }
   #draft-text:focus { outline:none; border-color:var(--amber); }
+  .draft-opts { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:2px 0 6px; }
+  .dseg { display:inline-flex; border:1px solid var(--line); }
+  .dseg button { background:none; border:0; color:var(--dim); font-size:var(--fs-xs); padding:3px 8px; cursor:pointer; letter-spacing:.06em; text-transform:uppercase; font-family:inherit; }
+  .dseg button + button { border-left:1px solid var(--line); }
+  .dseg button[aria-pressed="true"] { color:var(--amber); background:#241a00; }
+  .seg-label { font-size:var(--fs-xs); color:var(--dim); letter-spacing:.06em; text-transform:uppercase; }
+  .ad-summary { font-size:var(--fs-sm); color:#b5b5b5; line-height:1.4; margin:3px 0 2px; }
+  .ad-summary .lbl { font-size:var(--fs-xs); color:var(--amber); letter-spacing:.08em; text-transform:uppercase; border:1px solid #5a4400; padding:0 4px; margin-right:6px; }
   .draft-actions { display:flex; gap:6px; margin-top:6px; align-items:center; flex-wrap:wrap; }
-  .draft-actions button { background:none; border:1px solid #555; color:#bbb; font-size:.68rem; padding:5px 10px; cursor:pointer; letter-spacing:.05em; }
+  .draft-actions button { background:none; border:1px solid #555; color:#bbb; font-size:var(--fs-sm); padding:5px 10px; cursor:pointer; letter-spacing:.05em; }
   .draft-actions button:hover { border-color:var(--amber); color:var(--amber); }
   .draft-actions button.primary { background:var(--amber); color:#111; border-color:var(--amber); font-weight:bold; }
-  .draft-note { font-size:.6rem; color:#8c8c8c; width:100%; }
+  .draft-note { font-size:var(--fs-xs); color:#8c8c8c; width:100%; }
   /* checklist, sent history, follow-ups */
   .ck-wrap { margin:8px 0 2px; border:1px solid var(--line2); background:#0e0e0e; padding:7px 9px; }
-  .ck-head { font-size:.6rem; color:#8c8c8c; letter-spacing:.08em; text-transform:uppercase; margin-bottom:4px; }
-  .ck { list-style:none; } .ck li { font-size:.7rem; line-height:1.4; padding:2px 0; display:flex; gap:7px; align-items:baseline; flex-wrap:wrap; }
+  .ck-head { font-size:var(--fs-xs); color:#8c8c8c; letter-spacing:.08em; text-transform:uppercase; margin-bottom:4px; }
+  .ck { list-style:none; } .ck li { font-size:var(--fs-sm); line-height:1.4; padding:2px 0; display:flex; gap:7px; align-items:baseline; flex-wrap:wrap; }
   .ck .box { flex:0 0 14px; text-align:center; font-weight:700; }
   .ck li.ok .box { color:var(--bike); } .ck li.ok .t { color:#9a9a9a; }
   .ck li.miss .box { color:var(--amber); } .ck li.miss .t { color:var(--txt); }
-  .ck .t { flex:0 1 auto; min-width:0; } .ck .hint { color:var(--amber); font-size:.64rem; flex-basis:100%; padding-left:21px; } .ck .tag { font-size:.55rem; color:#8c8c8c; border:1px solid #333; padding:0 4px; letter-spacing:.06em; text-transform:uppercase; }
-  .fu-chip { font-size:.56rem; font-weight:700; letter-spacing:.08em; padding:1px 5px; border-radius:2px; border:1px solid var(--amber); color:var(--amber); text-transform:uppercase; }
+  .ck .t { flex:1 1 0; min-width:0; } .ck .hint { color:var(--amber); font-size:var(--fs-xs); flex-basis:100%; padding-left:21px; } .ck .tag { font-size:var(--fs-xs); color:#8c8c8c; border:1px solid #333; padding:0 4px; letter-spacing:.06em; text-transform:uppercase; }
+  .fu-chip { font-size:var(--fs-xs); font-weight:700; letter-spacing:.08em; padding:1px 5px; border-radius:2px; border:1px solid var(--amber); color:var(--amber); text-transform:uppercase; }
   .fu-chip { margin-left:auto; } .fu-chip + .stbadge { margin-left:6px; }
   .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
-  .sent-item { margin-top:4px; } .sent-when { font-size:.7rem; color:#64b5f6; }
-  .sent-text { white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:.7rem; color:#aaa; background:#0a0a0a; border:1px solid var(--line2); padding:7px 8px; margin-top:4px; max-height:220px; overflow:auto; line-height:1.45; }
-  .fu-note { font-size:.7rem; color:var(--amber); margin-top:8px; }
-  .fu-btn { background:none; border:1px solid var(--amber); color:var(--amber); font-size:.68rem; padding:5px 10px; cursor:pointer; margin-top:6px; letter-spacing:.05em; } .fu-btn:hover { background:#2a2000; } .fu-btn:disabled { opacity:.5; cursor:wait; }
-  .sent-prompt { margin-top:8px; border:1px solid var(--amber); background:#1a1500; padding:8px 10px; font-size:.7rem; color:var(--txt); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
-  .sent-prompt b { color:var(--amber); } .sent-prompt button { background:none; border:1px solid #555; color:#bbb; font-size:.68rem; padding:5px 10px; cursor:pointer; } .sent-prompt button.primary { background:var(--amber); color:#111; border-color:var(--amber); font-weight:700; }
-  .draft-error { font-size:.7rem; color:#e57373; margin-top:8px; line-height:1.4; border:1px solid #5a1010; background:#1a0a0a; padding:8px; }
+  .sent-item { margin-top:4px; } .sent-when { font-size:var(--fs-sm); color:#64b5f6; }
+  .sent-text { white-space:pre-wrap; word-break:break-word; font-family:inherit; font-size:var(--fs-sm); color:#aaa; background:#0a0a0a; border:1px solid var(--line2); padding:7px 8px; margin-top:4px; max-height:220px; overflow:auto; line-height:1.45; }
+  .fu-note { font-size:var(--fs-sm); color:var(--amber); margin-top:8px; }
+  .fu-btn { background:none; border:1px solid var(--amber); color:var(--amber); font-size:var(--fs-sm); padding:5px 10px; cursor:pointer; margin-top:6px; letter-spacing:.05em; } .fu-btn:hover { background:#2a2000; } .fu-btn:disabled { opacity:.5; cursor:wait; }
+  .sent-prompt { margin-top:8px; border:1px solid var(--amber); background:#1a1500; padding:8px 10px; font-size:var(--fs-sm); color:var(--txt); display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .sent-prompt b { color:var(--amber); } .sent-prompt button { background:none; border:1px solid #555; color:#bbb; font-size:var(--fs-sm); padding:5px 10px; cursor:pointer; } .sent-prompt button.primary { background:var(--amber); color:#111; border-color:var(--amber); font-weight:700; }
+  .draft-error { font-size:var(--fs-sm); color:#e57373; margin-top:8px; line-height:1.4; border:1px solid #5a1010; background:#1a0a0a; padding:8px; }
 
   /* best */
   #best-modal { display:none; position:fixed; inset:0; bottom:var(--ob,0px); background:#000a; z-index:2000; align-items:center; justify-content:center; }
   #best-modal.open { display:flex; }
   #best-box { background:var(--panel); border:1px solid var(--line); width:min(700px,95vw); max-height:90vh; display:flex; flex-direction:column; border-top:2px solid var(--red); }
   #best-header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
-  #best-header h2 { color:var(--red); font-size:.85rem; letter-spacing:.1em; text-transform:uppercase; }
+  #best-header h2 { color:var(--red); font-size:var(--fs-md); letter-spacing:.1em; text-transform:uppercase; }
   #best-list { overflow-y:auto; flex:1; }
   .best-entry { padding:12px 16px; border-bottom:1px solid var(--line2); }
   .best-entry-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
-  .best-rank { color:var(--amber); margin-right:8px; font-size:.8rem; }
-  .best-entry-title { font-size:.8rem; color:#ccc; }
-  .best-entry-rent { font-size:1rem; color:var(--red); font-variant-numeric:tabular-nums; }
+  .best-rank { color:var(--amber); margin-right:8px; font-size:var(--fs-md); }
+  .best-entry-title { font-size:var(--fs-md); color:#ccc; }
+  .best-entry-rent { font-size:var(--fs-lg); color:var(--red); font-variant-numeric:tabular-nums; }
   .best-sw { display:flex; gap:16px; margin-top:6px; flex-wrap:wrap; }
-  .best-col-label { font-size:.6rem; color:#8c8c8c; letter-spacing:.08em; text-transform:uppercase; margin-bottom:3px; }
+  .best-col-label { font-size:var(--fs-xs); color:#8c8c8c; letter-spacing:.08em; text-transform:uppercase; margin-bottom:3px; }
   .best-col { min-width:140px; flex:1; }
-  .best-strength { font-size:.7rem; color:#66bb6a; margin:1px 0; } .best-strength::before { content:"✓ "; }
-  .best-weakness { font-size:.7rem; color:#e57373; margin:1px 0; } .best-weakness::before { content:"✗ "; }
-  .best-tip { margin-top:6px; font-size:.68rem; color:var(--amber); } .best-tip::before { content:"TIP  "; color:#b08d1a; font-size:.58rem; letter-spacing:.1em; }
+  .best-strength { font-size:var(--fs-sm); color:#66bb6a; margin:1px 0; } .best-strength::before { content:"✓ "; }
+  .best-weakness { font-size:var(--fs-sm); color:#e57373; margin:1px 0; } .best-weakness::before { content:"✗ "; }
+  .best-tip { margin-top:6px; font-size:var(--fs-sm); color:var(--amber); } .best-tip::before { content:"TIP  "; color:#b08d1a; font-size:var(--fs-xs); letter-spacing:.1em; }
   .best-foot { margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
-  .best-open { font-size:.68rem; color:var(--transit); text-decoration:none; background:none; border:none; cursor:pointer; }
+  .best-open { font-size:var(--fs-sm); color:var(--transit); text-decoration:none; background:none; border:none; cursor:pointer; }
   .best-open:hover { text-decoration:underline; }
-  #best-loading { padding:32px; text-align:center; color:#959595; font-size:.8rem; letter-spacing:.06em; line-height:1.6; }
+  #best-loading { padding:32px; text-align:center; color:#959595; font-size:var(--fs-md); letter-spacing:.06em; line-height:1.6; }
 
   #help-modal { position:fixed; inset:0; bottom:var(--ob,0px); background:#000a; z-index:2000; align-items:center; justify-content:center; display:flex; }
   #help-modal[hidden] { display:none; }
   #help-box { background:var(--panel); border:1px solid var(--line); border-top:2px solid var(--red); width:min(420px,92vw); }
   #help-box #best-header { display:flex; }
-  #help-list { display:grid; grid-template-columns:70px 1fr; gap:8px 12px; padding:14px 16px; font-size:.74rem; }
+  #help-list { display:grid; grid-template-columns:70px 1fr; gap:8px 12px; padding:14px 16px; font-size:var(--fs-sm); }
   #help-list dt { color:var(--amber); } #help-list dd { color:#bbb; }
   kbd { border:1px solid #555; border-bottom-width:2px; padding:0 4px; font:inherit; font-size:.7em; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 
   /* toast */
   #toasts { position:fixed; left:50%; bottom:calc(16px + var(--ob,0px)); transform:translateX(-50%); z-index:3000; display:flex; flex-direction:column; gap:6px; align-items:center; width:max-content; max-width:92vw; }
-  .toast { background:#222; border:1px solid #444; border-left:3px solid var(--amber); color:var(--txt); font-size:.74rem; padding:8px 12px; box-shadow:0 4px 14px #000a; display:flex; gap:12px; align-items:center; }
+  .toast { background:#222; border:1px solid #444; border-left:3px solid var(--amber); color:var(--txt); font-size:var(--fs-sm); padding:8px 12px; box-shadow:0 4px 14px #000a; display:flex; gap:12px; align-items:center; }
   .toast.err { border-left-color:#e53935; }
-  .toast button { background:none; border:none; color:var(--amber); font-size:.74rem; cursor:pointer; text-decoration:underline; }
+  .toast button { background:none; border:none; color:var(--amber); font-size:var(--fs-sm); cursor:pointer; text-decoration:underline; }
 
   /* popup */
   .leaflet-popup-content-wrapper { background:var(--panel); border:1px solid var(--line); border-radius:2px; }
   .leaflet-popup-content { color:var(--txt); font-family:'Courier New',monospace; font-size:12px; margin:8px 10px; }
   .leaflet-popup-tip { background:var(--panel); }
-  .popup-rent { color:var(--red); font-size:1rem; font-variant-numeric:tabular-nums; }
-  .popup-commute { font-size:.7rem; margin-top:4px; }
+  .popup-rent { color:var(--red); font-size:var(--fs-lg); font-variant-numeric:tabular-nums; }
+  .popup-commute { font-size:var(--fs-sm); margin-top:4px; }
   .popup-commute .t { color:#64b5f6; } .popup-commute .b { color:#81c784; }
 
   /* markers */
@@ -306,19 +327,21 @@
   .price-cluster { display:flex; align-items:center; justify-content:center; border-radius:50%; background:#222e; color:#eee; border:2px solid var(--ring,#666); box-shadow:0 2px 8px #000a; font:bold 12px 'Courier New',Courier,monospace; }
   .price-cluster:hover { border-color:#ccc; }
   .eth-marker { background:var(--red); border:2px solid #fff; border-radius:50%; width:14px; height:14px; box-shadow:0 0 0 4px #c004; }
-  .map-legend { background:#111e; border:1px solid var(--line); border-radius:4px; padding:8px 10px; font-size:.68rem; color:#bbb; line-height:1.7; font-family:'Courier New',monospace; box-shadow:0 2px 8px #0008; }
-  .map-legend-title { font-size:.6rem; color:#959595; letter-spacing:.1em; text-transform:uppercase; }
+  .map-legend { background:#111e; border:1px solid var(--line); border-radius:4px; padding:8px 10px; font-size:var(--fs-sm); color:#bbb; line-height:1.7; font-family:'Courier New',monospace; box-shadow:0 2px 8px #0008; }
+  .map-legend-title { font-size:var(--fs-xs); color:#959595; letter-spacing:.1em; text-transform:uppercase; }
   .map-legend .row { display:flex; align-items:center; gap:7px; white-space:nowrap; }
   .map-legend .swatch { width:18px; height:10px; border-radius:999px; border:1px solid #111; }
   .map-legend .eth-marker { width:10px; height:10px; box-shadow:none; margin:0 4px; }
+  .ring-label span { font-size:var(--fs-xs); background:#111c; padding:0 3px; opacity:.8; white-space:nowrap; letter-spacing:.04em; }
   .map-legend hr { border:none; border-top:1px solid #2a2a2a; margin:4px 0; }
 
   @media (max-width:760px) {
     #topbar { padding:6px 10px; gap:6px 8px; flex-wrap:wrap; }
-    #topbar h1 { font-size:.85rem; letter-spacing:.06em; margin-right:auto; }
-    .topbar-btn { padding:0 8px; font-size:.66rem; letter-spacing:0; height:30px; }
+    #topbar h1 { font-size:var(--fs-md); letter-spacing:.06em; margin-right:auto; }
+    .topbar-btn { padding:0 8px; font-size:var(--fs-sm); letter-spacing:0; height:30px; }
     #sync { order:3; }
-    #count { order:4; margin-left:0; flex:1; font-size:.65rem; }
+    #count { order:4; margin-left:0; flex:1; font-size:var(--fs-xs); }
+    #topbar:has(#sync.on) #count { display:none; }   /* no room for both: the sync line wins until it ends */
     .tb-actions { order:5; width:100%; gap:6px; }
     .tb-actions .topbar-btn:first-child { margin-right:auto; }
     #filters-toggle { display:inline-block; }
@@ -335,8 +358,8 @@
     body.has-detail #map { flex-basis:28%; }
     #profile-panel, #group-panel { width:100vw; }
     .map-legend { display:none; }
-    .st { padding:6px 8px; font-size:.64rem; }
-    .act, .card-link { padding:6px 8px; font-size:.7rem; }
+    .st { padding:6px 8px; font-size:var(--fs-xs); }
+    .act, .card-link { padding:6px 8px; font-size:var(--fs-sm); }
     .draft-actions button { padding:9px 12px; }
     #toasts { bottom:calc(8px + var(--ob,0px)); }
     #sidebar-header { position:static; }
@@ -344,12 +367,16 @@
     .sh-row .seg button { flex:0 0 auto; height:30px; padding:0 9px; }
     #more-menu { right:0; }
     .leaflet-control-zoom { display:none; }
-    #hint, #newnotice { padding:5px 10px; font-size:.68rem; gap:8px; }
+    #hint, #newnotice { padding:5px 10px; font-size:var(--fs-sm); gap:8px; }
+    #hint.on { flex-wrap:wrap; row-gap:5px; }   /* step + ✕, then the text, then the buttons */
+    #hint #hint-step { order:1; } #hint #hint-x { order:2; }
+    #hint #hint-text { order:3; flex:1 1 100%; }
+    #hint #hint-act { order:4; } #hint #hint-next { order:5; }
     .fu-btn, .sent-prompt button { padding:9px 12px; }
     .toast button { padding:6px 8px; }
-    .sh-row .seg button { padding:0 6px; font-size:.62rem; }
+    .sh-row .seg button { padding:0 6px; font-size:var(--fs-xs); }
   }
-.kind-badge { font-size: .55rem; letter-spacing: .08em; color: var(--amber); border: 1px solid var(--amber); padding: 0 4px; margin-right: 4px; vertical-align: 2px; }
+.kind-badge { font-size: var(--fs-xs); letter-spacing: .08em; color: var(--amber); border: 1px solid var(--amber); padding: 0 4px; margin-right: 4px; vertical-align: 2px; }
 
   /* ── Group mode (Phase 7) ── */
   .seg.gmode button.active { background:var(--amber); color:#111; border-color:var(--amber); font-weight:bold; }
@@ -357,16 +384,16 @@
   @media (max-width:760px) { body.group-mode #group-edit-btn { display:inline-block; } }
   body.group-mode #group-edit-btn { display:inline-block; }
   body.group-mode .solo-only { display:none !important; }
-  .group-line { font-size:.68rem; color:#bbb; margin:3px 0 2px; letter-spacing:.02em; }
+  .group-line { font-size:var(--fs-sm); color:#bbb; margin:3px 0 2px; letter-spacing:.02em; }
   .group-line b { color:var(--amber); font-weight:normal; }
-  .g-tot { font-size:.6rem; color:#959595; margin-left:6px; }
+  .g-tot { font-size:var(--fs-xs); color:#959595; margin-left:6px; }
   .member-row { display:flex; gap:6px; margin-bottom:6px; }
   .member-row input { flex:1; min-width:0; }
-  .member-row select { background:var(--bg); border:1px solid var(--line); color:var(--txt); font-family:inherit; font-size:.75rem; padding:4px; }
+  .member-row select { background:var(--bg); border:1px solid var(--line); color:var(--txt); font-family:inherit; font-size:var(--fs-sm); padding:4px; }
   .member-row button { background:none; border:1px solid var(--line); color:#888; cursor:pointer; padding:0 8px; }
   .member-row button:hover { border-color:var(--red); color:var(--txt); }
-  .g-hint { font-size:.62rem; color:#959595; margin-top:4px; }
-  @media (max-width:760px) { #mode-seg button { height:30px; padding:0 10px; font-size:.66rem; } }
+  .g-hint { font-size:var(--fs-xs); color:#959595; margin-top:4px; }
+  @media (max-width:760px) { #mode-seg button { height:30px; padding:0 10px; font-size:var(--fs-sm); } }
 </style>
 </head>
 <body>
@@ -388,6 +415,7 @@
       <button class="topbar-btn" id="more-btn" onclick="toggleMenu()" aria-haspopup="true" aria-expanded="false" aria-label="More actions" title="More actions">⋯</button>
       <div id="more-menu" role="menu" hidden>
         <button role="menuitem" class="solo-only" onclick="closeMenu();runExtract()" id="extract-btn" title="Reads every unprocessed ad with Claude (uses API credits)">Extract ads <small>uses API credits</small></button>
+        <button role="menuitem" onclick="closeMenu();location.href='/stats.html'">Reply stats <small>what got answers</small></button>
         <button role="menuitem" onclick="closeMenu();showHelp()">Keyboard shortcuts <small>?</small></button>
         <button role="menuitem" onclick="closeMenu();phoneAlerts()" id="alerts-btn">Phone alerts <small id="alerts-state">…</small></button>
       </div>
@@ -441,7 +469,7 @@
 
 <div id="newnotice" role="status" aria-live="polite"><span id="newnotice-text"></span><button onclick="showNewArrivals()">Show</button><button id="newnotice-x" aria-label="Dismiss" onclick="$('newnotice').classList.remove('on')">✕</button></div>
 
-<div id="hint" role="note"><span id="hint-text"></span><button id="hint-act" type="button"></button><button id="hint-x" type="button" aria-label="Dismiss">✕</button></div>
+<div id="hint" role="note" aria-label="Getting started"><b id="hint-step"></b><span id="hint-text"></span><button id="hint-act" type="button"></button><button id="hint-next" type="button"></button><button id="hint-x" type="button" aria-label="Skip walkthrough" title="Skip walkthrough">✕</button></div>
 
 <div id="filters">
   <div class="frow">
@@ -495,6 +523,7 @@
       <div class="seg plain" role="group" aria-labelledby="lbl-new"><button id="btn-new-only" onclick="setNewOnly(!newOnly)" title="Only listings first seen since your last visit">New only</button></div>
     </div>
     <label class="chk"><input type="checkbox" id="hideDeal" onchange="applyFilters()"> Hide dealbreakers</label>
+    <label class="chk" title="Listings with a trust score under 50 (possible scams) are hidden by default"><input type="checkbox" id="showLow" onchange="applyFilters()"> Show low-trust</label>
   </div>
 </div>
 
@@ -586,8 +615,27 @@ function ethMarker(pos, label) {
   const icon = L.divIcon({ className: 'price-marker-wrap', html: '<div class="eth-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
   L.marker(pos, { icon, zIndexOffset: -500 }).addTo(map).bindTooltip(label, { direction: 'top', offset: [0, -8] });
 }
+// Leaflet's zoom buttons and attribution links stay out of the tab order (the filters and cards come first)
+const skipLeafletTabs = () => document.querySelectorAll('#map .leaflet-control a').forEach(a => a.setAttribute('tabindex', '-1'));
+skipLeafletTabs();
 ethMarker(ETH_ZENTRUM, 'ETH Zentrum');
 ethMarker(ETH_HOENGGERBERG, 'ETH Hönggerberg');
+
+// Approximate commute rings (10/20/30 min) around the selected campus. Same straight-line model as
+// the fallback estimate in backend/commute.py (22 km/h transit, 15 km/h bike, without the Hönggerberg
+// climb), so these are NOT real travel times; listing transit minutes come from the timetable unless shown with "~".
+const RING_KMH = { transit: 22, bike: 15 };
+const ringLayer = L.layerGroup().addTo(map);
+function drawRings() {
+  ringLayer.clearLayers();
+  const c = campus === 'hoenggerberg' ? ETH_HOENGGERBERG : ETH_ZENTRUM, col = mode === 'bike' ? '#4caf50' : '#2196f3';
+  [30, 20, 10].forEach(min => {
+    const r = RING_KMH[mode] * min / 60 * 1000;
+    L.circle(c, { radius: r, interactive: false, color: col, weight: 1, opacity: .45, dashArray: '4 5', fillColor: col, fillOpacity: .035 }).addTo(ringLayer);
+    const lat = c[0] + r / 111320;   // label on the north edge of the ring
+    L.marker([lat, c[1]], { interactive: false, keyboard: false, icon: L.divIcon({ className: 'ring-label', html: `<span style="color:${col}">~${min} min</span>`, iconSize: [50, 12], iconAnchor: [25, 6] }) }).addTo(ringLayer);
+  });
+}
 
 const RENT_TIERS = [
   { key: 'low',  max: 800,      label: '≤ 800 CHF',    color: '#66bb6a' },
@@ -625,7 +673,8 @@ function legendHtml() {
   return `<div class="map-legend-title">${groupMode ? 'Rent per person' : 'Monthly rent'}</div>
     ${tiers().map(t => `<div class="row"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`).join('')}
     <div class="row"><span class="swatch" style="background:#777"></span>dealbreaker</div>
-    <hr><div class="row"><span class="eth-marker"></span>ETH campus</div>`;
+    <hr><div class="row"><span class="eth-marker"></span>ETH campus</div>
+    <div class="row" title="Straight-line estimate, not real travel time. Listing transit times are from the timetable unless marked ~">dashed rings: ~10/20/30 min</div>`;
 }
 legend.onAdd = () => {
   const div = L.DomUtil.create('div', 'map-legend');
@@ -719,7 +768,7 @@ function commuteGrid(l) {
     const on = c === campus;
     return `<span class="cn ${on ? 'on' : ''}">${CAMPUS_NAME[c]}</span>
       <span class="t ${on && mode === 'transit' ? 'on' : ''}" title="${tTitle(l)}">${tMin(l, t)} min</span>
-      <span class="b ${on && mode === 'bike' ? 'on' : ''}" title="Bike">${b ?? '–'} min</span><span></span>`;
+      <span class="b ${on && mode === 'bike' ? 'on' : ''}" title="Bike (estimate: 15 km/h straight line, plus the climb to Hönggerberg)">${b ?? '–'} min</span><span></span>`;
   };
   const h = row('zentrum') + row('hoenggerberg');
   return h ? `<div class="commute">${h}</div>` : '';
@@ -736,6 +785,15 @@ function scoreChip(s) {
   if (s == null) return '';
   const cls = s >= 72 ? 'score-high' : s >= 55 ? 'score-mid' : 'score-low';   // fit now spans ~30-95
   return `<span class="badge ${cls}" title="Fit score: how well this matches your profile (0–100)"><i>FIT</i>${s}</span>`;
+}
+function trustChip(l) {
+  if (!l.trust_level) return '';
+  const tip = `Trust ${l.trust_score}/100 (${l.trust_level})` + ((l.trust_reasons || []).length ? ': ' + l.trust_reasons.join('; ') : ': no warning signs found');
+  return `<span class="trust-chip ${esc(l.trust_level)}" title="${esc(tip)}">⛨ ${l.trust_score}</span>`;
+}
+function trustWarn(l) {
+  if (l.trust_level !== 'low') return '';
+  return `<div class="trust-warn" role="alert"><b>⛨ Low trust (${l.trust_score}/100): possible scam</b><ul>${(l.trust_reasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>Check the ad carefully before you reply. Never pay or send documents before a viewing.</div>`;
 }
 function replyChip(s) {
   if (s == null) return '';
@@ -790,8 +848,8 @@ async function api(url, opts) {
 // ── Filters ──────────────────────────────────────────────────────────────────
 function seg(ids, active) { ids.forEach(([id, v]) => $(id).classList.toggle('active', v === active)); }
 function syncPressed() { document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.classList.contains('active')))); }
-function setCampus(c) { campus = c; seg([['btn-zentrum','zentrum'],['btn-hoenggerberg','hoenggerberg']], c); applyFilters(); }
-function setMode(m)   { mode = m;   seg([['btn-transit','transit'],['btn-bike','bike']], m); applyFilters(); }
+function setCampus(c) { campus = c; drawRings(); seg([['btn-zentrum','zentrum'],['btn-hoenggerberg','hoenggerberg']], c); applyFilters(); }
+function setMode(m)   { mode = m; drawRings();   seg([['btn-transit','transit'],['btn-bike','bike']], m); applyFilters(); }
 function setKind(k)   { kindFilter = k; seg([['btn-kind-wg','wg'],['btn-kind-studio','studio']], k); applyFilters(); }
 function setPoster(p) { posterFilter = p; seg([['btn-poster-all','all'],['btn-poster-private','private'],['btn-poster-agency','agency']], p); applyFilters(); }
 function setSort(s)   { sortMode = s; seg([['btn-sort-relevance','relevance'],['btn-sort-match','match'],['btn-sort-reply','reply'],['btn-sort-commute','commute'],['btn-sort-rent','rent']], s); applyFilters(); }
@@ -820,7 +878,7 @@ function setNewOnly(v) { newOnly = !!v; $('btn-new-only').classList.toggle('acti
 function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
 function resetFilters() {
   $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
-  $('maxCommute').value = 60; $('hideDeal').checked = false;
+  $('maxCommute').value = 60; $('hideDeal').checked = false; $('showLow').checked = false;
   setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance'); setNewOnly(false);
   applyModeUI();
 }
@@ -859,6 +917,7 @@ function syncFilterCollapse() { $('filters').classList.toggle('collapsed', mq.ma
 mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
 
 function passes(l, f) {
+  if (l.trust_level === 'low' && !f.showLow) return false;
   if (priceOf(l) > f.maxRent) return false;
   if (f.filterCommute && commuteMin(l) > f.maxCommute) return false;
   const kind = l.kind || 'wg_room';
@@ -902,14 +961,14 @@ function applyFilters() {
   const maxRent = parseInt($('maxRent').value), maxCommute = parseInt($('maxCommute').value);
   $('rentLabel').textContent = `${maxRent} CHF`;
   $('commuteLabel').textContent = maxCommute >= 60 ? 'any' : `≤ ${maxCommute} min`;
-  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0);
+  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0) + ($('showLow').checked ? 1 : 0);
   $('more-count').textContent = nMore ? `(${nMore}) ` : '';
   syncPressed();
   const nFu = allListings.filter(l => l.followup_due).length, fb = $('btn-show-followup');
   if (fb) fb.textContent = nFu ? `Follow-ups (${nFu})` : 'Follow-ups';
   cancelAnimationFrame(_raf);
   _raf = requestAnimationFrame(() => {
-    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked };
+    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked, showLow: $('showLow').checked };
     renderAll(allListings.filter(l => passes(l, f)).sort(sortFn));
   });
 }
@@ -933,10 +992,10 @@ function makeIcon(l) {
 function popupHtml(l) {
   const link = safeUrl(l.url);
   return `<div class="popup-rent">${groupMode ? fmtChf(priceOf(l)) + ' pp' : l.rent_chf + ' CHF'}</div><div>${esc(cleanTitle(l))}</div>
-    ${groupMode ? `<div style="font-size:.7rem">${groupLine(l)}</div>` : ''}
-    <div style="color:#777;font-size:.7rem">${esc(l.address)}</div>
+    ${groupMode ? `<div style="font-size:var(--fs-sm)">${groupLine(l)}</div>` : ''}
+    <div style="color:#777;font-size:var(--fs-sm)">${esc(l.address)}</div>
     <div class="popup-commute">${commuteInline(l)}</div>
-    ${link ? `<a href="${link}" target="_blank" rel="noopener" style="font-size:.7rem">↗ view listing</a>` : ''}`;
+    ${link ? `<a href="${link}" target="_blank" rel="noopener" style="font-size:var(--fs-sm)">↗ view listing</a>` : ''}`;
 }
 function getMarker(l) {
   let m = markers[l.id];
@@ -959,7 +1018,7 @@ function groupLine(l) {
   bits.push(l.bedrooms != null ? `~<b>${l.bedrooms}</b> bedroom${l.bedrooms === 1 ? '' : 's'}` : 'bedrooms ?');
   if (l.living_area_m2) bits.push(`${Math.round(l.living_area_m2)} m²`);
   bits.push(`CHF ${fmtChf(l.rent_chf)} total`);
-  if (l.worst_commute_min != null) bits.push(`worst commute <b>${l.worst_commute_min}</b> min`);
+  if (l.worst_commute_min != null) bits.push(`<span title="Worst transit time over the members' campuses. ${tTitle(l)}">worst commute <b>${tMin(l, l.worst_commute_min)}</b> min</span>`);
   return bits.join(' · ');
 }
 function headPriceText(l) { return groupMode ? `CHF ${fmtChf(priceOf(l))} per person` : `CHF ${l.rent_chf}`; }
@@ -988,7 +1047,7 @@ function cardHtml(l) {
       <div class="card-top">
         <span class="card-dot" style="background:${deal.length ? '#777' : tier.color}" title="${tier.label}"></span>
         <span class="card-rent">${headPrice(l)}</span>
-        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
+        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${trustChip(l)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
         ${l.followup_due ? `<span class="fu-chip" title="Sent ${l.days_since_sent != null ? Math.floor(l.days_since_sent) + ' days ago' : 'a while ago'} with no reply">Follow up?</span>` : ''}
         ${l.status ? `<span class="stbadge ${l.status}">${STATUS_LABEL[l.status]}</span>` : ''}
       </div>
@@ -1022,7 +1081,7 @@ let curList = [], renderedN = 0, cursorId = null;
 function todayPicks(list) {
   const pick = [];
   for (const l of list) {
-    if (l._deal.length || l.status) continue;
+    if (l._deal.length || l.status || l.trust_level === 'low') continue;
     const d = daysAgo(l);
     const boost = (isNew(l) ? 6 : 0) + (d == null ? 0 : d <= 1 ? 10 : d <= 3 ? 6 : d <= 7 ? 2 : 0);
     pick.push([relevanceScore(l) + boost, l]);
@@ -1071,14 +1130,14 @@ $('sidebar').addEventListener('scroll', () => {
 }, { passive: true });
 
 function renderAll(listings) {
-  const total = groupMode ? allListings.length : allListings.filter(l => l.kind !== 'apartment').length;
-  $('count').textContent = loadState === 'ok' ? `${listings.length} shown · ${total} total` : '— listings';
+  const total = groupMode ? Math.max(groupInfo?.total ?? 0, allListings.length) : allListings.filter(l => l.kind !== 'apartment').length;
+  $('count').textContent = loadState === 'ok' ? `${listings.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}` : '— listings';
   curList = listings;
 
   // map: diff against what is already in the cluster
   const want = new Map(listings.map(l => [l.id, l]));
   // keep the open listing's marker (markercluster leaks a moveend listener if a marker is removed mid zoomToShowLayer)
-  if (selectedId != null && byId[selectedId] && !want.has(selectedId)) want.set(selectedId, byId[selectedId]);
+  if (selectedId != null && $('detail-view').classList.contains('open') && byId[selectedId] && !want.has(selectedId)) want.set(selectedId, byId[selectedId]);
   const toRemove = [], toAdd = [];
   shown.forEach(id => { if (!want.has(id)) { toRemove.push(markers[id]); shown.delete(id); } });
   want.forEach((l, id) => {
@@ -1217,18 +1276,19 @@ function showDetail(l) {
   const hasExt = !!(e.vibe || e.hard_requirements);
 
   $('detail-body').innerHTML = `
-    <div class="detail-rent">${groupMode ? fmtChf(priceOf(l)) + ' CHF <span style="font-size:.6rem;color:#777">/ person / month</span>' : l.rent_chf + ' CHF <span style="font-size:.6rem;color:#777">/ month</span>'}</div>
+    <div class="detail-rent">${groupMode ? fmtChf(priceOf(l)) + ' CHF <span style="font-size:var(--fs-xs);color:#777">/ person / month</span>' : l.rent_chf + ' CHF <span style="font-size:var(--fs-xs);color:#777">/ month</span>'}</div>
     ${groupMode ? `<div class="group-line">${groupLine(l)}</div>` : ''}
     <div class="detail-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
+    <div id="ad-summary" class="ad-summary" hidden></div>
     <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
     ${commuteGrid(l)}
-    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)}</div>
+    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)}</div>
     ${deal.length ? `<div class="chips">${deal.map(d => `<span class="chip bad">✗ ${esc(d)}</span>`).join('')}</div>`
       : reasons.length ? `<div class="chips">${reasons.map(r => `<span class="chip">✓ ${esc(r)}</span>`).join('')}</div>` : ''}
     <div class="detail-section"><div class="detail-section-label">Track</div><div class="card-actions" id="detail-status" style="margin-top:0">${statusBar(l)}</div></div>
     <div id="sent-slot"></div>
     <div class="detail-section"><div class="detail-section-label">Available</div>
-      <div style="font-size:.75rem;color:#ccc">${esc(l.available_from || 'unknown')}${dur ? ' · ' + dur : ''}</div></div>
+      <div style="font-size:var(--fs-sm);color:#ccc">${esc(l.available_from || 'unknown')}${dur ? ' · ' + dur : ''}</div></div>
     ${vibe || household || lang ? `<div class="detail-section"><div class="detail-section-label">Vibe</div>
       ${household ? `<span class="pill green">${household}</span>` : ''}${lang ? `<span class="pill green">${lang}</span>` : ''}
       ${e.poster_type === 'private' ? '<span class="pill green">private person</span>' : e.poster_type === 'agency' ? '<span class="pill red">agency/company</span>' : ''}${vibe}</div>` : ''}
@@ -1237,6 +1297,7 @@ function showDetail(l) {
     ${incl ? `<div class="detail-section"><div class="detail-section-label">Include in Your Message</div>${incl}</div>` : ''}
     ${flags ? `<div class="detail-section"><div class="detail-section-label">Red Flags</div>${flags}</div>` : ''}
     ${!hasExt && !groupMode ? '<div class="note-inline">Ad not analysed yet — run Extract for requirements, vibe and red flags.</div>' : ''}
+    ${trustWarn(l)}
     <button class="draft-btn" id="draft-btn" onclick="draftMessage(${l.id})">${groupMode ? '✎ Draft Group Application' : '✎ Draft Message'}</button>
     <div id="draft-area"></div>
     <div id="rawtext-slot">${l.raw_text ? `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>` : ''}</div>
@@ -1244,6 +1305,7 @@ function showDetail(l) {
   if (FD[l.id] && viewMode[l.id] === 'followup') renderDraft(l.id, FD[l.id], 'followup');
   else if (D()[l.id]) renderDraft(l.id, D()[l.id]);
   loadSent(l);
+  loadSummary(l);
   // /listings omits raw_text to keep the payload small; fetch it for the detail view.
   if (!l.raw_text && l.has_raw_text) {
     api(`/listings/${l.id}`).then(full => {
@@ -1263,6 +1325,13 @@ function closeDetail() {
   $('detail-view').classList.remove('open');
   $('cards-view').style.display = '';
   document.body.classList.remove('has-detail');
+  // the pin was kept alive only for the open detail: drop it if filters now hide this listing
+  const id = selectedId;
+  if (id != null && shown.has(id) && !curList.some(l => l.id === id)) {
+    const m = markers[id];
+    if (map._popup && map._popup._source === m) map.closePopup();
+    cluster.removeLayer(m); shown.delete(id);
+  }
   setTimeout(() => { map.invalidateSize(); setCursor(selectedId, true); }, 50);
 }
 
@@ -1299,13 +1368,21 @@ async function loadListings(silent) {
 // Background-ingest awareness: /ingest/status is polled while a scrape runs (fast) and
 // otherwise once a minute. A finished run either fills an empty list or raises the notice.
 let _pendingNew = null, _lastIngestSeen = null, _statusTimer = 0;
-function setSyncing(on) { $('sync').classList.toggle('on', !!on); }
+function setSyncing(on, st) {
+  const el = $('sync'); el.classList.toggle('on', !!on);
+  if (!on) return;
+  const total = st?.sources_total || 0, done = (st?.sources_done || []).length;
+  el.style.setProperty('--sync-p', total ? Math.min(1, done / total) : 0);
+  // "syncing 2/5 · wgzimmer" (done of total, plus the source being fetched right now)
+  el.textContent = total ? `syncing ${Math.min(done + (st.current ? 1 : 0), total)}/${total}${st.current ? ' · ' + st.current : ''}` : 'syncing';
+  el.title = total ? `Fetching new listings: ${done} of ${total} sources done` + (st.count ? `, ${st.count} listings so far` : '') : 'The server is fetching new listings in the background';
+}
 async function checkIngest() {
   let next = 60000;
   try {
     const st = await fetch('/ingest/status').then(r => r.ok ? r.json() : null);
     if (st) {
-      setSyncing(st.running);
+      setSyncing(st.running, st);
       if (st.running) next = 10000;
       const fin = st.last_finished_at ?? null;
       if (_lastIngestSeen === undefined || _lastIngestSeen === 'init') { _lastIngestSeen = fin; }
@@ -1336,18 +1413,29 @@ function showNewArrivals() {
 }
 _lastIngestSeen = 'init';
 
-// ── First-run hint ───────────────────────────────────────────────────────────
-function hintDismissed(k) { try { return localStorage.getItem('wgp_hint_' + k) === '1'; } catch (_) { return false; } }
-let _hintKey = null;
-function updateHint() {
-  let key = null, text = '', label = '', fn = null;
-  if (groupMode && !_profile.group) { key = 'group'; text = 'Using a default group of 3 at CHF 1100 per person.'; label = 'Set up group'; fn = openGroup; }
-  else if (!groupMode && !String(_profile.message_template || '').trim()) { key = 'profile'; text = 'Add a short intro in your profile so drafted messages sound like you.'; label = 'Open profile'; fn = openProfile; }
-  const box = $('hint');
-  if (!key || hintDismissed(key)) { box.classList.remove('on'); _hintKey = null; return; }
-  _hintKey = key; $('hint-text').textContent = text; $('hint-act').textContent = label; $('hint-act').onclick = fn; box.classList.add('on');
+// ── First-run walkthrough (3 steps: profile, then group and phone alerts, both optional) ──
+const TOUR = [
+  { name: 'Profile', text: 'Add a short intro so drafted messages sound like you.', label: 'Open profile', go: () => openProfile() },
+  { name: 'Group (optional)', text: 'Searching with friends? Group mode finds whole flats and splits the rent.', label: 'Set up group', go: () => openGroup() },
+  { name: 'Phone alerts (optional)', text: 'Get a digest of new high-fit listings on your phone.', label: 'Check alerts', go: () => phoneAlerts() },
+];
+let _tourStep = 0, _tourOn = false;
+function tourDone() { try { return localStorage.getItem('wgp_tour') === 'done'; } catch (_) { return false; } }
+function endTour() { _tourOn = false; try { localStorage.setItem('wgp_tour', 'done'); } catch (_) {} $('hint').classList.remove('on'); }
+function renderTour() {
+  const t = TOUR[_tourStep];
+  $('hint-step').textContent = `Step ${_tourStep + 1}/${TOUR.length} · ${t.name}`;
+  $('hint-text').textContent = t.text; $('hint-act').textContent = t.label; $('hint-act').onclick = t.go;
+  $('hint-next').textContent = _tourStep === TOUR.length - 1 ? 'Done' : _tourStep === 0 ? 'Next' : 'Skip step';
+  $('hint').classList.add('on');
 }
-$('hint-x').onclick = () => { try { localStorage.setItem('wgp_hint_' + _hintKey, '1'); } catch (_) {} $('hint').classList.remove('on'); };
+function updateHint() {   // called after profile/mode loads; starts the walkthrough on a true first run only
+  if (_tourOn) return;
+  if (tourDone() || String(_profile.message_template || '').trim()) { $('hint').classList.remove('on'); return; }
+  _tourOn = true; _tourStep = 0; renderTour();
+}
+$('hint-next').onclick = () => { if (_tourStep >= TOUR.length - 1) endTour(); else { _tourStep++; renderTour(); } };
+$('hint-x').onclick = endTour;
 
 // ── Profile panel ────────────────────────────────────────────────────────────
 async function loadProfileBasics() {
@@ -1432,8 +1520,11 @@ function memberRow(m = {}) {
   const d = document.createElement('div'); d.className = 'member-row';
   d.innerHTML = `<input type="text" placeholder="label, e.g. friend A" maxlength="60" aria-label="Member label">
     <select aria-label="Member campus"><option value="zentrum">Zentrum</option><option value="hoenggerberg">Hönggerberg</option></select>
+    <input type="number" class="m-budget" min="1" max="10000" step="50" placeholder="CHF" style="max-width:5.5em" title="This person's own monthly budget (optional; empty = group budget)" aria-label="Member budget CHF per month">
     <button type="button" aria-label="Remove member" title="Remove">✕</button>`;
   d.querySelector('input').value = m.label || '';
+  d.querySelector('.m-budget').value = m.budget_chf || '';
+  d.dataset.roomM2 = m.room_m2 || '';
   d.querySelector('select').value = m.campus || 'zentrum';
   d.querySelector('button').onclick = () => { d.remove(); syncAddBtn(); };
   return d;
@@ -1455,7 +1546,12 @@ function openGroup() {
 function closeGroup() { $('group-panel').classList.remove('open'); restoreFocus(); }
 async function saveGroup() {
   const size = parseInt($('g-size').value), budget = parseInt($('g-budget').value);
-  const members = [...$('g-members').children].map(r => ({ label: r.querySelector('input').value.trim(), campus: r.querySelector('select').value }));
+  const members = [...$('g-members').children].map(r => {
+    const m = { label: r.querySelector('input').value.trim(), campus: r.querySelector('select').value };
+    const mb = parseInt(r.querySelector('.m-budget').value); if (mb > 0) m.budget_chf = mb;
+    if (parseFloat(r.dataset.roomM2) > 0) m.room_m2 = parseFloat(r.dataset.roomM2);   // keep API-set values
+    return m;
+  });
   if (!(size >= 2 && size <= 12)) { toast('Group size must be between 2 and 12', { err: true }); return; }
   if (!(budget > 0)) { toast('Enter a per-person budget', { err: true }); return; }
   if (members.length > size) { toast('More members than the group size', { err: true }); return; }
@@ -1489,11 +1585,11 @@ async function showBest() {
       return `<div class="best-entry">
         <div class="best-entry-top"><span><span class="best-rank">#${i + 1}</span><span class="best-entry-rent">${l.rent_chf} CHF</span></span><span>${scoreChip(l.fit_score)} ${replyChip(l.reply_score)}</span></div>
         <div class="best-entry-title">${esc(cleanTitle(l))}</div>
-        <div style="font-size:.64rem;color:#777;margin:1px 0">${esc(l.address)}</div>
+        <div style="font-size:var(--fs-xs);color:#777;margin:1px 0">${esc(l.address)}</div>
         ${commuteGrid(l)}
         ${s || w ? `<div class="best-sw">${s ? `<div class="best-col"><div class="best-col-label">Strengths</div>${s}</div>` : ''}${w ? `<div class="best-col"><div class="best-col-label">Weaknesses</div>${w}</div>` : ''}</div>` : ''}
         ${a.tip ? `<div class="best-tip">${esc(a.tip)}</div>` : ''}
-        <div class="best-foot"><span style="font-size:.6rem;color:#666">from ${esc(l.available_from)}</span>
+        <div class="best-foot"><span style="font-size:var(--fs-xs);color:#666">from ${esc(l.available_from)}</span>
           <span><button class="best-open" onclick="closeBest();selectListing(${l.id})">show on map</button>${url ? ` &nbsp; <a class="best-open" href="${url}" target="_blank" rel="noopener">↗ open listing</a>` : ''}</span></div>
       </div>`;
     }).join('');
@@ -1513,17 +1609,54 @@ function guessLang(text) {
   return de === en ? null : de > en ? 'de' : 'en';
 }
 const LANG_NAME = { de: 'German', en: 'English' };
+const draftOpts = {}, GEN = {}, SUM = {};   // per-listing tone/lang choice, last generated text, ad summaries
+const LEVEL_RANK = ['native', 'near-native', 'fluent', 'advanced', 'c2', 'c1', 'b2', 'intermediate', 'b1', 'a2', 'basic', 'a1'];
+function strongestLang() {   // 'de' | 'en' | null, from the profile's languages
+  let best = null, bi = 99;
+  for (const x of (_profile.languages || [])) {
+    const i = LEVEL_RANK.indexOf(String(x.level || '').toLowerCase()), r = i < 0 ? 50 : i;
+    const code = /^(german|deutsch|de)$/i.test(x.lang) ? 'de' : /^(english|englisch|en)$/i.test(x.lang) ? 'en' : null;
+    if (r < bi) { bi = r; best = code; }
+  }
+  return best;
+}
+function draftOptsFor(id) { return draftOpts[id] || (draftOpts[id] = { tone: 'warm', lang: 'auto' }); }
+function setDraftOpt(id, key, val) {
+  const o = draftOptsFor(id), old = o[key]; if (old === val) return;
+  o[key] = val;
+  const ta = $('draft-text');
+  if (ta && ta.value.trim() && ta.value !== GEN[id]) {   // edited: only regenerate on confirm
+    if (!confirm('Regenerate with this option? Your edits in the box will be replaced (and this uses API credits).')) { o[key] = old; renderDraft(id, ta.value); return; }
+  }
+  draftMessage(id, true);
+}
+function draftOptsHtml(id, l) {
+  const o = draftOptsFor(id), adLang = ext(l).language, mine = strongestLang();
+  const seg = (key, items) => `<span class="dseg" role="group">` + items.map(([v, t]) =>
+    `<button type="button" aria-pressed="${o[key] === v}" onclick="setDraftOpt(${id},'${key}','${v}')">${t}</button>`).join('') + `</span>`;
+  const showLang = (adLang === 'de' || adLang === 'en') && mine && adLang !== mine;
+  return `<div class="draft-opts"><span class="seg-label">Tone</span>${seg('tone', [['warm', 'Warm'], ['short', 'Short']])}` +
+    (showLang ? `<span class="seg-label">Language</span>${seg('lang', [['auto', 'Ad (' + adLang.toUpperCase() + ')'], [mine, mine.toUpperCase()]])}` : '') + `</div>`;
+}
+async function loadSummary(l) {
+  const box = $('ad-summary'), lang = ext(l).language;
+  if (!box || groupMode || !lang || lang === 'en') return;
+  const show = t => { const b = $('ad-summary'); if (b && selectedId === l.id && t) { b.innerHTML = '<span class="lbl">summary</span>'; b.append(t); b.hidden = false; } };
+  if (l.id in SUM) { show(SUM[l.id]); return; }
+  try { const r = await api(`/listings/${l.id}/summary`); SUM[l.id] = r && r.summary || null; show(SUM[l.id]); }
+  catch (_) { /* hide on any error */ }
+}
 
-async function draftMessage(id) {
+async function draftMessage(id, fromOpt = false) {
   const btn = $('draft-btn'), area = $('draft-area');
   if (!btn || !area || selectedId !== id) return;
   if (groupMode && !_profile.group) { toast('Set up your group first (size and budget), then draft.'); openGroup(); return; }
-  if (D()[id] && !confirm('Redraft? Your current text in the box will be replaced (and this uses API credits).')) return;
+  if (!fromOpt && D()[id] && !confirm('Redraft? Your current text in the box will be replaced (and this uses API credits).')) return;
   btn.disabled = true; btn.textContent = 'Drafting…';
   area.innerHTML = `<div class="note-inline">Claude is writing ${groupMode ? 'a group application' : 'a message'} in the ad's language…</div>`;
   try {
-    const body = await api(groupMode ? `/group/draft/${id}` : `/draft/${id}`, { method: 'POST' });
-    D()[id] = body.draft;
+    const body = await api(groupMode ? `/group/draft/${id}` : `/draft/${id}?tone=${draftOptsFor(id).tone}&lang=${draftOptsFor(id).lang}`, { method: 'POST' });
+    D()[id] = body.draft; if (!groupMode) GEN[id] = body.draft;
     if (selectedId === id) renderDraft(id, body.draft);
   } catch (e) {
     if (selectedId === id) { area.innerHTML = '<div class="draft-error"></div>'; area.firstChild.textContent = '✗ ' + e.message; }
@@ -1545,7 +1678,7 @@ function renderChecklist(id) {
   const box = $('draft-check'), ta = $('draft-text'); if (!box || !ta) return;
   const items = window.WGChecklist ? WGChecklist.items(ext(byId[id] || {})) : [];
   if (!items.length) { box.innerHTML = ''; return; }
-  const rows = items.map(it => ({ it, r: WGChecklist.check(it, ta.value) }));
+  const rows = items.map(it => ({ it, r: WGChecklist.check(it, ta.value, ext(byId[id] || {})) }));
   const done = rows.filter(x => x.r.ok).length;
   box.innerHTML = `<div class="ck-wrap"><div class="ck-head">What the ad asked for · ${done}/${rows.length} covered</div><ul class="ck">` +
     rows.map(({ it, r }) => `<li class="${r.ok ? 'ok' : 'miss'}"><span class="box" aria-hidden="true">${r.ok ? '✓' : '!'}</span><span class="t">${esc(it.text)}</span>` +
@@ -1559,6 +1692,7 @@ function renderDraft(id, text, mode = 'first') {
   $('draft-area').innerHTML = `
     <div id="draft-box">
       <div class="draft-head"><span>${fu ? 'Follow-up draft' : 'Draft'}</span><span class="lang-tag" id="draft-lang"></span><span class="lang-warn" id="draft-warn"></span><span style="margin-left:auto" id="draft-count"></span></div>
+      ${!fu && !groupMode ? draftOptsHtml(id, l) : ''}
       <textarea id="draft-text" spellcheck="true" aria-label="Draft message — editable" style="${fu ? 'min-height:120px' : ''}"></textarea>
       <div id="draft-check"></div>
       <div class="draft-actions">
@@ -1643,7 +1777,7 @@ function renderSent(l) {
   if (!msgs.length && l.status !== 'sent') { slot.innerHTML = ''; return; }
   const body = msgs.length ? msgs.map(m => `<div class="sent-item"><div class="sent-when">${m.kind === 'followup' ? 'You followed up on' : 'You sent this on'} ${esc(fmtSentDate(m.sent_at))}</div><pre class="sent-text">${esc(m.text)}</pre></div>`).join('')
     : `<div class="sent-when">Marked as sent${l.sent_at ? ' on ' + esc(fmtSentDate(l.sent_at)) : ''} — no message text was saved.</div>`;
-  const canFollow = !groupMode && msgs.some(m => m.kind === 'first');
+  const canFollow = msgs.some(m => m.kind === 'first');   // group mode drafts it via /group/draft
   const fu = l.followup_due ? `<div class="fu-note">No reply ${l.days_since_sent != null ? 'after ' + Math.floor(l.days_since_sent) + ' days' : 'yet'}. A short, polite nudge is fine.</div>` +
     (canFollow ? `<button class="fu-btn" id="fu-btn" onclick="draftFollowup(${l.id})">✎ Draft follow-up (uses API credits)</button>` : '') : '';
   slot.innerHTML = `<div class="detail-section"><div class="detail-section-label">Sent</div>${body}${fu}</div>`;
@@ -1654,7 +1788,7 @@ async function draftFollowup(id) {
   if (FD[id] && !confirm('Redraft the follow-up? Your current follow-up text will be replaced (and this uses API credits).')) return;
   btn.disabled = true; btn.textContent = 'Drafting…';
   try {
-    const body = await api(`/draft/${id}?followup=1`, { method: 'POST' });
+    const body = await api(groupMode ? `/group/draft/${id}?followup=1` : `/draft/${id}?followup=1`, { method: 'POST' });
     FD[id] = body.draft;
     if (selectedId === id) { renderDraft(id, body.draft, 'followup'); $('draft-area').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
   } catch (e) {
@@ -1686,6 +1820,7 @@ function step(delta) {
 }
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (e.target.id === 'draft-text') { e.target.blur(); return; }   // leave the textarea first; a second Esc closes the detail
     if (!$('more-menu').hidden) closeMenu();
     else if (!$('help-modal').hidden) closeHelp();
     else if ($('best-modal').classList.contains('open')) closeBest();
@@ -1722,6 +1857,7 @@ new MutationObserver(syncOffline).observe(document.body, { childList: true });
 window.addEventListener('resize', () => { if (document.documentElement.style.getPropertyValue('--ob') !== '0px') syncOffline(); });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
+drawRings();
 applyModeUI();
 applyFilters();
 loadProfileBasics().finally(() => { loadListings().then(() => { applyFilters(); checkIngest(); updateHint(); }); });

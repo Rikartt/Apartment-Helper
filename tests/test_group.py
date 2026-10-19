@@ -154,3 +154,11 @@ def test_flatfox_apartment_filter():
                 dict(good, rent_gross=9000), dict(good, number_of_rooms=None),
                 dict(good, latitude=47.15, longitude=8.25)]:
         assert not _keep_apartment(bad, a._to_ad(bad))
+
+
+def test_group_listings_reports_total(client, db, ad_factory):
+    db.upsert_listing(apt(ad_factory, external_id="ap1"))
+    db.upsert_listing(ad_factory(external_id="room1"))
+    client.put("/profile", json={"group": G})
+    body = client.get("/group/listings").json()
+    assert len(body["listings"]) == 1 and body["total"] == 2

@@ -132,6 +132,54 @@ def test_ingest_never_calls_api_inline(db, monkeypatch):
     assert db.get_all_listings(include_raw=False)[0]["commute_source"] == "estimate"
 
 
+def _cache_cell(lat, lng, zentrum=24, hoenggerberg=31):
+    cell = commute.cell_key(lat, lng)
+    commute.cache_put(cell, "zentrum", zentrum, "Zürich, Near", 4)
+    commute.cache_put(cell, "hoenggerberg", hoenggerberg, "Zürich, Near", 4)
+
+
+def test_incremental_ingest_upgrades_unfetched_listing_from_cache(db):
+    # Listing stored on an estimate; a later incremental run only confirms it is still listed
+    # (seen_ids, no details re-fetched). Once its cell is cached it must still be upgraded,
+    # without any API call (conftest guard).
+    from backend import ingest
+    db.upsert_listing(make_ad(source="fake", external_id="x", **commute.commute_times(47.37, 8.54)))
+    assert db.get_all_listings(include_raw=False)[0]["commute_source"] == "estimate"
+    _cache_cell(47.37, 8.54)
+
+    class Incremental:
+        seen_ids = {"x"}
+
+        def fetch(self):
+            return []
+    ingest.ADAPTERS["fake"] = Incremental
+    try:
+        info = ingest.run_ingest(["fake"])["sources"]["fake"]
+    finally:
+        del ingest.ADAPTERS["fake"]
+    assert info["refetched"] == 0 and info["fetched"] == 1
+    row = db.get_all_listings(include_raw=False)[0]
+    assert row["commute_source"] == "timetable"
+    assert (row["transit_zentrum_min"], row["transit_hoenggerberg_min"]) == (24, 31)
+
+
+def test_refresh_pending_applies_cache_hits_even_when_api_down(db, monkeypatch):
+    # the uncached listing is newer, so it comes first in the network pass and aborts it
+    db.upsert_listing(make_ad(external_id="cached", lat=47.37, lng=8.54, **commute.commute_times(47.37, 8.54)))
+    with db.get_conn() as conn:
+        conn.execute("UPDATE listings SET created_at = '2020-01-01 00:00:00'")
+    db.upsert_listing(make_ad(external_id="new", lat=47.40, lng=8.50, **commute.commute_times(47.40, 8.50)))
+    _cache_cell(47.37, 8.54)
+
+    def down(*a):
+        raise commute.CommuteUnavailable("HTTP 429")
+    monkeypatch.setattr(commute, "_get_json", down)
+    stats = commute.refresh_pending(log=lambda *_: None)
+    assert stats["aborted"] == "HTTP 429" and stats["from_cache"] == 1
+    src = {r["external_id"]: r["commute_source"] for r in db.get_all_listings(include_raw=False)}
+    assert src == {"cached": "timetable", "new": "estimate"}
+
+
 class _Resp:
     def __init__(self, code, body=None, headers=None):
         self.status_code, self._b, self.headers = code, body or {}, headers or {}

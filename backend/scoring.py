@@ -403,8 +403,17 @@ def score_detail(listing: dict, profile: dict | None = None,
     db = dealbreakers(listing, profile, today)
     fit = 0 if db else squash(s)
     return {"fit": fit, "fit_precise": 0.0 if db else round(squash_f(s), 2),
-            "reply": _reply(listing, ext, profile, today, bool(db)),
+            "reply": _learned_reply(_reply(listing, ext, profile, today, bool(db)),
+                                    listing, ext, profile, today, fit, bool(db)),
             "reasons": list(dict.fromkeys(reasons)), "dealbreakers": db}
+
+
+def _learned_reply(base, listing, ext, profile, today, fit, broken):
+    """Phase 6b hook: blend in the learned reply model (no-op below the outcome threshold)."""
+    if broken:
+        return base
+    from .learning import adjust_reply
+    return adjust_reply(base, listing, ext, profile, today, fit)
 
 
 def _reply(listing: dict, ext: dict | None, profile: dict, today: date,

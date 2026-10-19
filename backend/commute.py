@@ -272,14 +272,12 @@ def refresh_pending(max_cells: int | None = None, budget_s: float | None = None,
     stats = {"cells": 0, "listings": 0, "failed_cells": 0, "aborted": None}
     try:
         deadline = time.monotonic() + budget_s if budget_s else None
-        with get_conn() as conn:
-            rows = conn.execute(
-                "SELECT id, lat, lng FROM listings WHERE gone_at IS NULL "
-                "AND (commute_source IS NULL OR commute_source != 'timetable') "
-                "ORDER BY created_at DESC").fetchall()
-        by_cell: dict[str, list[int]] = {}
-        for r in rows:
-            by_cell.setdefault(cell_key(r["lat"], r["lng"]), []).append(r["id"])
+        rows = _pending_rows()
+        by_cell = _pending_by_cell(rows)
+        # Cache hits first (no network): listings the incremental ingest did not re-fetch
+        # still get upgraded when another listing in their cell was already looked up, even
+        # if the network pass below stops early.
+        stats["from_cache"] = _apply_cached(by_cell, score)
         for cell, ids in by_cell.items():
             if max_cells is not None and stats["cells"] >= max_cells:
                 break
@@ -301,6 +299,46 @@ def refresh_pending(max_cells: int | None = None, budget_s: float | None = None,
     finally:
         _refresh_lock.release()
     return stats
+
+
+def _pending_rows() -> list:
+    """Live listings still on the straight-line estimate, newest first."""
+    from .db import get_conn
+    with get_conn() as conn:
+        return conn.execute(
+            "SELECT id, lat, lng FROM listings WHERE gone_at IS NULL "
+            "AND lat IS NOT NULL AND lng IS NOT NULL "
+            "AND (commute_source IS NULL OR commute_source != 'timetable') "
+            "ORDER BY created_at DESC").fetchall()
+
+
+def _pending_by_cell(rows) -> dict[str, list[int]]:
+    by_cell: dict[str, list[int]] = {}
+    for r in rows:
+        by_cell.setdefault(cell_key(r["lat"], r["lng"]), []).append(r["id"])
+    return by_cell
+
+
+def _apply_cached(by_cell: dict[str, list[int]], score_fn) -> int:
+    """Upgrade pending listings whose cell is fully cached; removes those cells from
+    ``by_cell``. No network. Returns the number of listings upgraded."""
+    n = 0
+    for cell in list(by_cell):
+        cached = cache_get(cell)
+        if all(c in cached for c in CAMPUSES):
+            n += _apply_cell(cell, by_cell.pop(cell), score_fn)
+    return n
+
+
+def apply_cached_pending() -> int:
+    """Cache-only upgrade of estimate listings (cheap; run synchronously after ingest, so
+    listings the incremental ingest only confirmed as present are upgraded too)."""
+    from .scoring import score
+    try:
+        return _apply_cached(_pending_by_cell(_pending_rows()), score)
+    except Exception as e:
+        print(f"[commute] cache upgrade failed: {e}")
+        return 0
 
 
 def _apply_cell(cell: str, ids: list[int], score_fn) -> int:

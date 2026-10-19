@@ -1,8 +1,8 @@
 import re
 
 from .db import (upsert_listing, get_all_listings, mark_gone, last_source_count,
-                 utc_now, GONE_MIN_RATIO)
-from .commute import commute_times, start_background_refresh
+                 utc_now, GONE_MIN_RATIO, touch_seen, save_known, set_state)
+from .commute import commute_times, apply_cached_pending, start_background_refresh
 from .scoring import score, reply_likelihood
 from .ingestion.mock_adapter import MockAdapter
 from .ingestion.flatfox_adapter import FlatfoxAdapter
@@ -77,26 +77,43 @@ def run_ingest(sources: list[str] | None = None) -> dict:
                 new += 1
                 src_new += 1
 
+        # Incremental sources: ads that were in the list but not re-fetched still count as
+        # seen (same effect as an upsert), and the fetched ones become "known".
+        seen_ids = set(getattr(adapter, "seen_ids", None) or ())
+        if seen_ids:
+            touch_seen(name, seen_ids)
+        known_updates = getattr(adapter, "known_updates", None) or {}
+        if known_updates or getattr(adapter, "known_keep", None) is not None:
+            save_known(name, known_updates, getattr(adapter, "known_keep", None))
+        if getattr(adapter, "full_refresh", False) and not truncated and ads:
+            set_state(name, "last_full_refresh", utc_now())
+        n_fetched = len(ads) + len(seen_ids)
+
         # Gone detection: only trust a run that returned a plausible number of ads,
         # so a blocked/partial scrape can't mass-hide a source's listings.
         prev = last_source_count(name)
-        healthy = len(ads) > 0 and (prev is None or len(ads) >= GONE_MIN_RATIO * prev)
+        healthy = n_fetched > 0 and (prev is None or n_fetched >= GONE_MIN_RATIO * prev)
         # A truncated run (page/ad caps hit, partial pagination, robots-limited paging) only
         # saw a window of the source, so "not seen" does not mean "removed": skip it.
         src_gone = 0
         if healthy and prev is not None and not truncated:
             src_gone = mark_gone(name, run_started)
             gone += src_gone
-        info = {"ok": healthy, "fetched": len(ads), "new": src_new, "gone": src_gone}
+        info = {"ok": healthy, "fetched": n_fetched, "new": src_new, "gone": src_gone}
+        if seen_ids:
+            info["refetched"] = len(ads)   # the rest were only confirmed present in the list
         if truncated:
             info["truncated"] = True
             info["note"] = f"gone-check skipped: {trunc_reason}"
         if not healthy:
-            info["error"] = ("no listings returned" if not ads else
-                             f"only {len(ads)} listings vs {prev} before; gone-check skipped")
+            info["error"] = ("no listings returned" if not n_fetched else
+                             f"only {n_fetched} listings vs {prev} before; gone-check skipped")
         per_source[name] = info
 
-    # Timetable commutes are fetched in the background (cache-only during the loop above).
+    # Timetable commutes: the loop above only reads the cache. Listings that were not
+    # re-fetched (incremental sources) are upgraded from the cache here; everything still
+    # on an estimate is looked up by the background thread.
+    apply_cached_pending()
     start_background_refresh()
     if dupes:
         print(f"[ingest] skipped {dupes} cross-source duplicates")
