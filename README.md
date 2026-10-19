@@ -84,7 +84,8 @@ Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view
 ### Fresh listings
 - The server re-ingests in the background every `WGP_INGEST_INTERVAL_MIN` minutes (default 45, jittered).
 - Listings first seen since your last visit get a **NEW** badge, there is a **New only** toggle, and a notice appears when a background ingest adds listings.
-- A **Message today** strip highlights the best listings you haven't contacted yet.
+- A **Message today** strip highlights the best listings you haven't contacted yet. It uses your filters (rent, commute, type, trust, priority/premium) but not the Show tab or New only, so it stays put while you switch views.
+- **Paid placements**: listings a source marks as paid or prioritised (e.g. Flatfox Priority, premium/top ads) get a purple PRIORITY or PREMIUM chip. "Hide priority/premium" in More filters hides them all (remembered in your browser). For now this is one switch for every kind; separate filters per type may follow.
 - **Gone listings**: when a source stops returning a listing it is marked gone and hidden (`GET /listings?include_gone=1` shows them). To avoid false alarms, a listing is only marked gone after two consecutive healthy runs, and runs that returned under 50% of the previous count or were truncated are ignored.
 
 ### Group mode

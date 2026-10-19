@@ -24,6 +24,7 @@ NEW_COLUMNS = [
     ("living_area_m2", "REAL"),
     ("notified_at", "TEXT"),            # UTC; when a phone-alert digest included this ad
     ("commute_source", "TEXT"),         # 'timetable' | 'estimate' (transit minutes)
+    ("promo", "TEXT"),                  # paid placement, e.g. 'Flatfox Priority'; NULL = none
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -90,9 +91,17 @@ def init_db():
         # migrate existing DBs that predate new columns
         existing = {row[1] for row in conn.execute("PRAGMA table_info(listings)")}
         status_was_missing = "status" not in existing
+        promo_was_missing = "promo" not in existing
         for col, typedef in NEW_COLUMNS:
             if col not in existing:
                 conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {typedef}")
+        if promo_was_missing:
+            # rows stored before promo existed were never checked: make the next run of the
+            # incremental sources a full refresh (the table may not exist yet on a new DB)
+            try:
+                conn.execute("DELETE FROM source_state WHERE key = 'last_full_refresh'")
+            except Exception:
+                pass
         if status_was_missing:
             # carry over the legacy boolean flags into the new status column
             conn.execute("""
@@ -174,8 +183,9 @@ def upsert_listing(ad: dict) -> bool:
                  available_from, raw_text, url,
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
-                 listed_at, fit_score, reply_score, kind, rooms, living_area_m2, commute_source, last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
+                 listed_at, fit_score, reply_score, kind, rooms, living_area_m2, commute_source, promo,
+                 last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -198,6 +208,7 @@ def upsert_listing(ad: dict) -> bool:
                 rooms          = excluded.rooms,
                 living_area_m2 = excluded.living_area_m2,
                 commute_source = excluded.commute_source,
+                promo          = excluded.promo,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 missed_runs  = 0,
                 gone_at      = NULL
@@ -213,6 +224,7 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("kind") or "wg_room",
             ad.get("rooms"), ad.get("living_area_m2"),
             ad.get("commute_source") or "estimate",
+            ad.get("promo"),
         ))
         return not existed
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-19: priority/premium filter, steadier Message today
+
+### New
+- Paid placements (e.g. Flatfox Priority, premium/top ads) are detected during ingest (new `promo` column), shown with a PRIORITY/PREMIUM chip, and hidden with one "Hide priority/premium" switch in More filters. The first ingest after updating re-fetches Flatfox/Homegate details once, so existing listings are checked too.
+
+### Fixed
+- The Message today strip disappeared outside the "To do" view, with "New only" on, or when fewer than two picks qualified. It now uses your filters but not the Show tab or New only, and shows from one pick.
+
 ## 2026-10-19: real commute times (PR #4)
 
 ### New

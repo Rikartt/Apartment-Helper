@@ -32,7 +32,7 @@ import os
 import httpx
 from bs4 import BeautifulSoup
 
-from .base import BaseAdapter, load_known, norm_dt
+from .base import BaseAdapter, load_known, norm_dt, promo_label
 from .geocode import geocode as _geocode, geocode_many as _geocode_many
 
 SEARCH_BASE  = (
@@ -266,6 +266,7 @@ class HomegateAdapter(BaseAdapter):
         if not lst:
             return
         card["listed_at"] = norm_dt((lst.get("meta") or {}).get("createdAt"))
+        card["promo"] = promo_label("homegate", lst)
         a = lst.get("address") or {}
         g = a.get("geoCoordinates") or {}
         if g.get("accuracy") in ("HIGH", "MEDIUM") and g.get("latitude") and g.get("longitude"):
@@ -354,4 +355,5 @@ class HomegateAdapter(BaseAdapter):
             "kind":           card.get("kind", "wg_room"),
             "rooms":          card.get("rooms"),
             "living_area_m2": float(card["space_m2"]) if card.get("space_m2") else None,
+            "promo":          card.get("promo"),
         }

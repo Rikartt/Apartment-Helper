@@ -229,6 +229,8 @@ def _make_ads(n: int, rnd: random.Random, now: datetime) -> list[dict]:
             url=f"https://example.invalid/listing/{i}", kind=kind, rooms=rooms, living_area_m2=m2,
             listed_at=_ts(listed), _en=en, _scam=i in scam_at,
         )
+        if ad["source"] == "flatfox" and i % 9 == 4 and i not in scam_at:
+            ad["promo"] = "Flatfox Priority"      # paid placement (no extra random draws)
         ad.update(commute_times(ad["lat"], ad["lng"]))
         ads.append(ad)
     return ads

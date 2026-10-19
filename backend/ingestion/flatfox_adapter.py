@@ -2,7 +2,7 @@ import os
 import re
 import time
 import httpx
-from .base import BaseAdapter, load_known, norm_dt
+from .base import BaseAdapter, load_known, norm_dt, promo_label
 from ..commute import estimate_commute, ETH_ZENTRUM, ETH_HOENGGERBERG
 
 SEARCH_PAGE = "https://flatfox.ch/en/search/"
@@ -210,4 +210,5 @@ class FlatfoxAdapter(BaseAdapter):
             "kind":         "wg_room" if l.get("object_category") == "SHARED" else "apartment",
             "rooms":        _num(l.get("number_of_rooms")),
             "living_area_m2": _num(l.get("surface_living")),
+            "promo":        promo_label("flatfox", l, raw_text),
         }

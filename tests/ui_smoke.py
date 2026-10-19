@@ -272,6 +272,21 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         pg.evaluate("$('showLow').checked = false; applyFilters()")
         pg.wait_for_timeout(300)
 
+    with step(f"{tag} priority filter and Message today", pg, pages):
+        check(f"{tag} seed has priority/premium listings", pg.evaluate("allListings.some(l => l.promo)"))
+        pg.evaluate("setShow('sent')")
+        pg.wait_for_timeout(300)
+        check(f"{tag} Message today stays visible outside the To do view", pg.evaluate("!$('today').hidden"))
+        pg.evaluate("setShow('todo')")
+        pg.evaluate("$('hidePromo').checked = true; savePromo(); applyFilters()")
+        pg.wait_for_timeout(400)
+        check(f"{tag} 'Hide priority/premium' removes them from the list",
+              pg.evaluate("curList.length > 0 && !curList.some(l => l.promo)"))
+        check(f"{tag} ...and from Message today",
+              pg.evaluate("!$('today').hidden && ![...document.querySelectorAll('.today-row')].some(r => byId[+r.dataset.id].promo)"))
+        pg.evaluate("$('hidePromo').checked = false; savePromo(); applyFilters()")
+        pg.wait_for_timeout(300)
+
     with step(f"{tag} detail", pg, pages):
         first = pg.locator(".card").first
         title = pg.evaluate("byId[+document.querySelector('.card').dataset.id].title")
