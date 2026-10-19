@@ -213,8 +213,10 @@ def group_listings(listings: list[dict], group: dict, include_dealbreakers: bool
 @router.get("/group/listings")
 def group_listings_endpoint(include_dealbreakers: bool = Query(False)):
     group = get_group()
-    return JSONResponse({"group": group, "listings": group_listings(
-        get_all_listings(False), group, include_dealbreakers)})
+    everything = get_all_listings(False)
+    items = group_listings(everything, group, include_dealbreakers)
+    # `total` = every live listing in the DB (additive, for "595 of 3,325" in the header)
+    return JSONResponse({"group": group, "listings": items, "total": len(everything)})
 
 
 # --------------------------------------------------------------------------- drafting

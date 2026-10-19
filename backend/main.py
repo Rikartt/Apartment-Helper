@@ -73,7 +73,7 @@ def _sent_info(l: dict, now: datetime | None = None) -> dict:
 
 
 _ingest_state = {"running": False, "sources_done": [], "sources_total": 0, "count": 0,
-                 "new": 0, "last_finished_at": None}
+                 "new": 0, "current": None, "last_finished_at": None}
 _ingest_lock = threading.Lock()
 _stop_event = threading.Event()
 DEFAULT_INGEST_INTERVAL_MIN = 45
@@ -109,6 +109,7 @@ def _tracked_ingest(sources: list[str], trigger: str = "manual",
         errors: list[str] = []
         try:
             for name in sources:
+                _ingest_state["current"] = name   # shown in the sync indicator
                 try:
                     r = run_ingest([name])
                     total += r.get("total", 0)
@@ -133,7 +134,7 @@ def _tracked_ingest(sources: list[str], trigger: str = "manual",
                     finish_run(run_id, ok, total, new, gone, per_source, errors)
             except Exception as e:
                 print(f"[ingest] could not log run: {e}")
-            _ingest_state.update(running=False, gone=gone,
+            _ingest_state.update(running=False, gone=gone, current=None,
                                  last_finished_at=datetime.now().isoformat())
         notify.after_ingest()   # phone digest; never raises
         return {"total": total, "new": new}
