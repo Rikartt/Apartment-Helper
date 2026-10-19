@@ -738,8 +738,7 @@ function fitReasons(l) {
   if (l.rent_chf > 0 && l.rent_chf <= budget - 100) r.push(`CHF ${budget - l.rent_chf} under budget`);
   const t = l.transit_zentrum_min, th = l.transit_hoenggerberg_min;
   const best = Math.min(t ?? 999, th ?? 999);
-  if (best <= 15) r.push(`${best} min to ETH`);
-  else if (best <= 25) r.push(`${best} min to ETH`);
+  if (best <= 25) r.push(`${tMin(l, best)} min to ETH`);
   const av = (l.available_from || '').slice(0, 10);
   if (!av || av === 'flexible' || /^\D/.test(av)) r.push('flexible start');
   else if (av <= moveIn) r.push('available on time');
@@ -759,7 +758,7 @@ function commuteMin(l) { if (groupMode) return l.worst_commute_min ?? 999; retur
 // Transit minutes come from the timetable (transport.opendata.ch, 08:00 arrival, incl. walk)
 // or, until the background lookup has run, a straight-line estimate shown with a "~".
 function tMin(l, t) { return t == null ? '–' : (l.commute_source === 'timetable' ? '' : '~') + t; }
-function tTitle(l) { return l.commute_source === 'timetable' ? 'Public transport (timetable, weekday 08:00 arrival, incl. walk)' : 'Public transport (rough estimate; timetable lookup pending)'; }
+function tTitle(l) { return l.commute_source === 'timetable' ? 'Public transport (timetable, weekday 08:00 arrival, incl. walk)' : 'Public transport (rough straight-line estimate; no timetable result yet)'; }
 
 function commuteGrid(l) {
   const row = c => {
@@ -1099,8 +1098,8 @@ function renderToday(list) {
   box.hidden = false;
   box.innerHTML = `<button class="today-head" aria-expanded="${todayOpen}" onclick="toggleToday()">${todayOpen ? '▾' : '▸'} Message today <small>${picks.length} best fresh picks</small></button>` +
     (todayOpen ? picks.map((l, i) => {
-      const mins = commuteMin(l);
-      return `<button class="today-row" data-id="${l.id}"><span class="rk">${i + 1}</span><span class="pr">${fmtChf(priceOf(l))}</span><span class="tt">${esc(cleanTitle(l))}${isNew(l) ? '<span class="nw">NEW</span>' : ''}</span><span class="mn ${!groupMode && m === 'bike' ? 'bike' : ''}">${mins < 999 ? mins + ' min' : ''}</span></button>`;
+      const mins = commuteMin(l), shown = (groupMode || m === 'transit') ? tMin(l, mins) : mins;
+      return `<button class="today-row" data-id="${l.id}"><span class="rk">${i + 1}</span><span class="pr">${fmtChf(priceOf(l))}</span><span class="tt">${esc(cleanTitle(l))}${isNew(l) ? '<span class="nw">NEW</span>' : ''}</span><span class="mn ${!groupMode && m === 'bike' ? 'bike' : ''}">${mins < 999 ? shown + ' min' : ''}</span></button>`;
     }).join('') : '');
 }
 function toggleToday() { todayOpen = !todayOpen; try { localStorage.setItem('wgp_today', todayOpen ? '1' : '0'); } catch (_) {} renderToday(curList); }

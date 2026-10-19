@@ -95,6 +95,7 @@ def _area(l: dict) -> str:
 def _candidate(l: dict, fit: int, commute: int | None, mode: str) -> dict:
     return {"id": l["id"], "mode": mode, "fit": fit, "rent": l.get("rent_chf"),
             "commute": commute, "area": _area(l), "url": l.get("url") or "",
+            "commute_est": l.get("commute_source") != "timetable",
             "title": l.get("title") or ""}
 
 
@@ -133,7 +134,8 @@ def pending_candidates(profile: dict | None = None, now: datetime | None = None)
 
 # ------------------------------------------------------------------ formatting
 def _line(c: dict) -> str:
-    commute = f"{c['commute']} min to ETH" if c["commute"] is not None else "commute n/a"
+    approx = "~" if c.get("commute_est") else ""
+    commute = f"{approx}{c['commute']} min to ETH" if c["commute"] is not None else "commute n/a"
     tag = " (group)" if c["mode"] == "group" else ""
     parts = [f"CHF {c['rent']}" if c["rent"] else "rent n/a", f"fit {c['fit']}{tag}",
              commute, c["area"]]

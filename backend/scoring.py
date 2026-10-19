@@ -361,7 +361,9 @@ def score_detail(listing: dict, profile: dict | None = None,
     if t is not None:
         s += max(0.0, 18 - max(0, t - 5) * 0.45) if t <= 45 else 0
         if t <= 25:
-            reasons.append(f"{t} min to ETH")
+            # "~" = straight-line estimate (no timetable result yet), as in the UI
+            approx = "" if listing.get("commute_source") == "timetable" else "~"
+            reasons.append(f"{approx}{t} min to ETH")
 
     # recency: up to +12, half-life ~6 days
     age = _age_days(listing, today)

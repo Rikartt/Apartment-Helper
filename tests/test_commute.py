@@ -224,3 +224,16 @@ def test_hoenggerberg_bike_hill_penalty():
     assert commute.estimate_commute(lat, lng, commute.ETH_HOENGGERBERG)["bike_min"] == round(km / 15 * 60 + 5)
     kz = commute.haversine_km(lat, lng, *commute.ETH_ZENTRUM)
     assert commute.estimate_commute(lat, lng, commute.ETH_ZENTRUM)["bike_min"] == round(kz / 15 * 60)
+
+
+def test_commute_reason_and_alert_mark_estimates():
+    from backend import notify, scoring
+    prof = {"budget_chf": {"max": 1000}, "languages": [], "traits": [], "wants": []}
+    base = make_ad(id=1, transit_zentrum_min=18, transit_hoenggerberg_min=30)
+    est = scoring.score_detail({**base, "commute_source": "estimate"}, prof)["reasons"]
+    tt = scoring.score_detail({**base, "commute_source": "timetable"}, prof)["reasons"]
+    assert "~18 min to ETH" in est and "18 min to ETH" in tt
+    line = notify._line(notify._candidate({**base, "commute_source": "estimate"}, 80, 18, "solo"))
+    assert "~18 min to ETH" in line
+    line = notify._line(notify._candidate({**base, "commute_source": "timetable"}, 80, 18, "solo"))
+    assert "| 18 min to ETH" in line
