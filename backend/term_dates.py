@@ -109,3 +109,110 @@ def stated_end(*texts: str | None) -> str | None:
     a reposted ad often keeps last year's dates in one place and the new ones in another."""
     ends = [d for t in texts if t for d in stated_end_dates(t)]
     return max(ends).isoformat() if ends else None
+
+
+# ---------------------------------------------------------------- start of the rental
+# Flatfox's `moving_date` is typed by the poster, and live ads carry 2004-11-01, 1972-11-01 or
+# last year's date while the text says "from 17 November" / "verfügbar ab 15.10.2026". When the
+# structured date lies long before publication, the text's start is the better evidence.
+
+IMPLAUSIBLE_START_DAYS = 60   # a start this long before publication is a typo / stale date
+_YEAR_SLACK_DAYS = 31         # "ab 1. Oktober" in an ad published 16 Oct still means this October
+_MAX_AHEAD_DAYS = 400         # a stated start further out than this is not believed
+
+# what may come right before a START date: "ab", "per", "from", "verfügbar ab (dem)", "dès le",
+# "starting (mid)", "Einzug ab", "Mietbeginn:", "available from: (1st)" ...; markdown ** allowed
+_START_LEAD = re.compile(
+    r"(?:(?<![a-zäöüéà])(?:ab|per|from|starting|start|as\s+of|available|verfügbar|frei|bezug|"
+    r"bezugsbereit|einzug|einzugstermin|mietbeginn|mietantritt|move[- ]?in(?:\s+date)?|dès|"
+    r"[àa]\s+partir\s+d[eu]|disponible)(?![a-zäöüéà]))"
+    r"[\s.,:(*_]*(?:(?:dem|den|the|le|on|am|ca|approx|from|ab|per|dès)(?![a-zäöüéà])[\s.,:*_]*){0,3}"
+    r"(?P<mod>(?:mitte|ende|anfang|mid|end|beginning|early|late|début|fin)(?![a-zäöüéà])"
+    r"[\s.,:*_-]*(?:of\s+|de\s+)?)?$", re.I)
+# yearless dates: "17 November", "1. Januar", "1er novembre", "November 17", "15.11." / "11.10-31.10"
+_START_PATTERNS = _PATTERNS + [
+    re.compile(r"(?<![\d.])(?P<day>\d{1,2})\.\s?(?P<num>\d{1,2})(?:\.|(?=\s?[-–]))(?!\d)"),
+    re.compile(r"(?<![\d.])" + _DAY + r"\s*(?:of\s+)?" + _MON),
+    re.compile(r"\b" + _MON + r"\s+" + _DAY + r"(?![\d.])"),
+    re.compile(r"\b" + _MON),
+]
+_NOW = re.compile(
+    r"(?<![a-zäöü])(?:(?:ab|per|from|available|verfügbar|frei|bezugsbereit|einzug|disponible)"
+    r"[\s.,:*_]*(?:sofort|immediately|now|right\s+away|immédiatement|de\s+suite)(?![a-zäöü])|"
+    r"(?:sofort|immediately|immédiatement)\s+(?:verfügbar|frei|bezugsbereit|available|disponible))", re.I)
+
+
+def _start_mentions(text: str) -> list[tuple[int, int, dict]]:
+    """(start, end, fields) for every date-like mention, year optional, no overlaps."""
+    found: list[tuple[int, int, dict]] = []
+    for rx in _START_PATTERNS:
+        for m in rx.finditer(text):
+            if any(s < m.end() and m.start() < e for s, e, _ in found):
+                continue
+            g = m.groupdict()
+            month = int(g["num"]) if g.get("num") else _month(g["mon"])
+            if month is None or not 1 <= month <= 12:
+                continue
+            year = int(g["year"]) if g.get("year") else None
+            if year is not None and year < 100:
+                year += 2000
+            day = int(g["day"]) if g.get("day") else None
+            if day is not None and not 1 <= day <= 31:
+                continue
+            found.append((m.start(), m.end(), {"year": year, "month": month, "day": day}))
+    return sorted(found, key=lambda f: f[0])
+
+
+def _start_date(f: dict, mod: str, published: date) -> date | None:
+    day = f["day"]
+    if day is None:   # month only: "ab Februar" = 1st, "Mitte" = 15th, "Ende" = last day
+        m = mod.lower()
+        day = 15 if m.startswith(("mitte", "mid")) else 31 if m.startswith(("ende", "end", "late", "fin")) else 1
+    if f["year"] is not None:
+        return _to_date(f["year"], f["month"], day)
+    d = _to_date(published.year, f["month"], day)
+    if d and (published - d).days > _YEAR_SLACK_DAYS:   # next occurrence after publication
+        d = _to_date(published.year + 1, f["month"], day)
+    return d
+
+
+def stated_starts(published: date, text: str) -> list[date]:
+    """Every move-in date the text states ('ab', 'from', 'per sofort', ...), years inferred as
+    the next occurrence after `published`; 'sofort'/'immediately' = the publication date."""
+    if not text:
+        return []
+    out = [published] if _NOW.search(text) else []
+    prev_end = 0
+    for start, end, f in _start_mentions(text):
+        lead = _START_LEAD.search(text[max(prev_end, start - _LEAD_CHARS):start])
+        prev_end = end
+        if not lead:
+            continue
+        d = _start_date(f, lead.group("mod") or "", published)
+        if d and -IMPLAUSIBLE_START_DAYS <= (d - published).days <= _MAX_AHEAD_DAYS:
+            out.append(d)
+    return out
+
+
+def stated_start(published: date, *texts: str | None) -> date | None:
+    """Earliest move-in date over all texts (title, body), or None."""
+    starts = [d for t in texts if t for d in stated_starts(published, t)]
+    return min(starts) if starts else None
+
+
+def _iso(raw) -> date | None:
+    try:
+        return date.fromisoformat(str(raw)[:10])
+    except (ValueError, TypeError):
+        return None
+
+
+def effective_move_in(available_from, published, *texts: str | None) -> str | None:
+    """The text's move-in date (ISO) when the structured `available_from` is implausible
+    (more than IMPLAUSIBLE_START_DAYS before publication) and the text states one; else None,
+    meaning `available_from` holds (an old date on an open-ended ad = available now)."""
+    start, pub = _iso(available_from), _iso(published)
+    if not start or not pub or (pub - start).days <= IMPLAUSIBLE_START_DAYS:
+        return None
+    d = stated_start(pub, *texts)
+    return d.isoformat() if d else None

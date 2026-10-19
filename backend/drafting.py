@@ -165,7 +165,7 @@ THE AD (raw):
 <<<
 {listing.get("title", "")}
 {listing.get("address", "")}
-Rent: {listing.get("rent_chf")} CHF · available from {listing.get("available_from")}
+Rent: {listing.get("rent_chf")} CHF · available from {listing.get("move_in_stated") or listing.get("available_from")}
 
 {listing.get("raw_text", "")}
 >>>

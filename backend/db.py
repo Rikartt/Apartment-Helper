@@ -2,7 +2,7 @@ import sqlite3
 import json
 from pathlib import Path
 
-from .term_dates import stated_end
+from .term_dates import effective_move_in, stated_end
 
 DB_PATH = Path(__file__).parent.parent / "wgpendler.db"
 
@@ -31,6 +31,8 @@ NEW_COLUMNS = [
     ("photo_count", "INTEGER"),         # number of photos when the source reports it
     ("fixed_term", "INTEGER"),          # 1 = befristet / temporary, 0 = source says not, NULL = unknown
     ("term_end", "TEXT"),               # ISO date the ad's text gives as end of rental; NULL = none stated
+    ("move_in_stated", "TEXT"),         # ISO move-in date from the ad's text, set only when available_from
+                                        # lies long before publication (typo/last year); NULL = available_from holds
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -117,6 +119,8 @@ def init_db():
                 conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {typedef}")
         if "term_end" not in existing:
             _backfill_term_end(conn)
+        if "move_in_stated" not in existing:
+            _backfill_move_in_stated(conn)
         if promo_was_missing:
             # rows stored before promo existed were never checked: make the next run of the
             # incremental sources a full refresh (the table may not exist yet on a new DB)
@@ -224,9 +228,10 @@ def trust_generation() -> int | None:
 def upsert_listing(ad: dict) -> bool:
     """Insert or update a listing. Returns True if it was a new row."""
     with get_conn() as conn:
-        existed = conn.execute(
-            "SELECT 1 FROM listings WHERE source = ? AND external_id = ?",
-            (ad["source"], ad["external_id"])).fetchone() is not None
+        row = conn.execute(
+            "SELECT created_at FROM listings WHERE source = ? AND external_id = ?",
+            (ad["source"], ad["external_id"])).fetchone()
+        existed, existing_created = row is not None, row[0] if row else None
         conn.execute("""
             INSERT INTO listings
                 (source, external_id, title, address, lat, lng, rent_chf,
@@ -234,8 +239,8 @@ def upsert_listing(ad: dict) -> bool:
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
                  listed_at, fit_score, reply_score, kind, rooms, living_area_m2, commute_source, promo,
-                 promo_until, photo_count, fixed_term, term_end, last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
+                 promo_until, photo_count, fixed_term, term_end, move_in_stated, last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -263,6 +268,7 @@ def upsert_listing(ad: dict) -> bool:
                 photo_count    = excluded.photo_count,
                 fixed_term     = excluded.fixed_term,
                 term_end       = excluded.term_end,
+                move_in_stated = excluded.move_in_stated,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 missed_runs  = 0,
                 gone_at      = NULL
@@ -281,6 +287,9 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("promo"), ad.get("promo_until"), ad.get("photo_count"),
             None if ad.get("fixed_term") is None else int(bool(ad["fixed_term"])),
             ad.get("term_end") or stated_end(ad.get("title"), ad.get("raw_text")),
+            effective_move_in(ad["available_from"],
+                              ad.get("listed_at") or existing_created or _today_iso(),
+                              ad.get("title"), ad.get("raw_text")),
         ))
         return not existed
 
@@ -362,6 +371,20 @@ def _backfill_term_end(conn):
     rows = conn.execute("SELECT id, title, raw_text FROM listings WHERE raw_text != ''").fetchall()
     conn.executemany("UPDATE listings SET term_end = ? WHERE id = ?",
                      [(e, r[0]) for r in rows if (e := stated_end(r[1], r[2]))])
+
+
+def _backfill_move_in_stated(conn):
+    """Rows stored before move_in_stated existed: same rule as at ingest, from the stored
+    text and publication date (no refetch)."""
+    rows = conn.execute("SELECT id, available_from, COALESCE(listed_at, created_at), title, raw_text "
+                        "FROM listings WHERE raw_text != ''").fetchall()
+    conn.executemany("UPDATE listings SET move_in_stated = ? WHERE id = ?",
+                     [(m, r[0]) for r in rows if (m := effective_move_in(r[1], r[2], r[3], r[4]))])
+
+
+def _today_iso() -> str:
+    from datetime import date
+    return date.today().isoformat()
 
 
 def get_all_listings(include_raw: bool = True, include_gone: bool = False) -> list[dict]:

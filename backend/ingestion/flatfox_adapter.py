@@ -177,9 +177,17 @@ class FlatfoxAdapter(BaseAdapter):
             return None
 
         city    = l.get("city") or "Zürich"
-        street  = l.get("street") or ""
-        address = f"{street}, {city}".strip(", ") or city
+        # live streets come as "Hohlstrasse, 36" too: keep the number on the street
+        street  = re.sub(r",\s*(?=\d)", " ", str(l.get("street") or "")).strip()
         slug    = l.get("slug") or str(pk)
+        # postcode: the field, else the slug's ("8004-zurich", "hohlstrasse-36-8004-zurich");
+        # without it a street-less ad stored only the city
+        plz     = str(l.get("zipcode") or "").strip()
+        if not re.fullmatch(r"[1-9]\d{3}", plz):
+            m = re.search(r"(?:^|-)([1-9]\d{3})-[a-z][a-z-]*$", slug)
+            plz = m.group(1) if m else ""
+        place   = f"{plz} {city}".strip()
+        address = f"{street}, {place}" if street else place
         url     = f"https://flatfox.ch/en/flat/{slug}/{pk}/"
 
         title_parts = []
