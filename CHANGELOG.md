@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-10-19: small fixes
+
+### Fixed
+- Map: hiding a listing's pin with a filter right after closing its detail (while the map was still zooming to it) broke the map until reload; every later listing failed to open. The pin now stays until the zoom ends and is removed then. The UI smoke test checks this fast case.
+- Trust score cache: an ad whose text changed but kept its length, or whose pin moved, could keep its old score.
+- The Top 5 and keyboard-shortcut windows no longer share one HTML id.
+
 ## 2026-10-19: real commute times (PR #4)
 
 ### New
