@@ -272,3 +272,20 @@ def test_ingest_warms_trust_cache(db, monkeypatch):
     monkeypatch.setattr(trust, "TrustContext", lambda *a: calls.append(a))
     trust.annotate(db.get_all_listings(True))
     assert calls == []   # cache hit, no recompute
+
+
+def test_cache_notices_same_length_text_edit_and_moved_pin():
+    """The result cache must not serve a stale score when an ad's text changes but keeps its
+    length, or when its coordinates change."""
+    base = "Schönes Zimmer in ruhiger WG, Besichtigung jederzeit möglich, Miete monatlich per Dauerauftrag. " * 3
+    l = make_ad(external_id="x1", raw_text=base, address="Teststrasse 5, 8004 Zürich")
+    l["id"] = 1
+    trust.annotate([l])
+    assert l["trust_level"] == "high"
+    scam = "Bitte die Kaution vor der Besichtigung überweisen, ich bin im Ausland, Schlüssel per Post."
+    edited = dict(l, raw_text=(scam + base)[:len(base)])
+    assert len(edited["raw_text"]) == len(base)
+    trust.annotate([edited])
+    assert edited["trust_score"] < l["trust_score"]
+    moved = dict(l, lat=l["lat"] + 0.5)
+    assert trust._signature([moved]) != trust._signature([l])

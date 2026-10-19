@@ -385,10 +385,12 @@ _cache: dict = {"entry": None}   # (signature, {id: detail})
 
 
 def _signature(rows: list[dict]) -> int:
+    # full text, not just its length: a same-length edit (e.g. a scam phrase swapped in) must
+    # invalidate the cache; hashing ~4 MB of text for 3000 ads takes a few ms
     return hash(tuple((l.get("id"), l.get("rent_chf"), l.get("address"), l.get("kind"), l.get("rooms"),
                        l.get("living_area_m2"), l.get("photo_count"), bool(l.get("gone_at")),
-                       len(l.get("raw_text") or ""), len(l.get("title") or ""),
-                       str(l.get("extracted"))[:400] if l.get("extracted") else None)
+                       l.get("lat"), l.get("lng"), l.get("raw_text") or "", l.get("title") or "",
+                       str(l.get("extracted")) if l.get("extracted") else None)
                       for l in rows))
 
 
