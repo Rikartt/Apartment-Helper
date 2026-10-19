@@ -4,7 +4,7 @@ Phases 1–7 from the original brief are done (see CHANGELOG.md). This is the po
 Each block is sized for one working session with a few parallel agents.
 
 ## Block A: accuracy (highest impact)
-1. **Real commute times.** `backend/commute.py` estimates commute times from straight-line distance at 22 km/h, which ignores tram lines, transfers and the Hönggerberg hill. Use real timetable connections (transport.opendata.ch, free, rate-limited), with a weekday 8:00 arrival and caching per address. Keep the estimate as a fallback, and show which one a listing uses.
+1. ~~**Real commute times.**~~ Done (see CHANGELOG). `backend/commute.py` estimates commute times from straight-line distance at 22 km/h, which ignores tram lines, transfers and the Hönggerberg hill. Use real timetable connections (transport.opendata.ch, free, rate-limited), with a weekday 8:00 arrival and caching per address. Keep the estimate as a fallback, and show which one a listing uses.
 2. **Incremental ingest.** Flatfox fetches details for every pin, which takes about 6 min per run. Only fetch new pins and pins whose price changed, so the periodic refresh takes seconds and alerts arrive sooner.
 3. **Reliable listing dates.** Many listings lack `listed_at`, so recency falls back to first-seen time. Parse the posting date from every source, so "fresh" really means fresh.
 4. **Homegate speed.** Geocoding takes about 1 s per ad. Look addresses up in parallel through swisstopo (no 1 req/s limit) and skip ads already in the cache.

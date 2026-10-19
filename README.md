@@ -56,6 +56,12 @@ Only these three call the Anthropic API. Costs are small but real; the default m
 
 If the key is missing or the credit is exhausted the UI shows a clear error instead of failing silently. Auto-extraction after each ingest is on by default when a key is set (see `WGP_AUTO_EXTRACT`); set `WGP_AUTO_EXTRACT=0` to spend nothing until you press Extract.
 
+### Commute times
+- **Transit** minutes are real timetable connections from [transport.opendata.ch](https://transport.opendata.ch) (free, rate-limited): nearest stops to the listing, median of the connections arriving at ETH Zentrum (Zürich, ETH/Universitätsspital) or ETH Hönggerberg around 08:00 on the next weekday, plus the walk to the first stop. Results are cached in SQLite (`commute_cache`) per ~100 m grid cell and campus for 90 days.
+- Lookups run in a background thread after each ingest (throttled to 2 requests/s, backing off on HTTP 429), never in a request handler. Until a listing is looked up, or if the API is down, it shows a straight-line estimate with a `~` prefix (`commute_source` is `estimate`; `timetable` otherwise).
+- **Bike** minutes remain an estimate (15 km/h straight-line) plus a climb penalty of up to 5 min for Hönggerberg, which sits about 100 m above the city.
+- Backfill existing rows (resumable): `python -m backend.commute [--max-cells N]`. Roughly 5 API calls per new grid cell; a full database takes a while at the polite rate.
+
 ### Tracking
 Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view hides what you've handled. Status survives re-ingests and is never changed by the app, even when a listing disappears.
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## Real commute times
+
+### New
+- Transit commute minutes now come from real timetable connections (transport.opendata.ch, 08:00 weekday arrival, including the walk to the first stop), cached per ~100 m grid cell and campus in SQLite and fetched in a background step after ingest. Straight-line estimate stays as fallback; `commute_source` (`timetable` | `estimate`) is stored per listing and the UI prefixes estimates with `~`.
+- `python -m backend.commute` backfills existing listings.
+- Bike estimate adds a climb penalty (up to 5 min) for Hönggerberg.
+
 ## Follow-up loop
 
 ### New
