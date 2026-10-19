@@ -248,6 +248,9 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         check(f"{tag} header shown matches the filtered list",
               0 < shown <= total and shown == pg.evaluate("curList.length"), cnt)
         check(f"{tag} cards rendered", pg.locator(".card").count() > 0)
+        check(f"{tag} alerts state loads without the pending count (?pending=0)",
+              any(r.endswith("/notify/status?pending=0") for r in pg.reqs)
+              and not any(r.endswith("/notify/status") for r in pg.reqs), [r for r in pg.reqs if "notify" in r])
         check(f"{tag} walkthrough hidden once done", not pg.is_visible("#hint"))
         check(f"{tag} map has markers", pg.locator(".leaflet-marker-icon").count() > 0)
         pages.shot(pg, f"{tag}-02-list")
