@@ -27,6 +27,7 @@ NEW_COLUMNS = [
     ("promo", "TEXT"),                  # paid placement, e.g. 'Flatfox Priority'; NULL = none
     ("promo_until", "TEXT"),            # UTC end of a time-limited placement (Priority); NULL = open-ended
     ("photo_count", "INTEGER"),         # number of photos when the source reports it
+    ("fixed_term", "INTEGER"),          # 1 = befristet / temporary, 0 = source says not, NULL = unknown
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -93,7 +94,8 @@ def init_db():
         # migrate existing DBs that predate new columns
         existing = {row[1] for row in conn.execute("PRAGMA table_info(listings)")}
         status_was_missing = "status" not in existing
-        promo_was_missing = "promo" not in existing
+        # new per-ad fields that only a fresh details fetch can fill
+        promo_was_missing = "promo" not in existing or "fixed_term" not in existing
         for col, typedef in NEW_COLUMNS:
             if col not in existing:
                 conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {typedef}")
@@ -186,8 +188,8 @@ def upsert_listing(ad: dict) -> bool:
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
                  listed_at, fit_score, reply_score, kind, rooms, living_area_m2, commute_source, promo,
-                 promo_until, photo_count, last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
+                 promo_until, photo_count, fixed_term, last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -213,6 +215,7 @@ def upsert_listing(ad: dict) -> bool:
                 promo          = excluded.promo,
                 promo_until    = excluded.promo_until,
                 photo_count    = excluded.photo_count,
+                fixed_term     = excluded.fixed_term,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 missed_runs  = 0,
                 gone_at      = NULL
@@ -229,6 +232,7 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("rooms"), ad.get("living_area_m2"),
             ad.get("commute_source") or "estimate",
             ad.get("promo"), ad.get("promo_until"), ad.get("photo_count"),
+            None if ad.get("fixed_term") is None else int(bool(ad["fixed_term"])),
         ))
         return not existed
 

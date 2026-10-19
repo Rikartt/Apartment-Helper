@@ -234,6 +234,9 @@ def _make_ads(n: int, rnd: random.Random, now: datetime) -> list[dict]:
             # (no extra random draws, so the rest of the seed is unchanged)
             ad["promo"] = "Flatfox Priority"
             ad["promo_until"] = _ts(now + timedelta(days=(i % 13) + 1) if i % 2 == 0 else now - timedelta(days=2))
+        if i % 7 == 2 and i not in scam_at:
+            ad["fixed_term"] = True                # befristet / temporary let
+            ad["raw_text"] = "Befristet bis Ende März. " + ad["raw_text"]
         ad.update(commute_times(ad["lat"], ad["lng"]))
         ads.append(ad)
     return ads

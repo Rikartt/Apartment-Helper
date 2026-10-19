@@ -290,6 +290,14 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
               pg.evaluate("!$('today').hidden && ![...document.querySelectorAll('.today-row')].some(r => promoActive(byId[+r.dataset.id]))"))
         pg.evaluate("$('hidePromo').checked = false; savePromo(); applyFilters()")
         pg.wait_for_timeout(300)
+        check(f"{tag} fixed-term listings carry a 'befristet' chip",
+              pg.evaluate("curList.some(l => isFixedTerm(l))") and pg.locator(".term-chip").count() > 0)
+        pg.evaluate("$('hideTerm').checked = true; savePromo(); applyFilters()")
+        pg.wait_for_timeout(400)
+        check(f"{tag} 'Hide befristet' removes them from the list",
+              pg.evaluate("curList.length > 0 && !curList.some(l => isFixedTerm(l))"))
+        pg.evaluate("$('hideTerm').checked = false; savePromo(); applyFilters()")
+        pg.wait_for_timeout(300)
 
     with step(f"{tag} detail", pg, pages):
         first = pg.locator(".card").first
