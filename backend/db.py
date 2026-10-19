@@ -286,7 +286,7 @@ def get_listings_needing_extraction(
 
 
 def _row_to_dict(row, include_raw: bool = True) -> dict:
-    d = dict(row)
+    d = row if isinstance(row, dict) else dict(row)
     if d.get("extracted"):
         try:
             d["extracted"] = json.loads(d["extracted"])
@@ -316,7 +316,12 @@ def get_all_listings(include_raw: bool = True, include_gone: bool = False) -> li
     if not include_gone:
         sql += " WHERE gone_at IS NULL"
     with get_conn() as conn:
-        rows = conn.execute(sql + " ORDER BY id").fetchall()
+        # plain tuples zipped with the column names: same dicts as dict(sqlite3.Row), but
+        # about twice as fast for a few thousand rows of ~45 columns
+        conn.row_factory = None
+        cur = conn.execute(sql + " ORDER BY id")
+        cols = [c[0] for c in cur.description]
+        rows = [dict(zip(cols, r)) for r in cur.fetchall()]
     return [_row_to_dict(r, include_raw) for r in rows]
 
 

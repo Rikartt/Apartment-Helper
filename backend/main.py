@@ -150,9 +150,13 @@ def _tracked_ingest(sources: list[str], trigger: str = "manual",
 def _maybe_extract(tag: str):
     if AUTO_EXTRACT and llm.has_key():
         try:
-            print(f"[{tag}] extraction: {extract_batch(limit=AUTO_EXTRACT_LIMIT)}")
+            res = extract_batch(limit=AUTO_EXTRACT_LIMIT)
+            print(f"[{tag}] extraction: {res}")
         except Exception as e:
             print(f"[{tag}] extraction failed: {e}")
+            return
+        if res.get("extracted"):   # new red flags change the trust signature: re-warm here
+            _warm_trust()
 
 
 def _startup_ingest():
@@ -165,6 +169,7 @@ def _startup_ingest():
         age = None
     if age is not None and age < interval * 60:
         print(f"[startup] last successful ingest {age/60:.0f} min ago; skipping")
+        _warm_trust()   # so the first page load does not pay the cold trust pass
         return
     try:
         _tracked_ingest(STARTUP_SOURCES, trigger="startup")
@@ -252,8 +257,9 @@ def _decorate(l: dict, profile: dict) -> dict:
 
 
 def _warm_trust():
-    """Score trust on the ingest thread, so the first /listings after an ingest is fast
-    (a cold run over ~3000 listings takes a few seconds; later calls hit the cache)."""
+    """Score trust on the background thread (after an ingest, an extraction batch, or at
+    startup when the ingest is skipped), so the next /listings is fast: a cold run over
+    ~4000 listings takes about a second, later calls hit the cache."""
     try:
         trust.annotate(get_all_listings(True))
     except Exception as e:
@@ -274,7 +280,10 @@ def listings(include_raw: bool = Query(False), include_gone: bool = Query(False)
     (about 1.3 kB per ad and not needed to render the map). Listings that
     vanished from their source are hidden unless ?include_gone=1."""
     profile = _load_profile()
-    rows = _with_trust(get_all_listings(True, include_gone))
+    rows = get_all_listings(True, include_gone)
+    # one DB read: the trust universe is the live (not gone) part of the same rows
+    universe = [l for l in rows if l.get("gone_at") is None] if include_gone else rows
+    rows = _with_trust(rows, universe)
     if not include_raw:
         rows = [strip_raw(l) for l in rows]
     if kind:   # optional comma list, e.g. kind=wg_room,studio (default: everything)
@@ -384,6 +393,8 @@ def run_extraction(limit: Optional[int] = Query(None, ge=1, le=200)):
     only listings that pass rent/commute prefilters and were never extracted."""
     res = extract_batch(limit=limit)
     res["total"] = res["candidates"]  # kept for the existing UI button
+    if res.get("extracted"):   # re-score trust now, not on the reload this click triggers
+        _warm_trust()
     if res.get("error") and res["extracted"] == 0:
         return JSONResponse(res, status_code=res.get("error_status", 503))
     return JSONResponse(res)
@@ -549,8 +560,10 @@ def ingest(sources: list[str] = Query(default=None)):
 
 
 @app.get("/notify/status")
-def notify_status():
-    return JSONResponse(notify.status())
+def notify_status(pending: bool = Query(True)):
+    """?pending=0 skips counting the pending alert candidates (`pending` is then null): the
+    map page only needs channels / min_fit / filters, and the count scores every new ad."""
+    return JSONResponse(notify.status(pending=pending))
 
 
 @app.put("/notify/filters")

@@ -267,6 +267,7 @@ The two tools also work on their own:
 ```bash
 python tools/dev_seed.py /tmp/wgp.db --outcomes             # synthetic DB: ~200 listings, scams, extractions, history
 python tools/dev_server.py --fake-llm --outcomes --group    # app on such a DB at http://127.0.0.1:8765
+python tools/bench.py --browser                             # timings on a real-size DB (4000 listings, 300 contacted)
 ```
 
 `dev_server.py` works on a copy of `profile.json` and never touches `wgpendler.db`. It runs no ingest, and backups go to a temp folder. `--fake-llm` returns canned drafts and summaries; without it, the Claude features report a missing key. It never builds a real Anthropic client. `--clear-template` empties the message template so the walkthrough shows.
@@ -290,7 +291,7 @@ backend/   main.py (routes), db.py, ingest.py, ingestion/ (one adapter per sourc
 frontend/  index.html (Leaflet map UI, served at "/"), stats.html (reply stats),
            checklist.js (draft checklist), geo.js (draw-area maths), manifest.json, sw.js, pwa.js, icons/
 scripts/   phone-https.sh (optional Tailscale HTTPS helper)
-tools/     make_icons.py
+tools/     make_icons.py, dev_seed.py + dev_server.py (synthetic DB, offline app), bench.py (performance check)
 tests/     offline pytest suite + opt-in smoke_e2e.py
 profile.json   your applicant profile (edited in the UI)
 ```

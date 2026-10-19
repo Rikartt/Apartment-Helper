@@ -3,6 +3,7 @@
     python tools/dev_seed.py /tmp/wgp-dev.db                 # ~200 listings
     python tools/dev_seed.py /tmp/wgp-dev.db --outcomes      # plus sent/replied history
     python tools/dev_seed.py /tmp/wgp-dev.db --n 400 --seed 3 --force
+    python tools/dev_seed.py /tmp/wgp-big.db --n 4000 --outcomes --contacted 300   # real size
 
 What you get (deterministic for a given --seed): WG rooms, studios and whole flats spread
 over Zürich neighbourhoods, German and English ad texts, two obvious scam ads (they come
@@ -271,14 +272,20 @@ FIRST_MSG_EN = ("Hi all,\n\nI'm an ETH student and saw your ad. I like cooking, 
 
 
 def _add_outcomes(ids_by_kind: dict[str, list[int]], ads_by_id: dict[int, dict],
-                  rnd: random.Random, now: datetime) -> dict:
+                  rnd: random.Random, now: datetime, contacted: int | None = None) -> dict:
     """Mark listings sent/replied with a stored first message 4-30 days ago. Uses the app's
-    own add_sent_message/set_status, then backdates the timestamps."""
-    pool = ids_by_kind.get("wg_room", [])[:60] + ids_by_kind.get("studio", [])[:6]
+    own add_sent_message/set_status, then backdates the timestamps. By default 44 listings
+    (40 rooms/studios + 4 flats); `contacted` asks for that many in total instead (for
+    realistic-size benchmarks, e.g. a few hundred)."""
     # flats a 3-person group could take (4.5+ rooms), cheapest first, so group mode shows them
     flats = sorted(ids_by_kind.get("apartment", []),
                    key=lambda i: ((ads_by_id[i]["rooms"] or 0) < 4.5, ads_by_id[i]["rent_chf"]))
-    chosen = pool[10:50] + flats[:4]
+    if contacted is None:
+        pool = ids_by_kind.get("wg_room", [])[:60] + ids_by_kind.get("studio", [])[:6]
+        chosen = pool[10:50] + flats[:4]
+    else:
+        pool = ids_by_kind.get("wg_room", []) + ids_by_kind.get("studio", [])
+        chosen = pool[10:10 + max(0, contacted - 4)] + flats[:min(4, contacted)]
     n_sent = n_replied = 0
     for j, lid in enumerate(chosen):
         ad = ads_by_id[lid]
@@ -301,7 +308,7 @@ def _add_outcomes(ids_by_kind: dict[str, list[int]], ads_by_id: dict[int, dict],
 
 
 def build(path: str | Path, n: int = 200, seed: int = 7, outcomes: bool = False,
-          profile: dict | None = None, force: bool = False) -> dict:
+          profile: dict | None = None, force: bool = False, contacted: int | None = None) -> dict:
     """Create the DB at `path` and return a short summary dict. Refuses to overwrite an
     existing file unless force=True."""
     path = Path(path)
@@ -336,7 +343,7 @@ def build(path: str | Path, n: int = 200, seed: int = 7, outcomes: bool = False,
                 dbm.save_extraction(lid, ext, d["fit"], d["reply"])
                 n_ext += 1
 
-        outcome_info = _add_outcomes(ids_by_kind, ads_by_id, rnd, now) if outcomes else {}
+        outcome_info = _add_outcomes(ids_by_kind, ads_by_id, rnd, now, contacted) if outcomes else {}
 
         # fit/reply for everything, the way the app computes them
         rows = dbm.get_all_listings(include_raw=True, include_gone=True)
@@ -364,6 +371,8 @@ def main(argv=None) -> int:
     ap.add_argument("--n", type=int, default=200, help="number of listings (default 200)")
     ap.add_argument("--seed", type=int, default=7, help="random seed (default 7)")
     ap.add_argument("--outcomes", action="store_true", help="add sent/replied history")
+    ap.add_argument("--contacted", type=int, default=None,
+                    help="with --outcomes: how many listings were contacted (default 44)")
     ap.add_argument("--profile", help="profile.json to score against (default: the repo's)")
     ap.add_argument("--force", action="store_true", help="replace the file if it exists")
     a = ap.parse_args(argv)
@@ -371,7 +380,8 @@ def main(argv=None) -> int:
         ap.error("refusing to overwrite the real wgpendler.db")
     prof = json.loads(Path(a.profile).read_text()) if a.profile else None
     try:
-        info = build(a.path, n=a.n, seed=a.seed, outcomes=a.outcomes, profile=prof, force=a.force)
+        info = build(a.path, n=a.n, seed=a.seed, outcomes=a.outcomes, profile=prof, force=a.force,
+                     contacted=a.contacted)
     except FileExistsError as e:
         ap.error(str(e))
     print(json.dumps(info, indent=1))

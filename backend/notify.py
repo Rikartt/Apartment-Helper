@@ -138,14 +138,16 @@ def pending_candidates(profile: dict | None = None, now: datetime | None = None)
     utc = now or datetime.now(timezone.utc)
     rows = trust.annotate(get_all_listings(include_raw=True))
     for l in rows:
+        # cheapest test first: most rows were already announced, acted on or are older
+        # than the window (the checks are independent, so their order changes nothing)
+        if l.get("notified_at") or l.get("status") or (l.get("created_at") or "") < cutoff:
+            continue
         if l.get("trust_level") == "low":   # likely scam: never worth a phone buzz
             continue
         # hidden on the map -> no buzz either; left un-notified so unticking can still surface it
         if filters["hide_promo"] and promo_active(l, utc):
             continue
         if filters["hide_fixed_term"] and is_fixed_term(l):
-            continue
-        if l.get("notified_at") or l.get("status") or (l.get("created_at") or "") < cutoff:
             continue
         kind = l.get("kind") or "wg_room"
         if kind in ("wg_room", "studio"):
@@ -265,11 +267,13 @@ def after_ingest() -> None:
         print(f"[notify] failed: {type(e).__name__}: {e}")
 
 
-def status() -> dict:
-    try:
-        pend = len(pending_candidates())
-    except Exception:
-        pend = None
+def status(pending: bool = True) -> dict:
+    pend = None
+    if pending:
+        try:
+            pend = len(pending_candidates())
+        except Exception:
+            pend = None
     last = _last_sent()
     return {"channels": channels(), "min_fit": min_fit(),
             "quiet_hours": os.environ.get("WGP_NOTIFY_QUIET", "23-07") or None,
