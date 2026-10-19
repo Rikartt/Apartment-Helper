@@ -24,6 +24,7 @@ from .db import (  # noqa: E402
     add_sent_message, get_sent_messages, delete_sent_message, strip_raw,
 )
 from .drafting import draft, DraftError  # noqa: E402
+from .summary import summarize as summarize_ad  # noqa: E402
 from .extraction import extract_batch  # noqa: E402
 from .group import router as group_router, validate_group  # noqa: E402
 from .ingest import run_ingest, ADAPTERS  # noqa: E402
@@ -456,7 +457,9 @@ def best_listings():
 
 
 @app.post("/draft/{listing_id}")
-def draft_message(listing_id: int, followup: bool = Query(False)):
+def draft_message(listing_id: int, followup: bool = Query(False),
+                  tone: str = Query("warm", pattern="^(short|warm)$"),
+                  lang: str = Query("auto", pattern="^(auto|de|en)$")):
     """Draft a first message for one listing (or, with ?followup=1, a short follow-up to
     the message already sent). Never sends anything."""
     if not llm.has_key():
@@ -475,13 +478,23 @@ def draft_message(listing_id: int, followup: bool = Query(False)):
         listing["last_sent_at"] = sent[-1]["sent_at"]
     try:
         text = (draft(listing, _load_profile(), followup_of=first) if followup
-                else draft(listing, _load_profile()))
+                else draft(listing, _load_profile(), tone=tone, lang=lang))
     except DraftError as e:
         print(f"[draft] failed for {listing_id}: {e}")
         return _llm_error_response(e)
     lang = (listing.get("extracted") or {}).get("language")
     return JSONResponse({"id": listing_id, "draft": text, "language": lang,
-                         "followup": followup})
+                         "followup": followup, "tone": tone})
+
+
+@app.get("/listings/{listing_id}/summary")
+def listing_summary(listing_id: int):
+    """One-line English summary of a non-English ad, cached. Never an error status for
+    LLM trouble (missing key, billing): `summary` is just null and the UI hides it."""
+    listing = get_listing(listing_id)
+    if not listing:
+        return JSONResponse({"error": "listing not found"}, status_code=404)
+    return JSONResponse({"id": listing_id, "summary": summarize_ad(listing)})
 
 
 @app.post("/ingest")

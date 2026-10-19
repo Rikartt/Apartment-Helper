@@ -1,5 +1,12 @@
 # Changelog
 
+## Block B: drafts, summary, checklist
+
+### New
+- Draft variants: `POST /draft/{id}?tone=short|warm&lang=auto|de|en`; tone toggle and (when the ad language differs from your strongest profile language) a DE/EN toggle in the draft panel. Changing an option regenerates, asking first if you edited the text.
+- Ad summary: `GET /listings/{id}/summary` (cached Haiku, table `ad_summaries`), shown under the title for non-English ads; hidden on any error.
+- Checklist: flat conditions ("no pets", "noise-sensitive people unsuitable") are no longer items; extracted move_in/duration tick date/duration items; long requirements match on a third of the key words; "für längere Zeit" / "for a long time" count as a stay duration; long items no longer break onto separate lines.
+
 ## Block A: ingest (incremental, dates, geocoding)
 
 - Incremental Flatfox and Homegate ingest (new/price-changed ads only, daily full refresh, `WGP_FULL_REFRESH_HOURS`); gone detection unchanged.

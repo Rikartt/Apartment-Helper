@@ -114,7 +114,7 @@ def test_extract_no_key_clean_error(client, seeded):
 def test_draft_billing_error_is_clean(client, seeded, monkeypatch):
     from backend import llm
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    def bad(l, p): raise m.DraftError("Anthropic credit balance is exhausted.", 402, True)
+    def bad(l, p, **kw): raise m.DraftError("Anthropic credit balance is exhausted.", 402, True)
     monkeypatch.setattr(m, "draft", bad)
     r = client.post("/draft/1")
     assert r.status_code == 402 and "credit" in r.json()["error"]
@@ -207,9 +207,9 @@ def test_draft_no_key_503(client, seeded):
 def test_draft_404_and_ok_and_502(client, seeded, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     assert client.post("/draft/9999").status_code == 404
-    monkeypatch.setattr(m, "draft", lambda l, p: "Hi!")
+    monkeypatch.setattr(m, "draft", lambda l, p, **kw: "Hi!")
     assert client.post("/draft/1").json()["draft"] == "Hi!"
-    def bad(l, p): raise m.DraftError("nope")
+    def bad(l, p, **kw): raise m.DraftError("nope")
     monkeypatch.setattr(m, "draft", bad)
     assert client.post("/draft/1").status_code == 502
 
@@ -259,5 +259,5 @@ def test_listing_detail_and_ingest_status(client, seeded):
 
 def test_draft_returns_language(client, seeded, monkeypatch):
     monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
-    monkeypatch.setattr(m, "draft", lambda l, p: "Hi!")
+    monkeypatch.setattr(m, "draft", lambda l, p, **kw: "Hi!")
     assert "language" in client.post("/draft/1").json()

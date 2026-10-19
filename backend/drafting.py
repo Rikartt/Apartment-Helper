@@ -11,15 +11,13 @@ LANG_NAMES = {"de": "German", "en": "English"}
 
 SYSTEM_PROMPT = """You draft a short first message from a room-seeker to a WG poster. Goals: sound like a \
 real, specific person who clearly read THIS ad, and earn a viewing. Rules:
-- Write in the ad's language ({language}). Match the applicant's real level in that language: \
+- Write in {language}. Match the applicant's real level in that language: \
 if it's below native, keep it simple and natural, not florid.
 - Reference 1-2 concrete details from the actual ad (their stated vibe, a shared interest, \
 the neighbourhood, what they asked applicants to include).
 - Use ONLY facts from the applicant's profile. Never invent language ability, hobbies, or claims. \
 If a fact isn't in the profile, leave it out rather than guess.
-- 4-7 sentences. Warm, direct, not gushing. Include: who they are, why they fit what the ad said, \
-when they can move in (see "move_in" in the profile: if it says available immediately, say \
-"available immediately" or "from now", never quote a calendar date that is in the past) and how long they want to stay, and a clear ask to view the room.
+{tone_rules}
 - Include anything the ad explicitly asked applicants to state.
 - If the profile has a message_template, treat it as the applicant's own voice: keep its tone, \
 facts and sign-off, but rewrite it to fit this ad (translate if needed) and drop parts that don't apply.
@@ -28,6 +26,21 @@ never invent a name, and never use placeholders like [Name].
 - If the EXTRACTED fields list a hard requirement the applicant does not meet according to the \
 profile, do not claim to meet it.
 - Output only the message text — no subject line, no notes, no quotes around it."""
+
+TONES = ("warm", "short")
+LANGS = ("auto", "de", "en")
+
+# The length/tone rule block. "warm" is the original behaviour, unchanged.
+TONE_RULES = {
+    "warm": """- 4-7 sentences. Warm, direct, not gushing. Include: who they are, why they fit what the ad said, \
+when they can move in (see "move_in" in the profile: if it says available immediately, say \
+"available immediately" or "from now", never quote a calendar date that is in the past) and how long they want to stay, and a clear ask to view the room.""",
+    "short": """- SHORT version: 2-3 sentences, about 40-60 words. Friendly but compact, no filler and no small talk. \
+Cover only: who they are in one clause, one concrete detail from the ad, when they can move in \
+(see "move_in" in the profile: if it says available immediately, say "available immediately" or \
+"from now", never quote a calendar date that is in the past) and how long they want to stay, and a clear ask to view the room. \
+Leave out everything else from the profile.""",
+}
 
 FOLLOWUP_SYSTEM_PROMPT = """You draft a SHORT follow-up to a housing-ad poster (WG room or whole flat) who has not answered the \
 applicant's first message yet. Rules:
@@ -74,7 +87,21 @@ MY FIRST MESSAGE (sent {listing.get("last_sent_at") or "a few days ago"}, no rep
     return FOLLOWUP_SYSTEM_PROMPT.format(language=language), user
 
 
-def draft(listing: dict, profile: dict, followup_of: str | None = None) -> str:
+def build_system_prompt(lang_code: str | None, tone: str = "warm", lang: str = "auto") -> str:
+    """System prompt for a first message. `lang` overrides the ad's language (de|en);
+    "auto" writes in the ad's language. `tone` is warm (default) or short."""
+    tone = tone if tone in TONE_RULES else "warm"
+    if lang in LANG_NAMES:
+        language = f"{LANG_NAMES[lang]} (the applicant chose this language, even if the ad is written in another one)"
+    elif lang_code in LANG_NAMES:
+        language = f"the ad's language ({LANG_NAMES[lang_code]})"
+    else:
+        language = "the same language the ad is written in"
+    return SYSTEM_PROMPT.format(language=language, tone_rules=TONE_RULES[tone])
+
+
+def draft(listing: dict, profile: dict, followup_of: str | None = None,
+          tone: str = "warm", lang: str = "auto") -> str:
     """Return a draft opener for this listing (or, with followup_of=<the message already
     sent>, a short follow-up). Raises DraftError on failure."""
     ext = listing.get("extracted") or {}
@@ -86,7 +113,7 @@ def draft(listing: dict, profile: dict, followup_of: str | None = None) -> str:
     if followup_of:
         system, user_prompt = build_followup_prompt(listing, followup_of, language)
     else:
-        system = SYSTEM_PROMPT.format(language=language)
+        system = build_system_prompt(lang_code, tone, lang)
         user_prompt = None
     if user_prompt is None:
         user_prompt = f"""MY PROFILE:
