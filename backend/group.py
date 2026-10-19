@@ -270,9 +270,12 @@ def group_listings(listings: list[dict], group: dict, include_dealbreakers: bool
 @router.get("/group/listings")
 def group_listings_endpoint(include_dealbreakers: bool = Query(False)):
     group = get_group()
+    from .main import _sent_info   # lazy: main imports this module
     rows = trust.annotate(get_all_listings(True))   # median + duplicates need the raw text
-    rows = [strip_raw(l) for l in rows]
-    items = group_listings(rows, group, include_dealbreakers)
+    # score before stripping: the "no WG" / scam text checks read the ad body
+    items = [strip_raw(l) for l in group_listings(rows, group, include_dealbreakers)]
+    for l in items:   # sent_at / followup_due, as on /listings (Follow-ups filter, chip)
+        l.update(_sent_info(l))
     # `total` = every live listing in the DB (additive, for "595 of 3,325" in the header)
     return JSONResponse({"group": group, "listings": items, "total": len(rows)})
 
