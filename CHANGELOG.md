@@ -1,5 +1,14 @@
 # Changelog
 
+## Block C: UI polish
+
+### Improved
+- Typography: font sizes consolidated into four steps (`--fs-xs/sm/md/lg`), departure-board look kept.
+- Keyboard and focus: Leaflet's zoom and attribution links are skipped in the tab order; Esc in the draft box only leaves the box (a second Esc closes the detail view); closing a detail removes the pin of a listing your filters now hide.
+- Sync indicator: "syncing 2/5 · homegate" with a thin progress bar; on phones it temporarily replaces the listing count. The header count reads "84 of 181". `/group/listings` returns `total`, `/ingest/status` returns `current`.
+- First-run walkthrough (profile, then group and phone alerts, both optional) replaces the old hints; shown only while the profile has no message template, and never again once skipped or finished.
+- Map: dashed ~10/20/30 min rings around the selected campus for the chosen mode (straight-line estimate, like the commute fallback), with a legend row.
+
 ## Follow-up loop
 
 ### New
