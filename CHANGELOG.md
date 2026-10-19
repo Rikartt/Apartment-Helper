@@ -7,6 +7,24 @@
 - Every frontend file is now sent with `Cache-Control: no-cache` (ETag revalidation, unchanged files cost a 304), and the worker fetches/precaches the shell bypassing the HTTP cache. `sw.js` carries a build id (hash of `frontend/` at server start, `backend/frontend.py`), so each update installs a new worker with a fresh shell cache and drops the old one. Now the first navigation after an update shows the new version; offline still shows the (new) shell and `/listings` is still never cached.
 - Pages that were open during the update get a small "WGPendler was updated. Reload" toast (never an automatic reload, so a draft is not lost); an installed app that stays open checks for a new version when it comes back to the foreground (at most every 10 minutes).
 - Existing installs need one extra navigation (or a reload) once: the old worker still answers the first one.
+
+## 2026-10-19: night review 2 (term dates)
+
+### Fixed
+- "mid-November 2026" / "early-December 2026" was read as the END of a befristet rental (the hyphen counted as a range dash), so such ads became "Rental period already over" once that month passed, e.g. a live Wipkingen ad whose lease runs to October 2027. 4 of 4,213 live ads were affected; ends written "until end-March 2027" still work.
+- A yearless move-in date just before New Year ("frei ab 20. Dezember" in an ad published 5 January) was read as next December, so the ad got "Available too late". It now counts as last December (same 31-day slack as within a year).
+
+### Notes
+- Stored `term_end` / `move_in_stated` values correct themselves on the next upsert of the ad (the regular full refresh, default within 24 h).
+- New `tests/test_night_review2.py` also round-trips every column through `upsert_listing` (insert and update): the hand-merged column list, placeholders and values line up.
+
+## 2026-10-19: Flatfox placeholder streets
+
+### Fixed
+- Flatfox street fields that are placeholders ("----", "-", "W", the postcode "8426", or the town again as in "Dietikon, 8953 Dietikon") now count as no street, so the address is "8053 Zürich" instead of "----, 8053 Zürich". "8426, 8426 Lufingen" no longer passes for a house number in the cross-source duplicate key or trust's address checks. Live DB (4,213 ads): 10 addresses change, 1 dedupe key goes away (no duplicate group changes), no trust score changes. A short street that could be real ("Zür") is kept.
+
+### Notes
+- Street-less Flatfox ads cannot get their street back from the URL slug: when a poster hides the street, `street` is null and Flatfox builds `public_address` and the slug from postcode + place only ("8057-zurich"). 0 of 1,090 street-less ads in the live DB had a street in the slug; a live re-check of 50 showed the same.
 ## 2026-10-19: photos in the detail view
 
 ### Added
