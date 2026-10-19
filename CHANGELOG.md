@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-19: befristet counts as a dealbreaker
+
+### New
+- If your profile wants a long-term/permanent room (and does not accept sublets), a listing flagged befristet (`fixed_term`: Flatfox's `is_temporary`, else ad wording) now gets the "Duration: fixed term" dealbreaker even before Extract, and the "Long-term" chip is not shown for it. A source saying "not befristet" never clears an extracted fixed-term/sublet duration; listings with both give one reason. Scores shown in the app are computed live, so this applies on the next page load without re-ingesting. Group mode has no duration check and is unchanged.
+
 ## 2026-10-19: hide befristet (fixed-term) lets
 
 ### New

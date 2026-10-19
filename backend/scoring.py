@@ -164,6 +164,20 @@ def price_implausible(listing: dict) -> str | None:
     return None
 
 
+def _duration_prefs(profile: dict) -> tuple[bool, bool]:
+    """(accepts_sublet, wants_permanent) from the profile's wants/duration text."""
+    wants_txt = " ".join(_as_list(profile.get("wants")) + [str(profile.get("duration") or "")]).lower()
+    accepts_sublet = "sublet" in wants_txt or "flexible" in wants_txt or "zwischenmiete" in wants_txt
+    wants_permanent = ("permanent" in wants_txt or "long" in wants_txt) and not accepts_sublet
+    return accepts_sublet, wants_permanent
+
+
+def _fixed_term_flag(listing: dict) -> bool:
+    """True only when the stored `fixed_term` says befristet (1/True); 0/None/missing -> False."""
+    v = listing.get("fixed_term")
+    return v is not None and not isinstance(v, str) and v == 1
+
+
 def dealbreakers(listing: dict, profile: dict, today: date | None = None) -> list[str]:
     today = today or date.today()
     out: list[str] = []
@@ -183,15 +197,19 @@ def dealbreakers(listing: dict, profile: dict, today: date | None = None) -> lis
     if avail and (avail - ref).days > 120:
         out.append(f"Available too late ({avail.isoformat()})")
 
+    accepts_sublet, wants_permanent = _duration_prefs(profile)
+    dur = str((ext or {}).get("duration") or "")
+    # stored source flag (Flatfox is_temporary, else ad wording) counts like an extracted
+    # fixed_term; a source "0" never clears an extraction that says fixed_term/sublet
+    if _fixed_term_flag(listing) and wants_permanent and dur not in ("fixed_term", "sublet"):
+        out.append("Duration: fixed term")
+
     if not ext:
         return out
 
     gender = _gender(profile)
     status_txt = str(profile.get("status") or "").lower()
     is_student = "student" in status_txt or "ETH" in str(profile.get("status") or "")
-    wants_txt = " ".join(_as_list(profile.get("wants")) + [str(profile.get("duration") or "")]).lower()
-    accepts_sublet = "sublet" in wants_txt or "flexible" in wants_txt or "zwischenmiete" in wants_txt
-    wants_permanent = ("permanent" in wants_txt or "long" in wants_txt) and not accepts_sublet
     age = profile.get("age")
 
     for req in _as_list(ext.get("hard_requirements")):
@@ -225,7 +243,6 @@ def dealbreakers(listing: dict, profile: dict, today: date | None = None) -> lis
                 if (mx and age > int(mx.group(1))) or (mn and age < int(mn.group(1))):
                     out.append(f"Age range: {req}")
 
-    dur = str(ext.get("duration") or "")
     if dur in ("fixed_term", "sublet") and wants_permanent:
         out.append(f"Duration: {dur.replace('_', ' ')}")
     if dur == "sublet" and not accepts_sublet:
@@ -389,7 +406,7 @@ def score_detail(listing: dict, profile: dict | None = None,
         if lang in ("de", "en") and _lang_level(profile, lang) >= 4:
             s += 2
             reasons.append("Ad language you speak")
-        if ext.get("duration") == "permanent":
+        if ext.get("duration") == "permanent" and not _fixed_term_flag(listing):
             s += 3
             reasons.append("Long-term")
 

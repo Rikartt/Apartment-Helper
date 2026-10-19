@@ -45,7 +45,7 @@ A short first-run walkthrough (profile, then group and phone alerts, both option
 - **Fit score**: how well the listing matches your profile (rent, commute to both campuses, location, move-in date, house rules, languages, wants). Computed locally, no API cost.
 - **Commute times**: transit minutes come from real timetable connections once a listing's area has been looked up, and are a straight-line estimate (about 22 km/h, shown with `~`) until then; bike minutes are always an estimate. See Commute times below. The map's dashed ~10/20/30 min rings around the selected campus always use the straight-line estimate.
 - **Reply score**: how likely you are to get an answer (ad age, private vs agency, what the ad asks for).
-- **Dealbreakers**: hard no's (over budget, implausible price, "no students", too far, etc.). Dealbreaker listings are marked and can be hidden with the "Hide dealbreakers" filter; they are never suggested in Top 5.
+- **Dealbreakers**: hard no's (over budget, implausible price, "no students", too far, etc.). If your profile wants a permanent/long-term room, a befristet listing (Flatfox's own flag, the ad's wording, or Extract) is a dealbreaker too. Dealbreaker listings are marked and can be hidden with the "Hide dealbreakers" filter; they are never suggested in Top 5.
 - Edit your profile in the **Profile** panel; it is saved to `profile.json`.
 
 ### Trust score (scam check)
