@@ -64,7 +64,7 @@ def test_list_payload_drops_only_unread_columns(client, db):
         assert s["match_reasons"] == f["fit_reasons"]       # the UI reads either name
         assert {k: f[k] for k in s if k != "has_raw_text"} == {k: s[k] for k in s if k != "has_raw_text"}
     one = client.get(f"/listings/{ids[0]}").json()          # detail view keeps every column
-    assert set(LIST_OMIT) | {"fit_reasons", "raw_text"} <= set(one)
+    assert set(LIST_OMIT) | {"fit_reasons", "raw_text", "photos"} <= set(one)
 
 
 def test_group_list_drops_bookkeeping_columns(client, db):

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-19: photos in the detail view
+
+### Added
+- The detail view shows the listing's photos: a sideways-scrolling strip of lazy-loaded thumbnails (`loading="lazy"`, `decoding="async"`, `referrerpolicy="no-referrer"`, alt "Photo 2 of 7") and a full-size viewer (‹ › buttons, arrow keys, swipe; Esc or ✕ closes it and returns focus to the thumbnail; focus trap; 40px targets on phones). List cards stay without images.
+- Image URLs are stored in a new `photos` column (JSON, at most 12) filled at ingest: Flatfox detail requests now ask for `expand=images` (same request, the image objects instead of bare IDs; thumbnail `url_thumb_m` + full `url`), Homegate takes them from the embedded result JSON (`localization.<lang>.attachments`, type IMAGE). `photo_count` (a trust input) is unchanged and still counts every photo.
+- Images load directly from the source CDN; the app neither proxies nor caches them (the service worker leaves cross-origin requests alone).
+
+### Notes
+- No backfill is possible: no stored data holds image URLs (the DB keeps the ad text, not the source JSON), so existing rows get photos on the next regular Flatfox full refresh (default within 24 h). Adding the column deliberately does not force a full refresh.
+- `photos` is read only by `GET /listings/{id}`: `/listings`, `/group/listings`, trust, notify and Top 5 never select it (`db.DETAIL_ONLY`), so the big list payload and its timing are unchanged. Storage: about 2 KB per Flatfox listing, roughly 8-9 MB at 4,200 listings.
+
 ## 2026-10-19: implausible move-in dates, Flatfox postcodes
 
 ### Fixed

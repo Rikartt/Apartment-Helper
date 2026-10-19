@@ -18,6 +18,9 @@ zero Anthropic calls), then drives headless Chromium at 1440x900 and 390x844 and
   Top 5 honours Hide priority/premium, Hide befristet and the drawn area (other filters don't)
   /listings arrives gzipped; cards show match_reasons from the slim list payload; the detail
      view still loads the original ad text from /listings/{id}
+  photos: detail strip (lazy, no-referrer, "Photo k of n", never in list cards), viewer with
+     ‹ › / arrow keys, focus trap, Esc closes and returns focus to the thumbnail, 40px at 390;
+     images come from a fake source host answered locally (no proxying, no Referer)
   a11y: icon-only controls named, landmarks, map label, debounced count announcement, Space opens
      a card and focus moves in/back, ⋯ menu arrows + Esc, focus trap + Esc focus return in panels/modals,
      40px tap targets for primary actions at 390
@@ -63,6 +66,21 @@ FAKE_TAG = "[fake LLM]"
 BLANK_PNG = bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
                           "1f15c4890000000d49444154789c6360000002000154a24f5d0000000049454e44ae426082")
 FALLBACK_CHROMIUM = Path("/opt/pw-browsers/chromium")
+PHOTO_HOST = "photos.example.invalid"   # tools/dev_seed.DEV_PHOTO_BASE
+
+
+def fake_photo(url: str) -> bytes:
+    """A distinct, labelled 4:3 SVG per photo URL (.../dev/<ad>/<k>[-thumb].svg)."""
+    m = re.search(r"/dev/(\d+)/(\d+)(-thumb)?\.svg", url)
+    ad, k = (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+    hue = (ad * 47 + k * 61) % 360
+    w, h = (224, 168) if m and m.group(3) else (1200, 900)
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 400 300">'
+            f'<defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="hsl({hue},45%,42%)"/>'
+            f'<stop offset="1" stop-color="hsl({(hue + 40) % 360},35%,18%)"/></linearGradient></defs>'
+            f'<rect width="400" height="300" fill="url(#g)"/>'
+            f'<rect x="40" y="150" width="140" height="110" fill="#0003"/><rect x="230" y="60" width="120" height="90" fill="#fff2"/>'
+            f'<text x="20" y="40" font-family="monospace" font-size="24" fill="#fff">ad {ad} · photo {k}</text></svg>').encode()
 
 failures: list[str] = []
 passes = 0
@@ -152,6 +170,7 @@ class Pages:
     def __init__(self, browser, base: str, local_cdn: Path | None, out: Path):
         self.browser, self.base, self.local_cdn, self.out = browser, base, local_cdn, out
         self.external: set[str] = set()
+        self.photo_reqs: list[tuple[str, str | None]] = []   # (url, Referer header)
 
     def _unpkg(self, route):
         rel = route.request.url.split("unpkg.com/", 1)[1].split("?")[0].split("#")[0]
@@ -168,6 +187,10 @@ class Pages:
             return route.continue_()
         if host == "unpkg.com":
             return self._unpkg(route)
+        if host == PHOTO_HOST:   # listing photos (tools/dev_seed.py): local fake images
+            self.photo_reqs.append((url, route.request.headers.get("referer")))
+            return route.fulfill(status=200, body=fake_photo(url), content_type="image/svg+xml",
+                                 headers={"Cache-Control": "no-store"})
         self.external.add(host)
         if route.request.resource_type == "image":   # map tiles
             return route.fulfill(status=200, body=BLANK_PNG, content_type="image/png")
@@ -621,6 +644,90 @@ def run_a11y(pages: Pages, base: str, w: int, h: int):
     pg.context.close()
 
 
+def run_photos(pages: Pages, base: str, w: int, h: int, api: dict):
+    tag = f"{w} photos"
+    lid, n = api.get("photo_listing") or (None, 0)
+    if not check(f"{tag}: the dev seed has a listing with photos", lid is not None):
+        return
+    pg = pages.new(w, h, touch=w < 760)
+    start = len(pages.photo_reqs)
+    with step(f"{tag} strip", pg, pages):
+        wait_list(pg, base)
+        check(f"{tag} list cards show no photos", pg.locator("#cards img").count() == 0)
+        check(f"{tag} no photo requested before a detail opens", len(pages.photo_reqs) == start)
+        pg.evaluate(f"selectListing({lid})")
+        pg.wait_for_function(f"document.querySelectorAll('#photo-strip .photo-thumb').length === {n}", timeout=10000)
+        imgs = pg.evaluate("""[...document.querySelectorAll('#photo-strip img')].map(i => [i.getAttribute('loading'),
+            i.getAttribute('decoding'), i.getAttribute('referrerpolicy'), i.alt])""")
+        check(f"{tag} {n} thumbnails, lazy + async + no-referrer", all(i[:3] == ["lazy", "async", "no-referrer"] for i in imgs), imgs[:2])
+        check(f"{tag} thumbnail alt text 'Photo k of n'", [i[3] for i in imgs] == [f"Photo {k} of {n}" for k in range(1, n + 1)],
+              [i[3] for i in imgs][:3])
+        strip = pg.evaluate("(() => { const s = $('photo-strip'); return [s.scrollWidth, s.clientWidth, getComputedStyle(s).overflowX]; })()")
+        check(f"{tag} the strip scrolls sideways (overflow-x auto), the page does not",
+              strip[2] == "auto" and pg.evaluate("document.documentElement.scrollWidth <= innerWidth"), strip)
+        pg.wait_for_function("[...document.querySelectorAll('#photo-strip img')].some(i => i.complete && i.naturalWidth > 0)", timeout=10000)
+        hs = pg.evaluate("[...document.querySelectorAll('.photo-thumb')].map(b => Math.round(b.getBoundingClientRect().height))")
+        check(f"{tag} thumbnails are at least 40px tap targets", min(hs) >= 40, hs[:3])
+        loaded = [u for u, _ in pages.photo_reqs[start:]]
+        check(f"{tag} photos load straight from the source host (not via the app)",
+              loaded and all(u.startswith(f"https://{PHOTO_HOST}/") for u in loaded)
+              and not any("/dev/" in r for r in pg.reqs if not r.split(" ", 1)[1].startswith("http")), loaded[:2])
+        check(f"{tag} no Referer sent to the image host", all(not r for _, r in pages.photo_reqs[start:]),
+              [r for _, r in pages.photo_reqs[start:] if r][:1])
+        pages.shot(pg, f"photos-strip-{w}")
+
+    with step(f"{tag} viewer", pg, pages):
+        thumb = pg.locator('#photo-strip .photo-thumb[data-photo="1"]')
+        thumb.scroll_into_view_if_needed()
+        thumb.focus()
+        pg.keyboard.press("Enter")
+        pg.wait_for_function("!$('photo-viewer').hidden && $('pv-img').complete && $('pv-img').naturalWidth > 0", timeout=10000)
+        check(f"{tag} Enter on photo 2 opens the viewer at 'Photo 2 / {n}'",
+              pg.text_content("#pv-count") == f"Photo 2 / {n}" and pg.get_attribute("#pv-img", "alt") == f"Photo 2 of {n}",
+              pg.text_content("#pv-count"))
+        check(f"{tag} the viewer is a labelled modal dialog with focus inside",
+              pg.get_attribute("#photo-viewer", "role") == "dialog" and pg.get_attribute("#photo-viewer", "aria-modal") == "true"
+              and pg.evaluate("$('photo-viewer').contains(document.activeElement)"))
+        check(f"{tag} the full-size image is loaded without a referrer",
+              pg.get_attribute("#pv-img", "referrerpolicy") == "no-referrer" and pg.get_attribute("#pv-img", "src").endswith("/2.svg"))
+        big = pg.evaluate("[...document.querySelectorAll('#photo-viewer button')].map(b => { const r = b.getBoundingClientRect(); return [b.getAttribute('aria-label'), Math.round(r.width), Math.round(r.height)]; })")
+        if w < 760:
+            check(f"{tag} viewer buttons are at least 40x40", all(bw >= 40 and bh >= 40 for _, bw, bh in big), big)
+        check(f"{tag} viewer buttons are named", all(lbl for lbl, _, _ in big), big)
+        pages.shot(pg, f"photos-viewer-{w}")
+        pg.keyboard.press("ArrowRight")
+        check(f"{tag} ArrowRight shows the next photo", pg.text_content("#pv-count") == f"Photo 3 / {n}", pg.text_content("#pv-count"))
+        pg.click("#pv-prev")
+        pg.click("#pv-prev")
+        check(f"{tag} ‹ goes back and is disabled on the first photo",
+              pg.text_content("#pv-count") == f"Photo 1 / {n}" and pg.is_disabled("#pv-prev"), pg.text_content("#pv-count"))
+        check(f"{tag} focus moves off the disabled ‹ button", pg.evaluate("$('photo-viewer').contains(document.activeElement) && !document.activeElement.disabled"))
+        pg.click("#pv-next")
+        inside = []
+        for _ in range(8):
+            pg.keyboard.press("Tab")
+            inside.append(pg.evaluate("$('photo-viewer').contains(document.activeElement)"))
+        check(f"{tag} Tab stays inside the viewer (focus trap)", all(inside), inside.count(False))
+        pg.keyboard.press("j")
+        check(f"{tag} list shortcuts are off while the viewer is open", pg.evaluate(f"selectedId === {lid}"))
+        pg.keyboard.press("Escape")
+        pg.wait_for_timeout(150)
+        check(f"{tag} Esc closes the viewer, keeps the detail and returns focus to photo 2",
+              pg.evaluate("$('photo-viewer').hidden") and is_open(pg)
+              and pg.evaluate("document.activeElement?.dataset?.photo") == "1", focused(pg))
+        if w < 760:
+            thumb.tap()
+            pg.wait_for_function("!$('photo-viewer').hidden")
+            check(f"{tag} tapping a thumbnail opens the viewer", pg.text_content("#pv-count") == f"Photo 2 / {n}")
+            pg.click("#photo-viewer .cancel-btn")
+            check(f"{tag} ✕ closes the viewer", pg.evaluate("$('photo-viewer').hidden") and is_open(pg))
+        pg.keyboard.press("Escape")
+        pg.wait_for_timeout(150)
+        check(f"{tag} a second Esc closes the detail as before", not is_open(pg))
+    check(f"{tag} page: no console errors", not pg.errs, "; ".join(pg.errs[:3]))
+    pg.context.close()
+
+
 def run_area(pages: Pages, base: str, w: int, h: int):
     tag, touch = str(w), w <= 760
     pg = pages.new(w, h, touch=touch)
@@ -826,6 +933,12 @@ def main(argv=None) -> int:
                                    if l["id"] in gids and not l.get("sent_at") and not l.get("last_sent_at")), None)
         api["group_followup"] = next((l["id"] for l in allrows
                                       if l["id"] in gids and l.get("followup_due")), None)
+        api["photo_listing"] = None
+        for l in api["solo"][:40]:   # photos come only with /listings/{id}, as in the detail view
+            ph = get_json(base, f"/listings/{l['id']}").get("photos") or []
+            if len(ph) >= 4:
+                api["photo_listing"] = (l["id"], len(ph))
+                break
         print(f"[ui] {base}: {len(api['solo'])} solo listings, {len(gids)} group flats; screenshots -> {out}")
 
         with sync_playwright() as p:
@@ -836,6 +949,7 @@ def main(argv=None) -> int:
                 run_area(pages, base, w, h)
                 run_top5(pages, base, w, h)
                 run_a11y(pages, base, w, h)
+                run_photos(pages, base, w, h, api)
             browser.close()
         if pages.external:
             print(f"[ui] blocked external hosts (answered offline): {sorted(pages.external)}")

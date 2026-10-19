@@ -300,6 +300,25 @@
   #help-box .best-header { display:flex; }
   #help-list { display:grid; grid-template-columns:70px 1fr; gap:8px 12px; padding:14px 16px; font-size:var(--fs-sm); }
   #help-list dt { color:var(--amber); } #help-list dd { color:#bbb; }
+
+  /* photos: thumbnail strip in the detail view (never in list cards), full-size viewer */
+  .photo-strip { display:flex; gap:6px; overflow-x:auto; overscroll-behavior-x:contain; scroll-snap-type:x proximity; margin:8px 0 2px; padding-bottom:4px; }
+  .photo-strip:empty { display:none; }
+  .photo-thumb { flex:0 0 auto; width:112px; height:84px; padding:0; border:1px solid var(--line); background:#0b0b0b; cursor:zoom-in; scroll-snap-align:start; overflow:hidden; }
+  .photo-thumb:hover { border-color:var(--amber); }
+  .photo-thumb img { display:block; width:100%; height:100%; object-fit:cover; }
+  .photo-thumb.err img { display:none; }
+  .photo-thumb.err::after { content:"no image"; color:#8c8c8c; font-size:var(--fs-xs); }
+  #photo-viewer { position:fixed; inset:0; bottom:var(--ob,0px); background:#000000f5; z-index:2100; display:flex; flex-direction:column; }
+  #photo-viewer[hidden] { display:none; }
+  #pv-bar { display:flex; align-items:center; gap:8px; padding:6px 12px; border-bottom:2px solid var(--red); background:var(--panel); }
+  #pv-count { color:var(--amber); font-size:var(--fs-sm); letter-spacing:.08em; font-variant-numeric:tabular-nums; margin-right:auto; }
+  #pv-stage { flex:1; min-height:0; display:flex; align-items:center; justify-content:center; gap:8px; padding:8px; }
+  #pv-img { max-width:100%; max-height:100%; object-fit:contain; min-width:0; }
+  .pv-nav { flex:0 0 auto; min-width:40px; min-height:40px; background:var(--panel); border:1px solid var(--line); color:var(--txt); font-size:var(--fs-lg); cursor:pointer; }
+  .pv-nav:hover:not(:disabled) { border-color:var(--amber); color:var(--amber); }
+  .pv-nav:disabled { opacity:.35; cursor:default; }
+  #pv-caption { text-align:center; color:#959595; font-size:var(--fs-xs); padding:0 12px 10px; min-height:1em; }
   kbd { border:1px solid #555; border-bottom-width:2px; padding:0 4px; font:inherit; font-size:.7em; }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 
@@ -401,6 +420,11 @@
     /* tap targets: primary actions at least 40px tall */
     .topbar-btn, .seg button, .detail-back, .cancel-btn, .save-btn, .draft-btn, .draft-btn.has-draft, .draft-actions button,
     .detail-link-btn, .today-head, .fu-btn, .sent-prompt button, .more-cards { min-height:40px; }
+    .photo-thumb { width:96px; height:72px; }
+    #pv-bar .cancel-btn { min-width:40px; }
+    #pv-stage { position:relative; padding:8px 0; }
+    .pv-nav { position:absolute; top:50%; transform:translateY(-50%); z-index:1; background:#111c; }
+    #pv-prev { left:4px; } #pv-next { right:4px; }
     .detail-link-btn { display:flex; align-items:center; justify-content:center; }
     #detail-ext-link { padding:12px 8px; }
     .pfield input { min-height:40px; }
@@ -607,6 +631,15 @@
     </div>
     <div id="best-list"><div id="best-loading">Analyzing listings…</div></div>
   </div>
+</div>
+<div id="photo-viewer" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden>
+  <div id="pv-bar"><span id="pv-count" aria-live="polite"></span><button class="cancel-btn" onclick="closePhotos()" aria-label="Close photo viewer">✕</button></div>
+  <div id="pv-stage">
+    <button class="pv-nav" id="pv-prev" onclick="stepPhoto(-1)" aria-label="Previous photo">‹</button>
+    <img id="pv-img" alt="" decoding="async" referrerpolicy="no-referrer">
+    <button class="pv-nav" id="pv-next" onclick="stepPhoto(1)" aria-label="Next photo">›</button>
+  </div>
+  <div id="pv-caption"></div>
 </div>
 <div id="help-modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" hidden>
   <div id="help-box">
@@ -1478,7 +1511,9 @@ $('detail-body').addEventListener('click', e => {
 });
 
 // ── Detail ───────────────────────────────────────────────────────────────────
+let detailL = null;   // the listing the detail view shows (its photos feed the viewer)
 function showDetail(l) {
+  detailL = l;
   const e = ext(l);
   const link = $('detail-ext-link'), url = safeUrl(l.url);
   if (url) { link.href = url; link.style.display = ''; } else link.style.display = 'none';
@@ -1500,6 +1535,7 @@ function showDetail(l) {
     <div class="detail-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
     <div id="ad-summary" class="ad-summary" hidden></div>
     <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
+    <div class="photo-strip" id="photo-strip" role="group" aria-label="Photos">${photoStrip(l)}</div>
     ${commuteGrid(l)}
     <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)} ${promoChip(l)} ${termChip(l)}</div>
     ${deal.length ? `<div class="chips">${deal.map(d => `<span class="chip bad">✗ ${esc(d)}</span>`).join('')}</div>`
@@ -1525,10 +1561,14 @@ function showDetail(l) {
   else if (D()[l.id]) renderDraft(l.id, D()[l.id]);
   loadSent(l);
   loadSummary(l);
-  // /listings omits raw_text to keep the payload small; fetch it for the detail view.
-  if (!l.raw_text && l.has_raw_text) {
+  // /listings omits raw_text and photos to keep the payload small; fetch them for the detail view.
+  if ((!l.raw_text && l.has_raw_text) || !('photos' in l)) {
     api(`/listings/${l.id}`).then(full => {
-      if (!full || !full.raw_text) return;
+      if (!full) return;
+      l.photos = Array.isArray(full.photos) ? full.photos : [];
+      const strip = $('photo-strip');
+      if (strip && selectedId === l.id && !strip.childElementCount) strip.innerHTML = photoStrip(l);
+      if (!full.raw_text || l.raw_text) return;
       l.raw_text = full.raw_text;
       const slot = $('rawtext-slot');
       if (slot && selectedId === l.id) slot.innerHTML = `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>`;
@@ -1542,6 +1582,60 @@ function showDetail(l) {
   $('sidebar').scrollTop = 0;
   setTimeout(() => map.invalidateSize(), 50);
 }
+// ── Photos ───────────────────────────────────────────────────────────────────
+// Straight from the source's CDN (no proxy; the service worker leaves cross-origin images alone),
+// without a referrer. Only the detail view shows them: list cards stay light for phones.
+const photoUrl = u => /^https:\/\//i.test(u || '') ? u : '';
+function photosOf(l) { return (Array.isArray(l?.photos) ? l.photos : []).filter(p => photoUrl(p && p.f)); }
+function photoStrip(l) {
+  const ph = photosOf(l), n = ph.length;
+  return ph.map((p, i) => `<button type="button" class="photo-thumb" data-photo="${i}" aria-label="Open photo ${i + 1} of ${n}"><img src="${esc(photoUrl(p.t) || p.f)}" alt="Photo ${i + 1} of ${n}" loading="lazy" decoding="async" referrerpolicy="no-referrer" onerror="this.parentNode.classList.add('err')"></button>`).join('');
+}
+let pvList = [], pvIdx = 0, pvReturn = null;
+function openPhotos(i) {
+  pvList = photosOf(detailL);
+  if (!pvList.length) return;
+  pvReturn = document.activeElement;
+  $('photo-viewer').hidden = false;
+  showPhoto(i);
+  $('photo-viewer').querySelector('.cancel-btn').focus();
+}
+function showPhoto(i) {
+  const n = pvList.length, a = document.activeElement;   // read before a button gets disabled (that blurs it)
+  pvIdx = Math.max(0, Math.min(n - 1, i));
+  const img = $('pv-img');
+  $('pv-caption').textContent = '';
+  img.onerror = () => { $('pv-caption').textContent = 'This photo could not be loaded from the source.'; };
+  img.alt = `Photo ${pvIdx + 1} of ${n}`;
+  img.src = pvList[pvIdx].f;
+  $('pv-count').textContent = `Photo ${pvIdx + 1} / ${n}`;
+  $('pv-prev').disabled = pvIdx === 0;
+  $('pv-next').disabled = pvIdx === n - 1;
+  // keep focus on a usable control when the one just pressed gets disabled at either end
+  if (a && a.disabled) (a.id === 'pv-prev' ? $('pv-next') : $('pv-prev')).focus();
+}
+function stepPhoto(d) { if (pvList.length) showPhoto(pvIdx + d); }
+function closePhotos() {
+  $('photo-viewer').hidden = true;
+  $('pv-img').removeAttribute('src');
+  try { pvReturn?.focus({ preventScroll: true }); } catch (_) {}
+  pvReturn = null;
+}
+$('detail-body').addEventListener('click', e => {
+  const t = e.target.closest('[data-photo]');
+  if (t) openPhotos(+t.dataset.photo);
+});
+(() => {   // swipe left/right on phones
+  let x0 = null;
+  const st = $('pv-stage');
+  st.addEventListener('touchstart', e => { x0 = e.touches.length === 1 ? e.touches[0].clientX : null; }, { passive: true });
+  st.addEventListener('touchend', e => {
+    if (x0 == null) return;
+    const dx = e.changedTouches[0].clientX - x0; x0 = null;
+    if (Math.abs(dx) > 40) stepPhoto(dx < 0 ? 1 : -1);
+  }, { passive: true });
+})();
+
 function closeDetail() {
   const a = document.activeElement, lost = !a || a === document.body || !!a.closest?.('#detail-view');
   $('detail-view').classList.remove('open');
@@ -1692,6 +1786,7 @@ function focusPanel(id) { _lastFocus = document.activeElement; setTimeout(() => 
 function restoreFocus() { try { _lastFocus?.focus(); } catch (_) {} _lastFocus = null; }
 // Tab stays inside the open modal or side panel (topmost first).
 function openLayer() {
+  if (!$('photo-viewer').hidden) return $('photo-viewer');
   if (!$('help-modal').hidden) return $('help-box');
   if ($('best-modal').classList.contains('open')) return $('best-box');
   if ($('group-panel').classList.contains('open')) return $('group-panel');
@@ -2078,6 +2173,11 @@ function step(delta) {
 }
 document.addEventListener('keydown', e => {
   if (e.key === 'Tab') { trapTab(e); return; }
+  if (!$('photo-viewer').hidden) {   // the viewer is modal: no list shortcuts behind it
+    if (e.key === 'Escape') { e.preventDefault(); closePhotos(); }
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); stepPhoto(e.key === 'ArrowLeft' ? -1 : 1); }
+    return;
+  }
   if (e.key === 'Escape') {
     if (drawPts) { e.preventDefault(); cancelDraw(); return; }   // cancel the area being drawn; the detail stays open
     if (e.target.id === 'draft-text') { e.target.blur(); return; }   // leave the textarea first; a second Esc closes the detail

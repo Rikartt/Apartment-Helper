@@ -2,12 +2,14 @@ import os
 import re
 import time
 import httpx
-from .base import BaseAdapter, load_known, norm_dt, promo_label, utc_text, fixed_term_from_text
+from .base import (BaseAdapter, load_known, norm_dt, promo_label, utc_text, fixed_term_from_text,
+                   photo_list)
 from ..commute import estimate_commute, ETH_ZENTRUM, ETH_HOENGGERBERG
 
 SEARCH_PAGE = "https://flatfox.ch/en/search/"
 PIN_URL     = "https://flatfox.ch/api/v1/pin/"
 DETAIL_URL  = "https://flatfox.ch/api/v1/public-listing/"
+SITE        = "https://flatfox.ch"   # image URLs in the detail JSON are relative to it
 
 # Bounding box centred on ETH Zentrum, ~25 km radius (covers ~60 min transit)
 BBOX = {"west": 8.22, "east": 8.88, "north": 47.60, "south": 47.15}
@@ -115,7 +117,9 @@ class FlatfoxAdapter(BaseAdapter):
         ads = []
         for i in range(0, len(pins), BATCH):
             batch_pks = [p["pk"] for p in pins[i : i + BATCH]]
-            params = [("pk", pk) for pk in batch_pks] + [("limit", "0")]
+            # expand=images: the image objects (url, url_thumb_m, ...) instead of bare IDs, in the
+            # same request (checked live 2026-10-19); the list length stays the photo count
+            params = [("pk", pk) for pk in batch_pks] + [("expand", "images"), ("limit", "0")]
             r2 = session.get(DETAIL_URL, params=params)
             self.requests += 1
             r2.raise_for_status()
@@ -231,6 +235,7 @@ class FlatfoxAdapter(BaseAdapter):
                              else promo_label("flatfox", l, raw_text)),
             "promo_until":  utc_text(l.get("flatfox_priority_exclusive_until")),
             "photo_count":  len(l["images"]) if isinstance(l.get("images"), list) else None,
+            "photos":       photo_list(l.get("images"), SITE),
             # Flatfox's own "temporary" flag (befristet); live, it matched the ad titles exactly
             "fixed_term":   (bool(l["is_temporary"]) if isinstance(l.get("is_temporary"), bool)
                              else fixed_term_from_text(raw_text)),

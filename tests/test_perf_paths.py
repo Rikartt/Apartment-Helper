@@ -41,6 +41,9 @@ def test_get_all_listings_same_dicts_as_row_path(db):
     for include_raw in (True, False):
         for include_gone in (False, True):
             ref = [db._row_to_dict(r, include_raw) for r in _ref_rows(db, include_gone)]
+            for d in ref:   # detail-only columns (photos) are deliberately not read in bulk
+                for k in db.DETAIL_ONLY:
+                    d.pop(k, None)
             got = db.get_all_listings(include_raw, include_gone)
             assert got == ref
             assert [list(d) for d in got] == [list(d) for d in ref]   # same key order too

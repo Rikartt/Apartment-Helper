@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 from .term_dates import effective_move_in, stated_end
+from .ingestion.base import MAX_PHOTOS
 
 DB_PATH = Path(__file__).parent.parent / "wgpendler.db"
 
@@ -31,6 +32,11 @@ NEW_COLUMNS = [
     ("photo_count", "INTEGER"),         # number of photos when the source reports it
     ("fixed_term", "INTEGER"),          # 1 = befristet / temporary, 0 = source says not, NULL = unknown
     ("term_end", "TEXT"),               # ISO date the ad's text gives as end of rental; NULL = none stated
+    # JSON [{"t": thumb URL, "f": full URL}] (<= ingestion.base.MAX_PHOTOS), loaded straight from the
+    # source CDN by the detail view; NULL = unknown. No backfill: no stored data holds the URLs
+    # (raw_text is the ad text), so old rows fill in on the next details fetch, i.e. the regular
+    # full refresh (WGP_FULL_REFRESH_HOURS). Deliberately NOT a forced refresh like promo.
+    ("photos", "TEXT"),
     ("move_in_stated", "TEXT"),         # ISO move-in date from the ad's text, set only when available_from
                                         # lies long before publication (typo/last year); NULL = available_from holds
 ]
@@ -46,7 +52,8 @@ TRUST_COLUMNS = ("title", "address", "lat", "lng", "rent_chf", "raw_text", "extr
 
 # Bookkeeping columns no page reads (checked against frontend/*.html, *.js): left out of the big
 # list payloads (/listings, /group/listings), about 8% of their size. The single-listing
-# endpoint (/listings/{id}) and /listings?include_raw=1 still return every column.
+# endpoint (/listings/{id}) and /listings?include_raw=1 still return every column (except
+# DETAIL_ONLY ones, below: those only /listings/{id} returns).
 LIST_OMIT = ("extract_attempts", "extracted_at", "missed_runs", "notified_at", "last_seen_at")
 
 INDEXES = [
@@ -196,6 +203,8 @@ def init_db():
             conn.execute(stmt)
         _init_trust_gen(conn)
         conn.commit()
+    global _list_cols
+    _list_cols = None   # the schema may have just grown
 
 
 def _init_trust_gen(conn):
@@ -239,8 +248,8 @@ def upsert_listing(ad: dict) -> bool:
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
                  listed_at, fit_score, reply_score, kind, rooms, living_area_m2, commute_source, promo,
-                 promo_until, photo_count, fixed_term, term_end, move_in_stated, last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
+                 promo_until, photo_count, fixed_term, term_end, photos, move_in_stated, last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -268,6 +277,8 @@ def upsert_listing(ad: dict) -> bool:
                 photo_count    = excluded.photo_count,
                 fixed_term     = excluded.fixed_term,
                 term_end       = excluded.term_end,
+                -- unknown this time (source sent no image list): keep what we had
+                photos         = COALESCE(excluded.photos, listings.photos),
                 move_in_stated = excluded.move_in_stated,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 missed_runs  = 0,
@@ -287,11 +298,20 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("promo"), ad.get("promo_until"), ad.get("photo_count"),
             None if ad.get("fixed_term") is None else int(bool(ad["fixed_term"])),
             ad.get("term_end") or stated_end(ad.get("title"), ad.get("raw_text")),
+            _photos_json(ad.get("photos")),
             effective_move_in(ad["available_from"],
                               ad.get("listed_at") or existing_created or _today_iso(),
                               ad.get("title"), ad.get("raw_text")),
         ))
         return not existed
+
+
+def _photos_json(photos) -> str | None:
+    if not isinstance(photos, list):
+        return None
+    keep = [{"t": p.get("t") or p["f"], "f": p["f"]} for p in photos
+            if isinstance(p, dict) and isinstance(p.get("f"), str)]
+    return json.dumps(keep[:MAX_PHOTOS], separators=(",", ":"))
 
 
 def save_extraction(listing_id: int, extracted: dict, fit_score: int, reply_score: int):
@@ -352,6 +372,12 @@ def _row_to_dict(row, include_raw: bool = True) -> dict:
     if not include_raw:
         d["has_raw_text"] = bool(d.get("raw_text"))
         d.pop("raw_text", None)
+        d.pop("photos", None)
+    elif d.get("photos"):
+        try:
+            d["photos"] = json.loads(d["photos"])
+        except ValueError:
+            d["photos"] = None
     d["seen"] = bool(d.get("seen"))
     d["sent"] = bool(d.get("sent"))
     d["replied"] = bool(d.get("replied"))
@@ -362,6 +388,7 @@ def strip_raw(d: dict) -> dict:
     """Same shape _row_to_dict(include_raw=False) gives: raw_text dropped, has_raw_text set."""
     d["has_raw_text"] = bool(d.get("raw_text"))
     d.pop("raw_text", None)
+    d.pop("photos", None)
     return d
 
 
@@ -373,6 +400,20 @@ def _backfill_term_end(conn):
                      [(e, r[0]) for r in rows if (e := stated_end(r[1], r[2]))])
 
 
+# Read only by the detail view (get_listing): every bulk read skips them. photos is ~2 KB of URLs
+# per Flatfox ad; reading and decoding it for ~4k rows cost ~70 ms per /listings (measured on the
+# live DB copy).
+DETAIL_ONLY = ("photos",)
+_list_cols: tuple[str, tuple[str, ...]] | None = None
+
+
+def _list_columns(conn) -> tuple[str, ...]:
+    """listings columns minus DETAIL_ONLY (cached per DB file; the schema only grows at init)."""
+    global _list_cols
+    if _list_cols is None or _list_cols[0] != str(DB_PATH):
+        cols = tuple(r[1] for r in conn.execute("PRAGMA table_info(listings)") if r[1] not in DETAIL_ONLY)
+        _list_cols = (str(DB_PATH), cols)
+    return _list_cols[1]
 def _backfill_move_in_stated(conn):
     """Rows stored before move_in_stated existed: same rule as at ingest, from the stored
     text and publication date (no refetch)."""
@@ -389,12 +430,14 @@ def _today_iso() -> str:
 
 def get_all_listings(include_raw: bool = True, include_gone: bool = False) -> list[dict]:
     """One query, no per-row work beyond JSON decoding. Listings that vanished
-    from their source (gone_at set) are hidden unless include_gone."""
-    sql = ("SELECT listings.*, (SELECT MAX(sent_at) FROM sent_messages "
-           "WHERE listing_id = listings.id) AS last_sent_at FROM listings")
-    if not include_gone:
-        sql += " WHERE gone_at IS NULL"
+    from their source (gone_at set) are hidden unless include_gone. DETAIL_ONLY columns
+    (photos) are left out: only get_listing returns them."""
     with get_conn() as conn:
+        sel = ", ".join(f"listings.{c}" for c in _list_columns(conn))
+        sql = (f"SELECT {sel}, (SELECT MAX(sent_at) FROM sent_messages "
+               "WHERE listing_id = listings.id) AS last_sent_at FROM listings")
+        if not include_gone:
+            sql += " WHERE gone_at IS NULL"
         # plain tuples zipped with the column names: same dicts as dict(sqlite3.Row), but
         # about twice as fast for a few thousand rows of ~45 columns
         conn.row_factory = None
