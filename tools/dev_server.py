@@ -182,7 +182,10 @@ def prepare(work: Path, db: Path | None, clear_template: bool, group: bool, outc
 
     import backend.main as m
     m.PROFILE_PATH = prof_path
-    m._startup_ingest = lambda: print("[dev] startup ingest skipped", flush=True)
+    def _no_startup_ingest():
+        print("[dev] startup ingest skipped", flush=True)
+        m._warm_trust()   # as the real startup does when it skips a recent ingest
+    m._startup_ingest = _no_startup_ingest
 
     def _no_ingest(sources=None, *a, **k):
         print(f"[dev] ingest of {sources} skipped (dev server is offline)", flush=True)

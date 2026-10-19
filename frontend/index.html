@@ -1054,7 +1054,7 @@ function closeMenu() { $('more-menu').hidden = true; $('more-btn').setAttribute(
 document.addEventListener('click', e => { if (!e.target.closest('.menu-wrap')) closeMenu(); });
 // Phone alerts (backend/notify.py): show status; send a test when configured.
 async function refreshAlertsState() {
-  try { const st = await api('/notify/status'); const ch = st.channels || []; syncAlertFilters(st.filters);
+  try { const st = await api('/notify/status?pending=0'); const ch = st.channels || []; syncAlertFilters(st.filters);
     $('alerts-state').textContent = ch.length ? `on · ${ch.join(', ')} · fit ≥ ${st.min_fit}` : 'not set up';
     return st; } catch (_) { $('alerts-state').textContent = 'unavailable'; return null; }
 }
