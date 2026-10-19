@@ -189,10 +189,12 @@ def train(now: datetime | None = None, profile: dict | None = None) -> dict | No
     rows = [r for r in collect(now) if r["outcome"] is not None]
     n = len(rows)
     # Remember what this attempt saw, whether or not it yields a model, so sync() does
-    # not re-attempt (one class, too few) until the outcomes change.
-    _attempted[str(dbm.DB_PATH)] = _signature(rows)
+    # not re-attempt (one class, too few) until the outcomes change. Recorded only once the
+    # result is stored: an attempt that crashes (e.g. database locked) is retried.
+    sig = _signature(rows)
     if n < min_outcomes() or len({r["outcome"] for r in rows}) < 2:
         _store(None)
+        _attempted[str(dbm.DB_PATH)] = sig
         return None
     budget = _budget_max(profile)
     lens = [r["msg_len"] for r in rows if r["msg_len"]]
@@ -205,6 +207,7 @@ def train(now: datetime | None = None, profile: dict | None = None) -> dict | No
     model = {"n": n, "intercept": b, "weights": dict(zip(FEATURES, w)), "mean_len": mean_len,
              "base_rate": sum(y) / n, "trained_at": dbm.utc_now()}
     _store(model)
+    _attempted[str(dbm.DB_PATH)] = sig
     return model
 
 
