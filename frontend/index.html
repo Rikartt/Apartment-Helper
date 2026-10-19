@@ -33,7 +33,9 @@
   #topbar h1 { color:var(--red); font-size:var(--fs-lg); letter-spacing:.15em; text-transform:uppercase; }
   #count { color:var(--dim); font-size:var(--fs-sm); margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
   #sync { color:var(--amber); font-size:var(--fs-xs); letter-spacing:.06em; text-transform:uppercase; display:none; white-space:nowrap; }
-  #sync.on { display:inline; }
+  #sync.on { display:inline-block; padding-bottom:3px;   /* thin progress bar under the text: sources done / total */
+    background:linear-gradient(var(--amber),var(--amber)) left bottom / calc(var(--sync-p,0) * 100%) 2px no-repeat,
+               linear-gradient(#3a3200,#3a3200) left bottom / 100% 2px no-repeat; }
   #sync::before { content:"●"; margin-right:4px; animation:pulse 1.2s infinite; }
   @keyframes pulse { 50% { opacity:.2; } }
   .tb-actions { display:flex; align-items:center; gap:6px; }
@@ -324,6 +326,7 @@
     .topbar-btn { padding:0 8px; font-size:var(--fs-sm); letter-spacing:0; height:30px; }
     #sync { order:3; }
     #count { order:4; margin-left:0; flex:1; font-size:var(--fs-xs); }
+    #topbar:has(#sync.on) #count { display:none; }   /* no room for both: the sync line wins until it ends */
     .tb-actions { order:5; width:100%; gap:6px; }
     .tb-actions .topbar-btn:first-child { margin-right:auto; }
     #filters-toggle { display:inline-block; }
@@ -350,6 +353,10 @@
     #more-menu { right:0; }
     .leaflet-control-zoom { display:none; }
     #hint, #newnotice { padding:5px 10px; font-size:var(--fs-sm); gap:8px; }
+    #hint.on { flex-wrap:wrap; row-gap:5px; }   /* step + ✕, then the text, then the buttons */
+    #hint #hint-step { order:1; } #hint #hint-x { order:2; }
+    #hint #hint-text { order:3; flex:1 1 100%; }
+    #hint #hint-act { order:4; } #hint #hint-next { order:5; }
     .fu-btn, .sent-prompt button { padding:9px 12px; }
     .toast button { padding:6px 8px; }
     .sh-row .seg button { padding:0 6px; font-size:var(--fs-xs); }
@@ -1329,6 +1336,7 @@ function setSyncing(on, st) {
   const el = $('sync'); el.classList.toggle('on', !!on);
   if (!on) return;
   const total = st?.sources_total || 0, done = (st?.sources_done || []).length;
+  el.style.setProperty('--sync-p', total ? Math.min(1, done / total) : 0);
   // "syncing 2/5 · wgzimmer" (done of total, plus the source being fetched right now)
   el.textContent = total ? `syncing ${Math.min(done + (st.current ? 1 : 0), total)}/${total}${st.current ? ' · ' + st.current : ''}` : 'syncing';
   el.title = total ? `Fetching new listings: ${done} of ${total} sources done` + (st.count ? `, ${st.count} listings so far` : '') : 'The server is fetching new listings in the background';
