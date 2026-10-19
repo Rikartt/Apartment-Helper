@@ -18,9 +18,9 @@ Each block is sized for one working session with a few parallel agents.
 
 ## Block B: reply rate
 6. **Learn from outcomes (Phase 6b).** Once there are about 20 sent/replied marks, fit the scoring weights to what actually got replies, and show the reply rate by source, price band and message length on a small stats page.
-7. **Draft variants.** Offer 2 tones (short and warm). Show a German/English toggle when the ad's language differs from your strongest language.
-8. **Ad summary.** A one-line English summary for German ads in the detail view, using cached Haiku.
-9. **Smarter checklist.** Fewer false ambers for long hard requirements, and use extracted fields instead of keyword matching.
+7. ~~**Draft variants.**~~ Done (see CHANGELOG). Offer 2 tones (short and warm). Show a German/English toggle when the ad's language differs from your strongest language.
+8. ~~**Ad summary.**~~ Done (see CHANGELOG). A one-line English summary for German ads in the detail view, using cached Haiku.
+9. ~~**Smarter checklist.**~~ Done (see CHANGELOG). Fewer false ambers for long hard requirements, and use extracted fields instead of keyword matching.
 
 ## Block C: UI polish
 10. **Typography.** Consolidate the many font sizes (.56–.8rem) into 4 steps, and keep the departure-board look.

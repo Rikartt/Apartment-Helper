@@ -220,10 +220,10 @@
   #draft-text { width:100%; min-height:240px; background:#0a0a0a; color:var(--txt); border:1px solid var(--line); font-family:inherit; font-size:.76rem; line-height:1.5; padding:8px; resize:vertical; }
   #draft-text:focus { outline:none; border-color:var(--amber); }
   .draft-opts { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:2px 0 6px; }
-  .seg { display:inline-flex; border:1px solid var(--line); }
-  .seg button { background:none; border:0; color:var(--dim); font-size:.62rem; padding:3px 8px; cursor:pointer; letter-spacing:.06em; text-transform:uppercase; font-family:inherit; }
-  .seg button + button { border-left:1px solid var(--line); }
-  .seg button[aria-pressed="true"] { color:var(--amber); background:#241a00; }
+  .dseg { display:inline-flex; border:1px solid var(--line); }
+  .dseg button { background:none; border:0; color:var(--dim); font-size:.62rem; padding:3px 8px; cursor:pointer; letter-spacing:.06em; text-transform:uppercase; font-family:inherit; }
+  .dseg button + button { border-left:1px solid var(--line); }
+  .dseg button[aria-pressed="true"] { color:var(--amber); background:#241a00; }
   .seg-label { font-size:.6rem; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; }
   .ad-summary { font-size:.7rem; color:#b5b5b5; line-height:1.4; margin:3px 0 2px; }
   .ad-summary .lbl { font-size:.56rem; color:var(--amber); letter-spacing:.08em; text-transform:uppercase; border:1px solid #5a4400; padding:0 4px; margin-right:6px; }
@@ -239,7 +239,7 @@
   .ck .box { flex:0 0 14px; text-align:center; font-weight:700; }
   .ck li.ok .box { color:var(--bike); } .ck li.ok .t { color:#9a9a9a; }
   .ck li.miss .box { color:var(--amber); } .ck li.miss .t { color:var(--txt); }
-  .ck .t { flex:0 1 auto; min-width:0; } .ck .hint { color:var(--amber); font-size:.64rem; flex-basis:100%; padding-left:21px; } .ck .tag { font-size:.55rem; color:#8c8c8c; border:1px solid #333; padding:0 4px; letter-spacing:.06em; text-transform:uppercase; }
+  .ck .t { flex:1 1 0; min-width:0; } .ck .hint { color:var(--amber); font-size:.64rem; flex-basis:100%; padding-left:21px; } .ck .tag { font-size:.55rem; color:#8c8c8c; border:1px solid #333; padding:0 4px; letter-spacing:.06em; text-transform:uppercase; }
   .fu-chip { font-size:.56rem; font-weight:700; letter-spacing:.08em; padding:1px 5px; border-radius:2px; border:1px solid var(--amber); color:var(--amber); text-transform:uppercase; }
   .fu-chip { margin-left:auto; } .fu-chip + .stbadge { margin-left:6px; }
   .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
@@ -1541,7 +1541,7 @@ function setDraftOpt(id, key, val) {
 }
 function draftOptsHtml(id, l) {
   const o = draftOptsFor(id), adLang = ext(l).language, mine = strongestLang();
-  const seg = (key, items) => `<span class="seg" role="group">` + items.map(([v, t]) =>
+  const seg = (key, items) => `<span class="dseg" role="group">` + items.map(([v, t]) =>
     `<button type="button" aria-pressed="${o[key] === v}" onclick="setDraftOpt(${id},'${key}','${v}')">${t}</button>`).join('') + `</span>`;
   const showLang = (adLang === 'de' || adLang === 'en') && mine && adLang !== mine;
   return `<div class="draft-opts"><span class="seg-label">Tone</span>${seg('tone', [['warm', 'Warm'], ['short', 'Short']])}` +

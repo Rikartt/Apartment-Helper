@@ -87,3 +87,9 @@ def test_extracted_fields_tick_date_and_duration():
     out = json.loads(subprocess.run(["node", "-e", code, str(JS)], capture_output=True, text=True,
                                     check=True).stdout)
     assert out == [True, False, True, True]
+
+
+def test_duration_phrasing_without_the_word_long_term():
+    for d in ["Ich suche ein Zimmer für längere Zeit.", "I'd like to stay for a long time."]:
+        assert run([["how long you want to stay", "ask", d]]) == [True], d
+    assert run([["how long you want to stay", "ask", "Ich koche gern."]]) == [False]

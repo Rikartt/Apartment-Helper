@@ -8,7 +8,7 @@
     { id: 'date',  ask: /move.?in|einzug|ab wann|verf[uü]gbar|available|start date|beginn|per wann|when (can|are|do) you|ab[- ]?datum|eintritt/i,
       has: t => DATE_RE.test(t), hint: 'Say when you can move in' },
     { id: 'duration', ask: /dauer|duration|how long|wie lange|befristet|long.?term|langfristig/i,
-      has: t => /monat|month|jahr|year|long.?term|langfrist|unbefrist|permanent|dauerhaft|semester|zeitlich/i.test(t), hint: 'Say how long you want to stay' },
+      has: t => /monat|month|jahr|year|long.?term|langfrist|unbefrist|permanent|dauerhaft|semester|zeitlich|l[aä]ngere? zeit|for a long time|for the long run/i.test(t), hint: 'Say how long you want to stay' },
     { id: 'intro', ask: /vorstell|introduc|about (you|yourself)|[uü]ber (dich|sich|euch)|tell us|erz[aä]hl|who you are|wer du|short intro|kurz\w* (intro|beschreib|portr)|motivation|schreib\w* (uns|ein)|bewerbung/i,
       has: t => t.length >= 100 && /\b(ich bin|i am|i'm|my name|mein name|ich heisse|ich studiere|i study|ich arbeite|i work)\b/i.test(t), hint: 'Add a short introduction of yourself' },
     { id: 'phone', ask: /telefon|phone|handy|mobile|nummer|number|whatsapp/i,
