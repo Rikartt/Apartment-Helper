@@ -59,6 +59,16 @@ def _marker(pin: dict) -> str:
     return ""
 
 
+def _clean_street(street, city: str) -> str:
+    """The street field, or "" for a placeholder. Live streets come as "Hohlstrasse, 36" too
+    (the number stays on the street). Posters also type "----", "-", "W", the postcode or the
+    town again ("Dietikon" in Dietikon): no street, and "8426" would pass for a house number."""
+    s = re.sub(r",\s*(?=\d)", " ", str(street or "")).strip()
+    if not re.search(r"[^\W\d_]{2}", s) or s.casefold() == str(city or "").strip().casefold():
+        return ""
+    return s
+
+
 class FlatfoxAdapter(BaseAdapter):
     def fetch(self) -> list[dict]:
         self.truncated, self.truncated_reason = False, ""
@@ -181,8 +191,9 @@ class FlatfoxAdapter(BaseAdapter):
             return None
 
         city    = l.get("city") or "Zürich"
-        # live streets come as "Hohlstrasse, 36" too: keep the number on the street
-        street  = re.sub(r",\s*(?=\d)", " ", str(l.get("street") or "")).strip()
+        # A hidden street is null, and then the slug has none either ("8057-zurich";
+        # live: 0 of 1,090 street-less ads had a street in the slug), so none is recovered.
+        street  = _clean_street(l.get("street"), city)
         slug    = l.get("slug") or str(pk)
         # postcode: the field, else the slug's ("8004-zurich", "hohlstrasse-36-8004-zurich");
         # without it a street-less ad stored only the city
