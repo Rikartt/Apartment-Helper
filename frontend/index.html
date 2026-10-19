@@ -56,6 +56,8 @@
   #hint.on { display:flex; }
   #hint button { background:none; border:1px solid #42a5f5; color:#90caf9; font:inherit; font-size:var(--fs-sm); padding:1px 8px; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
   #hint button:hover { background:#42a5f5; color:#111; }
+  #hint #hint-step { color:var(--txt); font-weight:normal; letter-spacing:.1em; text-transform:uppercase; font-variant-numeric:tabular-nums; white-space:nowrap; flex-shrink:0; }
+  #hint #hint-next { border-color:#1b3a58; color:var(--dim); }
   #hint #hint-x { margin-left:auto; border:none; font-size:var(--fs-md); }
   #filters { background:var(--panel); border-bottom:1px solid var(--line); padding:7px 16px; flex-shrink:0; }
   .frow { display:flex; gap:8px 22px; align-items:center; flex-wrap:wrap; }
@@ -443,7 +445,7 @@
 
 <div id="newnotice" role="status" aria-live="polite"><span id="newnotice-text"></span><button onclick="showNewArrivals()">Show</button><button id="newnotice-x" aria-label="Dismiss" onclick="$('newnotice').classList.remove('on')">✕</button></div>
 
-<div id="hint" role="note"><span id="hint-text"></span><button id="hint-act" type="button"></button><button id="hint-x" type="button" aria-label="Dismiss">✕</button></div>
+<div id="hint" role="note" aria-label="Getting started"><b id="hint-step"></b><span id="hint-text"></span><button id="hint-act" type="button"></button><button id="hint-next" type="button"></button><button id="hint-x" type="button" aria-label="Skip walkthrough" title="Skip walkthrough">✕</button></div>
 
 <div id="filters">
   <div class="frow">
@@ -1350,18 +1352,29 @@ function showNewArrivals() {
 }
 _lastIngestSeen = 'init';
 
-// ── First-run hint ───────────────────────────────────────────────────────────
-function hintDismissed(k) { try { return localStorage.getItem('wgp_hint_' + k) === '1'; } catch (_) { return false; } }
-let _hintKey = null;
-function updateHint() {
-  let key = null, text = '', label = '', fn = null;
-  if (groupMode && !_profile.group) { key = 'group'; text = 'Using a default group of 3 at CHF 1100 per person.'; label = 'Set up group'; fn = openGroup; }
-  else if (!groupMode && !String(_profile.message_template || '').trim()) { key = 'profile'; text = 'Add a short intro in your profile so drafted messages sound like you.'; label = 'Open profile'; fn = openProfile; }
-  const box = $('hint');
-  if (!key || hintDismissed(key)) { box.classList.remove('on'); _hintKey = null; return; }
-  _hintKey = key; $('hint-text').textContent = text; $('hint-act').textContent = label; $('hint-act').onclick = fn; box.classList.add('on');
+// ── First-run walkthrough (3 steps: profile, then group and phone alerts, both optional) ──
+const TOUR = [
+  { name: 'Profile', text: 'Add a short intro so drafted messages sound like you.', label: 'Open profile', go: () => openProfile() },
+  { name: 'Group (optional)', text: 'Searching with friends? Group mode finds whole flats and splits the rent.', label: 'Set up group', go: () => openGroup() },
+  { name: 'Phone alerts (optional)', text: 'Get a digest of new high-fit listings on your phone.', label: 'Check alerts', go: () => phoneAlerts() },
+];
+let _tourStep = 0, _tourOn = false;
+function tourDone() { try { return localStorage.getItem('wgp_tour') === 'done'; } catch (_) { return false; } }
+function endTour() { _tourOn = false; try { localStorage.setItem('wgp_tour', 'done'); } catch (_) {} $('hint').classList.remove('on'); }
+function renderTour() {
+  const t = TOUR[_tourStep];
+  $('hint-step').textContent = `Step ${_tourStep + 1}/${TOUR.length} · ${t.name}`;
+  $('hint-text').textContent = t.text; $('hint-act').textContent = t.label; $('hint-act').onclick = t.go;
+  $('hint-next').textContent = _tourStep === TOUR.length - 1 ? 'Done' : _tourStep === 0 ? 'Next' : 'Skip step';
+  $('hint').classList.add('on');
 }
-$('hint-x').onclick = () => { try { localStorage.setItem('wgp_hint_' + _hintKey, '1'); } catch (_) {} $('hint').classList.remove('on'); };
+function updateHint() {   // called after profile/mode loads; starts the walkthrough on a true first run only
+  if (_tourOn) return;
+  if (tourDone() || String(_profile.message_template || '').trim()) { $('hint').classList.remove('on'); return; }
+  _tourOn = true; _tourStep = 0; renderTour();
+}
+$('hint-next').onclick = () => { if (_tourStep >= TOUR.length - 1) endTour(); else { _tourStep++; renderTour(); } };
+$('hint-x').onclick = endTour;
 
 // ── Profile panel ────────────────────────────────────────────────────────────
 async function loadProfileBasics() {
