@@ -5,6 +5,12 @@
 ### New
 - "✎ Draw area" map button: click or tap corners to draw a polygon (close it on the first corner, with a double-click or Done; Esc or Cancel aborts, without closing an open listing). Only listings inside it stay in the list, on the map and in Message today; it counts in "More filters (n)", shows as a dashed amber outline, is kept in localStorage, and "✕ Clear area" or reset removes it. Pins ignore taps while drawing, so corners can go on top of them. Plain Leaflet, no new library; the point-in-polygon test is in `frontend/geo.js` (node unit tests in `tests/test_geo.py`, browser checks at both sizes in `tests/ui_smoke.py`).
 
+## 2026-10-19: follow-ups in the language of your first message
+
+### Changed
+- Follow-up drafts (`?followup=1` on `/draft/{id}` and `/group/draft/{id}`) are now written in the language of the first message you actually sent, not the ad's language. Example: a German ad you answered in English (lang=en) gets an English follow-up. The language is read from the stored first message with the same German/English word heuristic the app already uses for the draft's language tag (`text_language` / `followup_language` in `drafting.py`, shared by solo and group). If it can't be told (very short text), the follow-up stays in the ad's language with exactly the old prompt; with no stored first message there is still nothing to follow up on (409). The response's `language` field follows the same rule. Draft-and-review only, nothing is sent.
+- The follow-up draft's language note compares with your first message ("matches your first message") instead of the ad.
+
 ## 2026-10-19: phone alerts follow the priority and befristet filters
 
 ### New

@@ -23,7 +23,7 @@ from .db import (  # noqa: E402
     start_run, finish_run, recent_runs, last_ok_run_age_seconds,
     add_sent_message, get_sent_messages, delete_sent_message, strip_raw,
 )
-from .drafting import draft, DraftError  # noqa: E402
+from .drafting import draft, DraftError, text_language  # noqa: E402
 from .summary import summarize as summarize_ad  # noqa: E402
 from .extraction import extract_batch  # noqa: E402
 from .group import router as group_router, validate_group  # noqa: E402
@@ -502,6 +502,8 @@ def draft_message(listing_id: int, followup: bool = Query(False),
         print(f"[draft] failed for {listing_id}: {e}")
         return _llm_error_response(e)
     lang = (listing.get("extracted") or {}).get("language")
+    if followup:   # follow-ups are written in the first message's language when it can be told
+        lang = text_language(first) or lang
     return JSONResponse({"id": listing_id, "draft": text, "language": lang,
                          "followup": followup, "tone": tone})
 

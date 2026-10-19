@@ -1883,7 +1883,10 @@ function renderDraft(id, text, mode = 'first') {
   const meta = () => {
     const lang = guessLang(ta.value), adLang = ext(l).language || guessLang(l.raw_text);
     $('draft-lang').textContent = lang ? (LANG_NAME[lang] || lang).toUpperCase() : 'LANGUAGE ?';
-    $('draft-warn').textContent = lang && adLang && lang !== adLang ? `ad looks ${LANG_NAME[adLang] || adLang}` : lang && adLang ? 'matches the ad' : '';
+    // a follow-up continues the conversation: compare with the first message you sent, not the ad
+    const firstLang = fu ? guessLang(((l.messages || []).filter(m => m.kind === 'first').pop() || {}).text) : null;
+    $('draft-warn').textContent = firstLang ? (lang && lang !== firstLang ? `first message was ${LANG_NAME[firstLang]}` : lang ? 'matches your first message' : '')
+      : lang && adLang && lang !== adLang ? `ad looks ${LANG_NAME[adLang] || adLang}` : lang && adLang ? 'matches the ad' : '';
     $('draft-count').textContent = `${ta.value.trim().split(/\s+/).filter(Boolean).length} words`;
   };
   meta();

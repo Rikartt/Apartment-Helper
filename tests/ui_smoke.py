@@ -453,6 +453,9 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         check(f"{tag} follow-up draft via /group/draft/{fid}?followup=1",
               any(f"POST /group/draft/{fid}?followup=1" in r for r in pg.reqs)
               and "Follow-up draft" in pg.text_content("#draft-box .draft-head"))
+        warn = pg.text_content("#draft-warn")
+        check(f"{tag} follow-up language is checked against the first message", warn == "matches your first message",
+              warn)
         pg.evaluate("$('draft-box').scrollIntoView({block:'nearest'})")
         pages.shot(pg, f"{tag}-11-group-followup")
     check(f"{tag} group page: no console errors", not pg.errs, "; ".join(pg.errs[:3]))

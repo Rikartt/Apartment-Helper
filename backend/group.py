@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse
 
 from . import llm
 from .drafting import (profile_for_draft, build_followup_prompt, language_choice, normalize_tone,
-                       short_rule, LANG_NAMES, MOVE_IN_RULE)
+                       short_rule, text_language, LANG_NAMES, MOVE_IN_RULE)
 from . import trust
 from .db import get_all_listings, get_listing, get_sent_messages, strip_raw
 from .scoring import load_profile, _parse_date, price_implausible
@@ -423,6 +423,9 @@ def group_draft_endpoint(listing_id: int, followup: bool = Query(False),
     except GroupDraftError as e:
         print(f"[group-draft] failed for {listing_id}: {e}")
         return JSONResponse({"error": str(e)}, status_code=e.status)
-    language = detect_language(listing) if followup or lang not in LANG_NAMES else LANG_NAMES[lang]
+    if followup:   # in the first message's language when it can be told (as the prompt says)
+        language = LANG_NAMES.get(text_language(first)) or detect_language(listing)
+    else:
+        language = LANG_NAMES[lang] if lang in LANG_NAMES else detect_language(listing)
     return JSONResponse({"id": listing_id, "draft": text, "language": language,
                          "followup": followup, "tone": tone})
