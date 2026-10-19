@@ -45,6 +45,9 @@ def _keep_apartment(l: dict, ad: dict) -> bool:
     return t <= MAX_APARTMENT_TRANSIT_MIN
 
 
+SKIPPED = "#skip"   # known-marker suffix for pins whose details we fetched but did not keep
+
+
 def _marker(pin: dict) -> str:
     """Change marker of a pin. The pin API exposes no updated-at, only the price."""
     return "" if pin.get("price_display") is None else str(pin["price_display"])
@@ -94,9 +97,10 @@ class FlatfoxAdapter(BaseAdapter):
         to_fetch = []
         for p in pins:
             pk = str(p["pk"])
-            if known.get(pk) == marker[pk]:
+            k = known.get(pk)
+            if k == marker[pk]:
                 self.seen_ids.add(pk)
-            else:
+            elif k != marker[pk] + SKIPPED:   # filtered out last time and unchanged: no row
                 to_fetch.append(p)
         if not self.truncated:
             self.known_keep = set(marker)   # forget pins that left the list
@@ -117,15 +121,18 @@ class FlatfoxAdapter(BaseAdapter):
                 continue
 
             for l in listings:
-                if str(l.get("pk")) in marker:
-                    self.known_updates[str(l["pk"])] = marker[str(l["pk"])]
-                if l.get("object_category") != "SHARED" and not INCLUDE_APARTMENTS:
-                    continue
-                ad = self._to_ad(l)
-                if ad and ad["kind"] == "apartment" and not _keep_apartment(l, ad):
-                    continue
+                ad = None
+                if l.get("object_category") == "SHARED" or INCLUDE_APARTMENTS:
+                    ad = self._to_ad(l)
+                    if ad and ad["kind"] == "apartment" and not _keep_apartment(l, ad):
+                        ad = None
                 if ad:
                     ads.append(ad)
+                pk = str(l.get("pk"))
+                if pk in marker:
+                    # Filtered-out pins are remembered too (so they are not re-fetched), but
+                    # marked: they have no DB row and must not count as "seen" next run.
+                    self.known_updates[pk] = marker[pk] + ("" if ad else SKIPPED)
 
             time.sleep(DELAY)
 

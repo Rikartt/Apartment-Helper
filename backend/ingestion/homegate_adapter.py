@@ -167,6 +167,8 @@ class HomegateAdapter(BaseAdapter):
                 ads.append(ad)
                 self.known_updates[ad["external_id"]] = str(card["rent_chf"])
 
+        if not self.truncated:
+            self.known_keep = {c["external_id"] for c in raw_cards}   # forget ads that left the list
         print(f"[homegate] {len(ads)} fetched/changed + {len(self.seen_ids)} unchanged WG-candidate listings")
         return ads
 

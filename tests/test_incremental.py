@@ -165,10 +165,25 @@ def test_flatfox_filtered_out_pins_are_not_refetched(flatfox, db):
     pins = [_pin(1), _pin(2)]
     details = {1: _detail(1), 2: _detail(2, cat="COMMERCIAL")}   # 2 is dropped by the adapter
     flatfox(pins, details)
-    monkey_apartments = ff.INCLUDE_APARTMENTS
     _run()
-    fake = flatfox(pins, details); _run()
+    fake = flatfox(pins, details); r = _run()
     assert fake.detail_calls == []
+    # the dropped pin has no row, so it must not count as fetched/seen either
+    assert r["sources"]["flatfox"]["fetched"] == 1
+
+
+def test_flatfox_mostly_filtered_source_stays_healthy_on_full_refresh(flatfox, db, monkeypatch):
+    """Many dropped pins must not inflate the incremental count: otherwise the daily full
+    refresh would look like a >50% drop and skip gone detection."""
+    pins = [_pin(i) for i in range(1, 11)]
+    details = {i: _detail(i, cat="SHARED" if i <= 3 else "COMMERCIAL") for i in range(1, 11)}
+    flatfox(pins, details); _run()
+    flatfox(pins, details); r = _run()
+    assert r["sources"]["flatfox"]["fetched"] == 3
+    monkeypatch.setenv("WGP_FULL_REFRESH_HOURS", "0")
+    flatfox(pins, details); r = _run()
+    info = r["sources"]["flatfox"]
+    assert info["ok"] and info["fetched"] == 3 and "error" not in info
 
 
 def test_flatfox_listed_at_is_utc_normalised():
