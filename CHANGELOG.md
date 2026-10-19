@@ -1,67 +1,57 @@
 # Changelog
 
-## Main review (after merging the six blocks)
+## 2026-10-19: after the merges (PRs #13, #14)
+
+### New
+- Opt-in browser smoke test (`RUN_UI_SMOKE=1 python tests/ui_smoke.py`) and dev tools: `tools/dev_seed.py` (synthetic DB) and `tools/dev_server.py` (app on that DB, optional fake LLM, no ingest).
 
 ### Fixed
 - Listing age ("2 days ago", fresh-ad chip, Message-today boost) read the normalised UTC `listed_at` as local time, and Safari could not parse it at all.
 - `/group/listings`: the "no WG / students" and scam text checks never saw the ad body (it was stripped before scoring); flats now carry `followup_due` / `days_since_sent` / `sent_at`, so the Follow-ups filter and "Follow up?" chip work in group mode.
 - Top 5 no longer suggests low-trust (likely scam) listings.
 
-## Block C: UI polish
+## 2026-10-19: polish blocks A-D (PRs #5-#10)
 
-### Improved
+Newest merge first.
+
+### UI polish (Block C, #8)
 - Typography: font sizes consolidated into four steps (`--fs-xs/sm/md/lg`), departure-board look kept.
 - Keyboard and focus: Leaflet's zoom and attribution links are skipped in the tab order; Esc in the draft box only leaves the box (a second Esc closes the detail view); closing a detail removes the pin of a listing your filters now hide.
 - Sync indicator: "syncing 2/5 · homegate" with a thin progress bar; on phones it temporarily replaces the listing count. The header count reads "84 of 181". `/group/listings` returns `total`, `/ingest/status` returns `current`.
 - First-run walkthrough (profile, then group and phone alerts, both optional) replaces the old hints; shown only while the profile has no message template, and never again once skipped or finished.
 - Map: dashed ~10/20/30 min rings around the selected campus for the chosen mode (straight-line estimate, like the commute fallback), with a legend row.
 
-## Block D: backups, group extras, phone HTTPS
-
-### New
+### Backups, group extras, phone HTTPS (Block D, #5)
 - Daily database backups (`backend/backup.py`, SQLite backup API, safe while running): `backups/wgpendler-YYYY-MM-DD.db`, newest `WGP_BACKUP_KEEP` (7) kept, `WGP_BACKUP_DIR` to move them; on startup if today's is missing, then checked hourly. `GET /backup/status`, `POST /backup/now`, restore steps in the README.
 - Group mode: members' own budgets (a CHF field per member in the group editor); a flat is a dealbreaker when a member would pay more than 15% over their budget, naming who. Rent splits by room size when every member has `room_m2` and the ad gives the living area.
 - Group follow-up drafts for flats (`POST /group/draft/{id}?followup=1`, and the "Draft follow-up" button in group mode). Like solo follow-ups they reuse no profile facts and never repeat the first message.
 - Phone over HTTPS: `scripts/phone-https.sh` (wraps `tailscale serve`), with a mkcert alternative in the README.
+- Fixed: the test suite no longer writes a backup of its test database into the repo's `backups/` folder.
 
-### Fixed
-- The test suite no longer writes a backup of its test database into the repo's `backups/` folder.
-
-## Learn from outcomes (Phase 6b)
-
-### New
+### Learn from outcomes (Phase 6b, #9)
 - Reply stats page (`/stats.html`, menu ⋯ > Reply stats): reply rate by source, message length, rent, how soon you wrote, fit and commute, plus median reply time. Inline SVG bars, no chart library.
 - The reply score learns from your outcomes once there are `WGP_LEARN_MIN_OUTCOMES` (default 20): a small logistic model (pure Python, weights in `learned_weights` / `learned_model`) is blended in, growing with the number of outcomes up to 70%. `GET /stats` gains the outcome keys (existing keys unchanged).
 - Training runs only when outcomes change (status or sent-message endpoints) and on the stats page; scoring reads a cached model, so listing requests never retrain.
 
-## Block B: drafts, summary, checklist
-
-### New
+### Drafts, summary, checklist (Block B, #7)
 - Draft variants: `POST /draft/{id}?tone=short|warm&lang=auto|de|en`; tone toggle and (when the ad language differs from your strongest profile language) a DE/EN toggle in the draft panel. Changing an option regenerates, asking first if you edited the text.
 - Ad summary: `GET /listings/{id}/summary` (cached Haiku, table `ad_summaries`), shown under the title for non-English ads; hidden on any error.
 - Checklist: flat conditions ("no pets", "noise-sensitive people unsuitable") are no longer items; extracted move_in/duration tick date/duration items; long requirements match on a third of the key words; "für längere Zeit" / "for a long time" count as a stay duration; long items no longer break onto separate lines.
 
-## Block A: ingest (incremental, dates, geocoding)
-
+### Ingest: incremental, dates, geocoding (Block A, #10)
 - Incremental Flatfox and Homegate ingest (new/price-changed ads only, daily full refresh, `WGP_FULL_REFRESH_HOURS`); gone detection unchanged.
 - `listed_at` normalised to UTC; Homegate now gets the ad creation date and coordinates from its embedded JSON. WOKO has no per-object date.
 - Geocoding: `geocode_many` (cache first, 4 parallel swisstopo workers, Nominatim still <=1 req/s); tests can no longer reach the network geocoders.
 
-## Trust score (scam check)
-
-### New
+### Trust score: scam check (Block A, #6)
 - 0-100 `trust_score`, `trust_level` (high / medium / low) and `trust_reasons` on `/listings`, `/listings/{id}` and `/group/listings`, computed in `backend/trust.py` (no LLM): price far below the local median, scam phrases (DE/EN/FR/IT), duplicate descriptions at other addresses or prices, missing house number / photos, agency poster, extracted red flags.
 - Low-trust listings are hidden by default ("Show low-trust" in More filters), show a warning in the detail view above the draft button, and are left out of phone alerts and the Message-today strip. Shield chip on cards and in the detail view.
 - Fast enough for the full database: neighbours for the price median come from a per-kind grid, and scores are computed once after each ingest and cached until the listings change.
 
-## Follow-up loop
-
-### New
-- Draft checklist (what the ad asked for, ticked heuristically), sent-message history (`sent_messages` table, `POST /listings/{id}/sent`), "Follow up?" chip and Follow-ups filter (`WGP_FOLLOWUP_DAYS`, default 3), optional follow-up draft (`POST /draft/{id}?followup=1`), and a Copy & open ad button.
-
 ## 2026-10-18 overnight
 
 ### New
+- **Follow-up loop**: draft checklist (what the ad asked for, ticked heuristically), sent-message history (`sent_messages` table, `POST /listings/{id}/sent`), "Follow up?" chip and Follow-ups filter (`WGP_FOLLOWUP_DAYS`, default 3), optional follow-up draft (`POST /draft/{id}?followup=1`), and a Copy & open ad button.
 - **Phone / PWA**: installable (manifest, icons, service worker for the app shell, never caches listings, offline banner), phone access docs, optional `WGP_ACCESS_TOKEN` guard.
 - **Group mode**: a Solo | Group toggle. Group mode finds whole flats, scores them per person (worst-case commute across campuses), and drafts a first message from the group's members and notes.
 - **Fresh listings**: background re-ingest every 45 minutes, NEW badges, a "New only" toggle, a live notice when new listings arrive, and gone-listing detection (hidden, your Sent/Replied marks kept).

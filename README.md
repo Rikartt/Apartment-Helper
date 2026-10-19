@@ -9,7 +9,7 @@ Two modes:
 
 ## Setup
 
-Requires Python 3.11+ and (optionally, for Extract / Top 5 / Draft) an [Anthropic API key](https://console.anthropic.com/). Without a key, browsing, filtering and rule-based scoring all still work.
+Requires Python 3.11+ and (optionally, for Extract / Top 5 / Draft / ad summaries) an [Anthropic API key](https://console.anthropic.com/). Without a key, browsing, filtering and rule-based scoring all still work.
 
 ```bash
 git clone <repo-url> WGHelfer && cd WGHelfer
@@ -35,34 +35,41 @@ uvicorn backend.main:app --reload
 
 Activation does not persist across terminal tabs; repeat it in each new shell, or call `.venv/bin/uvicorn backend.main:app --reload` directly. Then open **http://localhost:8000** (add `--port 8110` to use another port).
 
-**First run:** the database (`wgpendler.db`) starts empty and the server ingests all sources on a background thread. The page loads immediately and shows "syncing sources...". In a fresh-clone test the full first ingest took about 8 minutes (Flatfox is the slow part, around 5-6 minutes; Homegate about 2). Listings appear in the UI as they are stored, so refresh after a few minutes. Later startups skip ingesting if the last successful run is younger than the refresh interval.
+**First run:** the database (`wgpendler.db`) starts empty and the server ingests all sources on a background thread. The page loads immediately and the header shows sync progress ("syncing 2/5 · homegate" with a thin progress bar). The first ingest is still slow because it fetches every ad's details: in a fresh-clone test (before incremental ingest) it took about 8 minutes, Flatfox being most of it (5-6 minutes). Listings appear in the UI as they are stored, so refresh after a few minutes. Later runs are incremental (see Sources) and only fetch new or re-priced ads, so they are much faster. Later startups skip ingesting if the last successful run is younger than the refresh interval.
+
+A short first-run walkthrough (profile, then group and phone alerts, both optional) appears while your profile has no message template; once skipped or finished it does not come back.
 
 ## Features
 
 ### Scoring
 - **Fit score**: how well the listing matches your profile (rent, commute to both campuses, location, move-in date, house rules, languages, wants). Computed locally, no API cost.
+- **Commute times** are straight-line estimates (about 22 km/h by transit, 15 km/h by bike), not timetable data. The map shows dashed ~10/20/30 min rings around the selected campus for the chosen mode, using the same estimate.
 - **Reply score**: how likely you are to get an answer (ad age, private vs agency, what the ad asks for).
 - **Dealbreakers**: hard no's (over budget, implausible price, "no students", too far, etc.). Dealbreaker listings are marked and can be hidden with the "Hide dealbreakers" filter; they are never suggested in Top 5.
 - Edit your profile in the **Profile** panel; it is saved to `profile.json`.
 
+### Trust score (scam check)
+Each listing gets a 0-100 trust score with a reason for every deduction, computed locally (no API): price far below comparable listings nearby, scam phrases (payment before viewing, keys by post, "I am abroad", contact only via WhatsApp; DE/EN/FR/IT), the same description at another address or price, no house number or photos, agency poster, and red flags from Extract. High is 75+, medium 50-74, low under 50. A shield chip shows the score on cards and in the detail view. Low-trust listings are hidden by default ("Show low-trust" in More filters), get a warning above the draft button, and are left out of phone alerts, Top 5 and the Message today strip.
+
 ### Claude actions and their cost
-Only these three call the Anthropic API. Costs are small but real; the default models are cheap ones for bulk work.
+Only these four call the Anthropic API. Costs are small but real; the default models are cheap ones for bulk work.
 
 | Action | What it does | Cost |
 |---|---|---|
 | **Extract** (menu, top right) | Reads the ad text of up to 50 not-yet-extracted listings (newest first, only ones that pass rent and commute prefilters) and pulls out requirements, vibe, red flags. One small Haiku-class call per listing. | Lowest, per listing |
 | **Top 5** | Analyses your five best non-dealbreaker listings (strengths/weaknesses). One call, cached per set of top-5 ids, so reloading is free. | One small call |
-| **Draft** (in a listing's detail view) | Writes a first message in the ad's language from your template and profile. Sonnet-class model. In group mode it writes from the group's members and notes only (nothing invented). | One medium call per draft |
+| **Draft** (in a listing's detail view) | Writes a first message from your template and profile. Sonnet-class model. Tone toggle: Warm (default, 4-7 sentences) or Short (2-3). When the ad's language (German or English) differs from your strongest profile language, a toggle lets you write in yours instead of the ad's. Changing an option regenerates (it asks first if you edited the text). In group mode it writes from the group's members and notes only (nothing invented), without the tone/language toggles. | One medium call per draft |
+| **Ad summary** (automatic, detail view) | Opening an extracted non-English ad in solo mode shows a one-line English summary under the title. Uses the extraction model; cached per listing, so each ad costs at most one successful call. Hidden on any error (no key, no credit). | One small call per ad, once |
 
 If the key is missing or the credit is exhausted the UI shows a clear error instead of failing silently. Auto-extraction after each ingest is on by default when a key is set (see `WGP_AUTO_EXTRACT`); set `WGP_AUTO_EXTRACT=0` to spend nothing until you press Extract.
 
 ### Tracking
 Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view hides what you've handled. Status survives re-ingests and is never changed by the app, even when a listing disappears.
 
-**Reply stats** (menu ⋯ > Reply stats, `/stats.html`): your reply rate by source, message length, rent, how soon you wrote, fit and commute. An outcome is a listing marked Replied, or one still marked Sent 7 days after your first message. Once there are `WGP_LEARN_MIN_OUTCOMES` (20) outcomes, a small model fitted to them is blended into the reply score (more weight as outcomes grow, at most 70%); the page shows what it learned. It retrains when you change a status or log a sent message, and when the stats page finds new outcomes. Weights are stored in the `learned_weights` table.
+**Reply stats** (menu ⋯ > Reply stats, `/stats.html`): your reply rate by source, message length, rent, how soon you wrote, fit and commute, plus median reply time. An outcome is a listing marked Replied, or one still marked Sent 7 days after your first message. Once there are `WGP_LEARN_MIN_OUTCOMES` (20) outcomes, a small model fitted to them is blended into the reply score (more weight as outcomes grow, at most 70%); the page shows what it learned. It retrains when you change a status or log a sent message, and when the stats page finds new outcomes. Weights are stored in the `learned_weights` table.
 
 ### Draft to reply loop
-- **Draft checklist**: under a draft, a checklist of what the ad asked for (and its hard requirements). A keyword/date/number heuristic ticks what your text already covers; the rest get an amber hint. It runs in the browser, costs nothing and never edits your text.
+- **Draft checklist**: under a draft, a checklist of what the ad asked for (and its hard requirements). A keyword/date/number heuristic (plus the extracted move-in and duration) ticks what your text already covers; the rest get an amber hint. It runs in the browser, costs nothing and never edits your text.
 - **Sent history**: Mark as sent from the draft panel (or after Copy & open ad) saves the final text and time; the detail view shows "You sent this on ...".
 - **Follow-ups**: a listing still marked Sent after `WGP_FOLLOWUP_DAYS` days (default 3) gets a "Follow up?" chip and appears under Show > Follow-ups. "Draft follow-up" asks Claude for a short, polite note in the ad's language that does not repeat your first message (one small API call; in group mode it uses `/group/draft/{id}?followup=1`). You still send it yourself.
 - **Copy & open ad**: copies the draft, opens the ad in a new tab and asks "Mark as sent?".
@@ -90,7 +97,7 @@ Press `?` in the app for the list.
 | `o` | Open the original ad |
 | `d` | Draft a message (in detail view) |
 | `?` | Show shortcuts |
-| `Esc` | Close panel / detail |
+| `Esc` | Close panel / detail (in the draft box, the first `Esc` only leaves the box) |
 
 ### Use it on your phone (PWA)
 
@@ -117,7 +124,7 @@ Alternative: `mkcert` (local CA). Run `mkcert -install`, `mkcert <lan-ip>`, star
 The app depends on neither. `WGP_ACCESS_TOKEN` still works the same: open `https://<url>/?token=...` once; over HTTPS the token and cookie are encrypted in transit. Keep it set if other devices share your tailnet, since Tailscale's HTTPS protects the transport, not who on the tailnet can reach the app.
 
 ### Database backups
-Once a day (and on startup if today's is missing) the app copies `wgpendler.db` to `backups/wgpendler-YYYY-MM-DD.db` using SQLite's backup API, which is safe while the app runs. The newest `WGP_BACKUP_KEEP` (default 7) are kept; `backups/` is git-ignored. `GET /backup/status` shows the state, `POST /backup/now` forces one.
+On startup if today's is missing, then checked hourly, the app copies `wgpendler.db` to `backups/wgpendler-YYYY-MM-DD.db` using SQLite's backup API, which is safe while the app runs. The newest `WGP_BACKUP_KEEP` (default 7) are kept; `backups/` is git-ignored. `GET /backup/status` shows the state, `POST /backup/now` forces one.
 
 Restore: stop the app, then `cp backups/wgpendler-YYYY-MM-DD.db wgpendler.db` and delete `wgpendler.db-wal` and `wgpendler.db-shm` if present, then start the app again.
 
@@ -140,14 +147,15 @@ All are optional except the API key if you want Claude features. Set them in `.e
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | none | Enables Extract, Top 5, Draft |
+| `ANTHROPIC_API_KEY` | none | Enables Extract, Top 5, Draft, ad summaries |
 | `WGP_AUTO_EXTRACT` | `1` | `0` stops automatic extraction after ingests |
 | `WGP_AUTO_EXTRACT_LIMIT` | `25` | Max listings auto-extracted per ingest |
 | `WGP_EXTRACT_MAX_PER_RUN` | `50` | Default batch size for the Extract button |
 | `WGP_EXTRACT_MAX_TRANSIT_MIN` | `50` | Skip extracting listings with a longer transit commute |
-| `WGP_EXTRACT_MODEL` | `claude-haiku-5-5` | Model for extraction |
+| `WGP_EXTRACT_MODEL` | `claude-haiku-5-5` | Model for extraction and ad summaries |
 | `WGP_BEST_MODEL` | same as extract model | Model for Top 5 |
 | `WGP_DRAFT_MODEL` | `claude-sonnet-5-5` | Model for drafts |
+| `WGP_FOLLOWUP_DAYS` | `3` | Days a listing stays Sent with no reply before "Follow up?" |
 | `WGP_BACKUP_KEEP` | `7` | Daily DB backups to keep |
 | `WGP_BACKUP_DIR` | `backups/` in repo root | Backup folder |
 | `WGP_ACCESS_TOKEN` | none (off) | Shared secret for phone/LAN access, see "Use it on your phone" |
@@ -258,9 +266,13 @@ python tools/dev_server.py --fake-llm --outcomes --group    # app on such a DB a
 ## Project structure
 
 ```
-backend/   main.py (routes), db.py, ingest.py, ingestion/ (one adapter per source),
-           scoring.py, extraction.py, drafting.py, group.py, notify.py, llm.py, commute.py
-frontend/  index.html (Leaflet map UI, served at "/")
+backend/   main.py (routes), db.py, ingest.py, ingestion/ (one adapter per source, geocode.py),
+           scoring.py, trust.py, learning.py, extraction.py, drafting.py, summary.py,
+           group.py, notify.py, backup.py, access.py, llm.py, commute.py
+frontend/  index.html (Leaflet map UI, served at "/"), stats.html (reply stats),
+           checklist.js (draft checklist), manifest.json, sw.js, pwa.js, icons/
+scripts/   phone-https.sh (optional Tailscale HTTPS helper)
+tools/     make_icons.py
 tests/     offline pytest suite + opt-in smoke_e2e.py
 profile.json   your applicant profile (edited in the UI)
 ```
