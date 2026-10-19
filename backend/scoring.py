@@ -14,6 +14,8 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 
+from .term_dates import stated_end
+
 PROFILE_PATH = Path(__file__).parent.parent / "profile.json"
 
 _profile_cache: tuple[tuple, dict] | None = None
@@ -178,6 +180,48 @@ def _fixed_term_flag(listing: dict) -> bool:
     return v is not None and not isinstance(v, str) and v == 1
 
 
+STALE_START_DAYS = 60   # a befristet ad whose stated start is older than this says nothing about move-in
+RENTAL_OVER_MSG = "Rental period already over"
+
+
+def _is_temporary(listing: dict, ext: dict | None = None) -> bool:
+    """Befristet by the source flag or by the extraction (fixed_term / sublet)."""
+    ext = ext if ext is not None else _extracted(listing)
+    return _fixed_term_flag(listing) or str((ext or {}).get("duration") or "") in ("fixed_term", "sublet")
+
+
+def term_end(listing: dict) -> date | None:
+    """End of the rental the ad states: the stored `term_end` (set at ingest), else parsed
+    from the text when the row still carries it (adapter dicts, extraction)."""
+    if listing.get("term_end"):
+        return _parse_date(listing["term_end"])
+    if "term_end" in listing and not listing.get("raw_text"):
+        return None
+    return _parse_date(stated_end(listing.get("title"), listing.get("raw_text")))
+
+
+def rental_over(listing: dict, today: date | None = None) -> date | None:
+    """The stated end date if this befristet ad's rental period is already over, else None.
+    Flatfox has no end field (only moving_date + is_temporary), so the end comes from the
+    ad's text; a start still in the future, or an end before the ad was even published,
+    always means "not over" (a dealbreaker hides the ad, so stay conservative)."""
+    today = today or date.today()
+    if not _is_temporary(listing):
+        return None
+    end = term_end(listing)
+    if not end or end >= today:
+        return None
+    start = _parse_date(listing.get("available_from"))
+    if start and start >= today:
+        return None
+    # published after its own end: the date is a typo/stale (live: "maximum until 15.08.2026"
+    # in an ad published 2026-08-24 that also offers 1-3 month stays), not an ended period
+    listed = _parse_date(listing.get("listed_at"))
+    if listed and end < listed:
+        return None
+    return end
+
+
 def dealbreakers(listing: dict, profile: dict, today: date | None = None) -> list[str]:
     today = today or date.today()
     out: list[str] = []
@@ -196,6 +240,9 @@ def dealbreakers(listing: dict, profile: dict, today: date | None = None) -> lis
         avail = _parse_date(ext.get("move_in"))
     if avail and (avail - ref).days > 120:
         out.append(f"Available too late ({avail.isoformat()})")
+    over = rental_over(listing, today)
+    if over:
+        out.append(f"{RENTAL_OVER_MSG} (ended {over.isoformat()})")
 
     accepts_sublet, wants_permanent = _duration_prefs(profile)
     dur = str((ext or {}).get("duration") or "")
@@ -411,8 +458,14 @@ def score_detail(listing: dict, profile: dict | None = None,
             reasons.append("Long-term")
 
     avail = _parse_date(listing.get("available_from"))
+    ref = _ref_move_in(profile, today)
+    # a befristet ad's start long gone is no move-in evidence: either the period is over
+    # (dealbreaker) or the poster picked the wrong year (live: "2025-12-18" on an ad
+    # published 2026-10-19 for Dec 2026 - Jan 2027). Old starts on open-ended ads = "now".
+    if avail and (ref - avail).days > STALE_START_DAYS and _is_temporary(listing, ext):
+        avail = None
     if avail:
-        d = (avail - _ref_move_in(profile, today)).days
+        d = (avail - ref).days
         if d <= 14:
             s += 4
             reasons.append("Move-in fits")

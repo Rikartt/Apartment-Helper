@@ -2,6 +2,8 @@ import sqlite3
 import json
 from pathlib import Path
 
+from .term_dates import stated_end
+
 DB_PATH = Path(__file__).parent.parent / "wgpendler.db"
 
 NEW_COLUMNS = [
@@ -28,6 +30,7 @@ NEW_COLUMNS = [
     ("promo_until", "TEXT"),            # UTC end of a time-limited placement (Priority); NULL = open-ended
     ("photo_count", "INTEGER"),         # number of photos when the source reports it
     ("fixed_term", "INTEGER"),          # 1 = befristet / temporary, 0 = source says not, NULL = unknown
+    ("term_end", "TEXT"),               # ISO date the ad's text gives as end of rental; NULL = none stated
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -99,6 +102,8 @@ def init_db():
         for col, typedef in NEW_COLUMNS:
             if col not in existing:
                 conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {typedef}")
+        if "term_end" not in existing:
+            _backfill_term_end(conn)
         if promo_was_missing:
             # rows stored before promo existed were never checked: make the next run of the
             # incremental sources a full refresh (the table may not exist yet on a new DB)
@@ -188,8 +193,8 @@ def upsert_listing(ad: dict) -> bool:
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
                  listed_at, fit_score, reply_score, kind, rooms, living_area_m2, commute_source, promo,
-                 promo_until, photo_count, fixed_term, last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
+                 promo_until, photo_count, fixed_term, term_end, last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -216,6 +221,7 @@ def upsert_listing(ad: dict) -> bool:
                 promo_until    = excluded.promo_until,
                 photo_count    = excluded.photo_count,
                 fixed_term     = excluded.fixed_term,
+                term_end       = excluded.term_end,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 missed_runs  = 0,
                 gone_at      = NULL
@@ -233,6 +239,7 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("commute_source") or "estimate",
             ad.get("promo"), ad.get("promo_until"), ad.get("photo_count"),
             None if ad.get("fixed_term") is None else int(bool(ad["fixed_term"])),
+            ad.get("term_end") or stated_end(ad.get("title"), ad.get("raw_text")),
         ))
         return not existed
 
@@ -306,6 +313,14 @@ def strip_raw(d: dict) -> dict:
     d["has_raw_text"] = bool(d.get("raw_text"))
     d.pop("raw_text", None)
     return d
+
+
+def _backfill_term_end(conn):
+    """Rows stored before term_end existed: read the end from the text they already hold
+    (no refetch needed, unlike promo/fixed_term)."""
+    rows = conn.execute("SELECT id, title, raw_text FROM listings WHERE raw_text != ''").fetchall()
+    conn.executemany("UPDATE listings SET term_end = ? WHERE id = ?",
+                     [(e, r[0]) for r in rows if (e := stated_end(r[1], r[2]))])
 
 
 def get_all_listings(include_raw: bool = True, include_gone: bool = False) -> list[dict]:

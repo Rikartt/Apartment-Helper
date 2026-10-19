@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-19: befristet ads whose rental period is over
+
+### Fixed
+- A befristet listing whose rental period has already ended is now a dealbreaker, "Rental period already over (ended YYYY-MM-DD)", in solo and group mode, so it never reaches Top 5 or phone alerts. Flatfox has no end-of-rental field (only `moving_date` and `is_temporary`), so the end is read from the ad's own words ("bis zum 30.09.2026", "until January 10, 2027", "Dec 18 – Jan 4, 2026"; only dates with a year, latest one wins) by the new `backend/term_dates.py` and stored in a new `term_end` column at ingest (existing rows are filled from their stored text on startup, no refetch). It stays conservative: an ad whose start is still ahead, or whose end lies before its own publication date (a wrong-year typo), is never "over".
+- A befristet ad whose stated start is more than 60 days old no longer gets "Move-in fits". Live, these were almost all fresh ads with the wrong year in Flatfox's date picker (e.g. moving date 2025-12-18 on an ad published 2026-10-19 for Dec 2026 – Jan 2027), which ranked #1 in Top 5 on a move-in date that is really two months away. Old start dates on open-ended ads still mean "available now".
+
 ## 2026-10-19: fixes from a live Flatfox end-to-end run
 
 ### Fixed
