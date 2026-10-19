@@ -288,6 +288,7 @@
   .best-foot { margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
   .best-open { font-size:var(--fs-sm); color:var(--transit); text-decoration:none; background:none; border:none; cursor:pointer; }
   .best-open:hover { text-decoration:underline; }
+  .best-filters { padding:6px 16px; border-bottom:1px solid var(--line2); font-size:var(--fs-xs); color:var(--amber); letter-spacing:.06em; }
   #best-loading { padding:32px; text-align:center; color:#959595; font-size:var(--fs-md); letter-spacing:.06em; line-height:1.6; }
 
   #help-modal { position:fixed; inset:0; bottom:var(--ob,0px); background:#000a; z-index:2000; align-items:center; justify-content:center; display:flex; }
@@ -1744,14 +1745,26 @@ async function saveGroup() {
 }
 
 // ── Top 5 ────────────────────────────────────────────────────────────────────
+// Ranked on the server, but it honours "Hide priority/premium", "Hide befristet" and the drawn
+// area (the filters that remove a listing outright). Rent slider, Show tab and New only do not
+// apply: Top 5 ranks against your profile, not the current view.
+function bestFilters() {
+  const q = [], label = [];
+  if ($('hidePromo').checked) { q.push('hide_promo=1'); label.push('no priority/premium'); }
+  if ($('hideTerm').checked) { q.push('hide_fixed_term=1'); label.push('no befristet'); }
+  if (area) { q.push('area=' + encodeURIComponent(area.map(p => p.join(',')).join(';'))); label.push('in drawn area'); }
+  return { qs: q.length ? '?' + q.join('&') : '', label: label.join(' · ') };
+}
 async function showBest() {
   $('best-modal').classList.add('open'); _lastFocus = document.activeElement; $('best-box').querySelector('.cancel-btn').focus();
   const list = $('best-list');
-  list.innerHTML = '<div id="best-loading">Analyzing your top listings with Claude…<br>This takes a few seconds.</div>';
+  const bf = bestFilters();
+  const note = bf.label ? `<div class="best-filters">Filtered: ${esc(bf.label)}</div>` : '';
+  list.innerHTML = note + '<div id="best-loading">Analyzing your top listings with Claude…<br>This takes a few seconds.</div>';
   try {
-    const listings = await api('/best');
-    if (!Array.isArray(listings) || !listings.length) { list.innerHTML = '<div id="best-loading">No eligible listings yet — run Extract first.</div>'; return; }
-    list.innerHTML = listings.map((l, i) => {
+    const listings = await api('/best' + bf.qs);
+    if (!Array.isArray(listings) || !listings.length) { list.innerHTML = note + `<div id="best-loading">${bf.label ? 'No eligible listings match these filters.' : 'No eligible listings yet — run Extract first.'}</div>`; return; }
+    list.innerHTML = note + listings.map((l, i) => {
       const a = l.analysis || {};
       const s = (a.strengths || []).map(x => `<div class="best-strength">${esc(x)}</div>`).join('');
       const w = (a.weaknesses || []).map(x => `<div class="best-weakness">${esc(x)}</div>`).join('');

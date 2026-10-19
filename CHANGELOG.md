@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-19: Top 5 follows the priority, befristet and area filters
+
+### Fixed
+- Top 5 ignored the list filters, so with "Hide priority/premium", "Hide befristet" or a drawn area it could still suggest exactly those listings. `GET /best` now takes `hide_promo`, `hide_fixed_term` and `area` (`lat,lng;lat,lng;...`, as drawn) and filters before it picks the five, so you still get five picks; the UI passes the current state and names the active filters at the top of the Top 5 window. The rent slider, Show tab and New only deliberately still don't apply (Top 5 ranks against your profile, not the current view). Top 5 stays solo-only.
+- The Top 5 analysis cache keeps the last 8 sets of picks instead of one, so ticking a filter and unticking it again does not pay for a second Claude call.
+
+### Changed
+- `promo_active()` and `is_fixed_term()` moved from `notify.py` to a new `backend/filters.py` (with the server copy of the point-in-polygon test), shared by phone alerts and Top 5.
+
 ## 2026-10-19: stats page stops re-attempting a hopeless training run
 
 ### Fixed

@@ -30,6 +30,7 @@ from .group import router as group_router, validate_group  # noqa: E402
 from . import backup  # noqa: E402
 from .ingest import run_ingest, ADAPTERS  # noqa: E402
 from . import learning  # noqa: E402
+from .filters import promo_active, is_fixed_term, parse_area, point_in_polygon, MAX_AREA_CHARS  # noqa: E402
 from .scoring import score_detail, load_profile, PROFILE_PATH  # noqa: E402
 
 BASE_DIR     = Path(__file__).parent.parent
@@ -389,13 +390,22 @@ def run_extraction(limit: Optional[int] = Query(None, ge=1, le=200)):
 
 
 _best_cache: dict = {}
+_BEST_CACHE_MAX = 8   # a few recent top-5 sets, so ticking a filter on and off is free
 
 
 @app.get("/best")
-def best_listings():
+def best_listings(hide_promo: bool = Query(False), hide_fixed_term: bool = Query(False),
+                  area: Optional[str] = Query(None, max_length=MAX_AREA_CHARS)):
     """Top 5 listings by relevance with Claude-generated strengths/weaknesses.
-    The Claude call is cached per set of top-5 ids so page reloads cost nothing."""
+    The Claude call is cached per set of top-5 ids so page reloads cost nothing.
+
+    Honours the UI's "Hide priority/premium" (hide_promo), "Hide befristet" (hide_fixed_term)
+    and drawn map area (area="lat,lng;lat,lng;..."), filtering BEFORE the top 5 are picked.
+    Rent slider, Show tab and New only deliberately do not apply: Top 5 ranks against the
+    profile, not against the current view."""
     profile = _load_profile()
+    poly = parse_area(area)
+    now = datetime.now(timezone.utc)
     # whole flats belong to group mode: never suggest them as a WG room; likely scams
     # (low trust, hidden by default in the list) are never suggested either
     rows = get_all_listings(True)
@@ -403,7 +413,10 @@ def best_listings():
     eligible = [l for l in (_decorate(l, profile) for l in rows
                             if (l.get("kind") or "wg_room") != "apartment"
                             and l.get("trust_level") != "low")
-                if not l["is_dealbreaker"] and l["rent_chf"] > 0]
+                if not l["is_dealbreaker"] and l["rent_chf"] > 0
+                and not (hide_promo and promo_active(l, now))
+                and not (hide_fixed_term and is_fixed_term(l))
+                and (poly is None or point_in_polygon(l.get("lat"), l.get("lng"), poly))]
     eligible.sort(key=lambda r: (r["fit_score"] + r["reply_score"]) / 2, reverse=True)
     top5 = eligible[:5]
     if not top5:
@@ -459,8 +472,9 @@ def best_listings():
             raise llm.translate_error(e) from e
         parsed = llm.parse_json(llm.message_text(msg))
         by_id = {s["id"]: s for s in parsed if isinstance(s, dict) and "id" in s}
-        _best_cache.clear()
         _best_cache[key] = by_id
+        while len(_best_cache) > _BEST_CACHE_MAX:
+            _best_cache.pop(next(iter(_best_cache)))
         for l in top5:
             l["analysis"] = by_id.get(l["id"], {})
     except (llm.LLMError, ValueError, TypeError) as e:
