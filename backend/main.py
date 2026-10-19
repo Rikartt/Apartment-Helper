@@ -152,6 +152,7 @@ def _maybe_extract(tag: str):
             print(f"[{tag}] extraction: {extract_batch(limit=AUTO_EXTRACT_LIMIT)}")
         except Exception as e:
             print(f"[{tag}] extraction failed: {e}")
+        _warm_trust()   # extracted red flags change trust scores: rebuild the cache here, not on a request
 
 
 def _startup_ingest():
@@ -164,6 +165,7 @@ def _startup_ingest():
         age = None
     if age is not None and age < interval * 60:
         print(f"[startup] last successful ingest {age/60:.0f} min ago; skipping")
+        _warm_trust()   # else the first /listings after a restart scores trust cold (seconds)
         return
     try:
         _tracked_ingest(STARTUP_SOURCES, trigger="startup")
