@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-19: stats page stops re-attempting a hopeless training run
+
+### Fixed
+- While every resolved outcome is the same class (e.g. only "no reply" so far), no model can be trained, so nothing was cached and every `GET /stats` re-ran the training attempt: a second scan of all contacted listings plus delete-writes to the `learned_weights`/`learned_model` tables, on each page load. The learning module now remembers the outcome signature of its last attempt (resolved outcomes, replies among them, threshold), whether or not it produced a model, and `sync()` re-attempts only when that signature changes: a new outcome, a no-reply that turns into a reply, or one dropping out. Zero and too-few outcomes never train, as before. Scoring still only reads the cached model; training still happens only in `refresh()` and `sync()`.
+
 ## 2026-10-19: draw an area on the map
 
 ### New

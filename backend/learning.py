@@ -188,6 +188,9 @@ def train(now: datetime | None = None, profile: dict | None = None) -> dict | No
     profile = profile if profile is not None else load_profile()
     rows = [r for r in collect(now) if r["outcome"] is not None]
     n = len(rows)
+    # Remember what this attempt saw, whether or not it yields a model, so sync() does
+    # not re-attempt (one class, too few) until the outcomes change.
+    _attempted[str(dbm.DB_PATH)] = _signature(rows)
     if n < min_outcomes() or len({r["outcome"] for r in rows}) < 2:
         _store(None)
         return None
@@ -258,8 +261,16 @@ def current_model() -> dict | None:
     return m
 
 
-def _resolved_count(now: datetime | None = None) -> int:
-    return sum(1 for r in collect(now) if r["outcome"] is not None)
+# Signature of the resolved outcomes the last train() attempt saw, per DB file. A failed
+# attempt (only one class, or too few) caches no model, so without this sync() would
+# re-attempt the fit on every /stats call until the outcomes change.
+_attempted: dict = {}
+
+
+def _signature(rows: list[dict]) -> tuple:
+    """(resolved outcomes, replies among them, threshold): changes whenever an outcome
+    appears, disappears or flips class, or the threshold moves."""
+    return (len(rows), sum(r["outcome"] for r in rows), min_outcomes())
 
 
 def refresh(now: datetime | None = None) -> dict | None:
@@ -273,14 +284,22 @@ def refresh(now: datetime | None = None) -> dict | None:
 
 
 def sync(now: datetime | None = None) -> dict | None:
-    """Retrain only if the number of resolved outcomes moved (a 'sent' turns into a no-reply
-    outcome after NOANSWER_DAYS without any click). Used by the stats page."""
+    """Retrain only if the resolved outcomes changed since the last attempt (a 'sent' turns
+    into a no-reply outcome after NOANSWER_DAYS without any click). Used by the stats page.
+    An attempt that yields no model (one class, too few) is remembered too, so repeated
+    calls on unchanged outcomes never re-fit."""
     try:
-        resolved = _resolved_count(now)
-        want = resolved if resolved >= min_outcomes() else 0
+        key = str(dbm.DB_PATH)
+        sig = _signature([r for r in collect(now) if r["outcome"] is not None])
         m = current_model()
-        if (m["n"] if m else 0) != want:
+        if _attempted.get(key) == sig:
+            return m
+        resolved = sig[0]
+        want = resolved if resolved >= min_outcomes() else 0
+        if (m["n"] if m else 0) != want or (m and round(m["base_rate"] * m["n"]) != sig[1]):
             m = train(now)
+        else:   # stored model (or none) already matches these outcomes, e.g. after a restart
+            _attempted[key] = sig
         return m
     except Exception as e:
         print(f"[learning] sync failed: {e}")

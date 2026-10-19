@@ -170,3 +170,79 @@ def test_stats_page_served_and_linked(client):
     page = client.get("/stats.html")
     assert page.status_code == 200 and "fetch('/stats'" in page.text
     assert "/stats.html" in client.get("/").text      # the ⋯ menu links to it
+
+
+def _count_trains(monkeypatch):
+    calls = []
+    real = learning.train
+    monkeypatch.setattr(learning, "train", lambda *a, **k: calls.append(1) or real(*a, **k))
+    return calls
+
+
+def test_stats_one_class_does_not_retrain_every_call(client, db, monkeypatch):
+    """Only no-replies so far: no model is possible, and /stats must not re-attempt the
+    fit on every call. It tries again only once the outcomes change."""
+    seed(db, 25, replies_if_fresh=False)
+    calls = _count_trains(monkeypatch)
+    for _ in range(3):
+        r = client.get("/stats").json()
+        assert r["resolved"] == 25 and r["learning"]["active"] is False
+    assert calls == [1]
+    # same count, other class: a no-reply turns into a reply without going through refresh()
+    with db.get_conn() as conn:
+        conn.execute("UPDATE listings SET status = 'replied' WHERE id = "
+                     "(SELECT id FROM listings WHERE status = 'sent' LIMIT 1)")
+    r = client.get("/stats").json()
+    assert len(calls) == 2 and r["learning"]["active"] is True
+    assert learning.current_model()["n"] == 25
+    client.get("/stats")
+    assert len(calls) == 2                       # trained model is cached as before
+
+
+def test_stats_one_class_retrains_when_an_outcome_is_added(client, db, monkeypatch):
+    seed(db, 25, replies_if_fresh=False)
+    calls = _count_trains(monkeypatch)
+    client.get("/stats"), client.get("/stats")
+    assert calls == [1]
+    sent = NOW - timedelta(days=12)
+    db.upsert_listing(dict(source="flatfox", external_id="new", title="t", address="Zürich",
+                           lat=47.37, lng=8.54, rent_chf=900, available_from="2026-11-01",
+                           raw_text="x", url="https://e.test/new",
+                           listed_at=_fmt(sent - timedelta(days=1))))
+    with db.get_conn() as conn:
+        conn.execute("UPDATE listings SET status = 'replied', status_updated_at = ? "
+                     "WHERE external_id = 'new'", (_fmt(sent + timedelta(hours=3)),))
+    r = client.get("/stats").json()
+    assert len(calls) == 2 and r["learning"]["active"] is True
+    assert learning.current_model()["n"] == 26
+
+
+@pytest.mark.parametrize("n", [0, 5])
+def test_sync_without_enough_outcomes_never_trains(db, monkeypatch, n):
+    """Zero outcomes and too few outcomes: repeated sync() calls never fit."""
+    if n:
+        seed(db, n)
+    calls = _count_trains(monkeypatch)
+    for _ in range(3):
+        assert learning.sync(NOW) is None
+    assert calls == []
+
+
+def test_sync_clears_stale_model_once_when_outcomes_drop(db, monkeypatch):
+    seed(db, 25)
+    assert learning.train(now=NOW)["n"] == 25
+    with db.get_conn() as conn:
+        conn.execute("UPDATE listings SET status = 'rejected' WHERE id IN "
+                     "(SELECT id FROM listings WHERE status IN ('sent','replied') LIMIT 10)")
+    calls = _count_trains(monkeypatch)
+    for _ in range(3):
+        assert learning.sync(NOW) is None
+    assert calls == [1] and learning.current_model() is None
+
+
+def test_sync_one_class_direct_calls_attempt_once(db, monkeypatch):
+    seed(db, 25, replies_if_fresh=False)
+    calls = _count_trains(monkeypatch)
+    for _ in range(4):
+        assert learning.sync(NOW) is None
+    assert calls == [1]
