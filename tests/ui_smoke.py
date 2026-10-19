@@ -16,6 +16,8 @@ zero Anthropic calls), then drives headless Chromium at 1440x900 and 390x844 and
   draw-area map filter (mouse at 1440, touch taps at 390): list, pins, Message today, More
      filters count, kept over a reload, Esc cancels drawing without closing the detail, reset
   Top 5 honours Hide priority/premium, Hide befristet and the drawn area (other filters don't)
+  /listings arrives gzipped; cards show match_reasons from the slim list payload; the detail
+     view still loads the original ad text from /listings/{id}
   a11y: icon-only controls named, landmarks, map label, debounced count announcement, Space opens
      a card and focus moves in/back, ⋯ menu arrows + Esc, focus trap + Esc focus return in panels/modals,
      40px tap targets for primary actions at 390
@@ -255,6 +257,13 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
               any(r.endswith("/notify/status?pending=0") for r in pg.reqs)
               and not any(r.endswith("/notify/status") for r in pg.reqs), [r for r in pg.reqs if "notify" in r])
         check(f"{tag} walkthrough hidden once done", not pg.is_visible("#hint"))
+        enc = pg.evaluate("fetch('/listings?kind=wg_room,studio').then(r => r.headers.get('content-encoding'))")
+        check(f"{tag} /listings arrives gzipped", enc == "gzip", enc)
+        check(f"{tag} cards show the server's match reasons (list payload has no fit_reasons alias)",
+              pg.evaluate("curList.length > 0 && curList.every(l => !('fit_reasons' in l)) && "
+                          "curList.filter(l => (l.match_reasons || []).length)"
+                          ".every(l => JSON.stringify(fitReasons(l)) === "
+                          "JSON.stringify(l.match_reasons.map(String).slice(0, 4)))"))
         check(f"{tag} map has markers", pg.locator(".leaflet-marker-icon").count() > 0)
         pages.shot(pg, f"{tag}-02-list")
 
@@ -319,6 +328,12 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         pg.wait_for_function("$('detail-view').classList.contains('open')", timeout=5000)
         check(f"{tag} clicking a card opens the detail view", is_open(pg))
         check(f"{tag} detail shows the listing title", title.split()[0] in pg.text_content("#detail-view"), title)
+        try:   # /listings leaves raw_text out; the detail fetches it from /listings/{id}
+            pg.wait_for_selector("#rawtext-slot details.rawtext", state="attached", timeout=5000)
+        except Exception:
+            pass
+        check(f"{tag} detail loads the original ad text", pg.locator("#rawtext-slot pre").count() == 1
+              and len(pg.text_content("#rawtext-slot pre") or "") > 20)
         pages.shot(pg, f"{tag}-04-detail")
         pg.keyboard.press("Escape")
         pg.wait_for_timeout(300)
