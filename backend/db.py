@@ -274,7 +274,8 @@ SENT_KINDS = ("first", "followup")
 
 def add_sent_message(listing_id: int, text: str, kind: str = "first") -> dict | None:
     """Store the final text the user sent. A first message also marks the listing sent
-    (status_updated_at = now); a follow-up leaves the status alone. Returns the stored
+    (status_updated_at = now) unless it is already sent or replied (a logged message must
+    never downgrade a reply); a follow-up leaves the status alone. Returns the stored
     row, or None if the listing does not exist."""
     if kind not in SENT_KINDS:
         raise ValueError(kind)
@@ -288,7 +289,7 @@ def add_sent_message(listing_id: int, text: str, kind: str = "first") -> dict | 
         if kind == "first":
             conn.execute(
                 "UPDATE listings SET status = 'sent', sent = 1, replied = 0, "
-                "status_updated_at = ? WHERE id = ? AND (status IS NULL OR status != 'sent')",
+                "status_updated_at = ? WHERE id = ? AND (status IS NULL OR status = 'rejected')",
                 (now, listing_id))
         return {"id": cur.lastrowid, "listing_id": listing_id, "kind": kind,
                 "text": text, "sent_at": now}

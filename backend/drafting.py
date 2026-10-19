@@ -29,7 +29,7 @@ never invent a name, and never use placeholders like [Name].
 profile, do not claim to meet it.
 - Output only the message text — no subject line, no notes, no quotes around it."""
 
-FOLLOWUP_SYSTEM_PROMPT = """You draft a SHORT follow-up to a room ad poster who has not answered the \
+FOLLOWUP_SYSTEM_PROMPT = """You draft a SHORT follow-up to a housing-ad poster (WG room or whole flat) who has not answered the \
 applicant's first message yet. Rules:
 - Write in the ad's language ({language}), at the applicant's real level: simple and natural.
 - 2-3 sentences. Polite, friendly, zero pressure; no guilt-tripping, no "as I wrote before".
@@ -80,6 +80,8 @@ def draft(listing: dict, profile: dict, followup_of: str | None = None) -> str:
     ext = listing.get("extracted") or {}
     lang_code = ext.get("language") or "other"
     language = LANG_NAMES.get(lang_code, "the same language the ad is written in")
+    if followup_of and lang_code not in LANG_NAMES:
+        language = "the same language as the applicant's first message below"
 
     if followup_of:
         system, user_prompt = build_followup_prompt(listing, followup_of, language)
