@@ -1457,8 +1457,11 @@ function memberRow(m = {}) {
   const d = document.createElement('div'); d.className = 'member-row';
   d.innerHTML = `<input type="text" placeholder="label, e.g. friend A" maxlength="60" aria-label="Member label">
     <select aria-label="Member campus"><option value="zentrum">Zentrum</option><option value="hoenggerberg">Hönggerberg</option></select>
+    <input type="number" class="m-budget" min="1" max="10000" step="50" placeholder="CHF" style="max-width:5.5em" title="This person's own monthly budget (optional; empty = group budget)" aria-label="Member budget CHF per month">
     <button type="button" aria-label="Remove member" title="Remove">✕</button>`;
   d.querySelector('input').value = m.label || '';
+  d.querySelector('.m-budget').value = m.budget_chf || '';
+  d.dataset.roomM2 = m.room_m2 || '';
   d.querySelector('select').value = m.campus || 'zentrum';
   d.querySelector('button').onclick = () => { d.remove(); syncAddBtn(); };
   return d;
@@ -1480,7 +1483,12 @@ function openGroup() {
 function closeGroup() { $('group-panel').classList.remove('open'); restoreFocus(); }
 async function saveGroup() {
   const size = parseInt($('g-size').value), budget = parseInt($('g-budget').value);
-  const members = [...$('g-members').children].map(r => ({ label: r.querySelector('input').value.trim(), campus: r.querySelector('select').value }));
+  const members = [...$('g-members').children].map(r => {
+    const m = { label: r.querySelector('input').value.trim(), campus: r.querySelector('select').value };
+    const mb = parseInt(r.querySelector('.m-budget').value); if (mb > 0) m.budget_chf = mb;
+    if (parseFloat(r.dataset.roomM2) > 0) m.room_m2 = parseFloat(r.dataset.roomM2);   // keep API-set values
+    return m;
+  });
   if (!(size >= 2 && size <= 12)) { toast('Group size must be between 2 and 12', { err: true }); return; }
   if (!(budget > 0)) { toast('Enter a per-person budget', { err: true }); return; }
   if (members.length > size) { toast('More members than the group size', { err: true }); return; }
@@ -1706,7 +1714,7 @@ function renderSent(l) {
   if (!msgs.length && l.status !== 'sent') { slot.innerHTML = ''; return; }
   const body = msgs.length ? msgs.map(m => `<div class="sent-item"><div class="sent-when">${m.kind === 'followup' ? 'You followed up on' : 'You sent this on'} ${esc(fmtSentDate(m.sent_at))}</div><pre class="sent-text">${esc(m.text)}</pre></div>`).join('')
     : `<div class="sent-when">Marked as sent${l.sent_at ? ' on ' + esc(fmtSentDate(l.sent_at)) : ''} — no message text was saved.</div>`;
-  const canFollow = !groupMode && msgs.some(m => m.kind === 'first');
+  const canFollow = msgs.some(m => m.kind === 'first');   // group mode drafts it via /group/draft
   const fu = l.followup_due ? `<div class="fu-note">No reply ${l.days_since_sent != null ? 'after ' + Math.floor(l.days_since_sent) + ' days' : 'yet'}. A short, polite nudge is fine.</div>` +
     (canFollow ? `<button class="fu-btn" id="fu-btn" onclick="draftFollowup(${l.id})">✎ Draft follow-up (uses API credits)</button>` : '') : '';
   slot.innerHTML = `<div class="detail-section"><div class="detail-section-label">Sent</div>${body}${fu}</div>`;
@@ -1717,7 +1725,7 @@ async function draftFollowup(id) {
   if (FD[id] && !confirm('Redraft the follow-up? Your current follow-up text will be replaced (and this uses API credits).')) return;
   btn.disabled = true; btn.textContent = 'Drafting…';
   try {
-    const body = await api(`/draft/${id}?followup=1`, { method: 'POST' });
+    const body = await api(groupMode ? `/group/draft/${id}?followup=1` : `/draft/${id}?followup=1`, { method: 'POST' });
     FD[id] = body.draft;
     if (selectedId === id) { renderDraft(id, body.draft, 'followup'); $('draft-area').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
   } catch (e) {

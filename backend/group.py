@@ -12,9 +12,9 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from . import llm
-from .drafting import profile_for_draft
+from .drafting import profile_for_draft, build_followup_prompt
 from . import trust
-from .db import get_all_listings, get_listing, strip_raw
+from .db import get_all_listings, get_listing, get_sent_messages, strip_raw
 from .scoring import load_profile, _parse_date, price_implausible
 
 router = APIRouter()
@@ -56,7 +56,15 @@ def validate_group(g) -> tuple[dict | None, str | None]:
             return None, "member label must be a string up to 60 characters"
         if campus not in CAMPUSES:
             return None, f"member campus must be one of {', '.join(CAMPUSES)}"
-        norm.append({"label": label.strip(), "campus": campus})
+        nm = {"label": label.strip(), "campus": campus}
+        for key, hi in (("budget_chf", 10000), ("room_m2", 100)):
+            v = m.get(key)
+            if v is None or v == "":
+                continue
+            if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v <= hi:
+                return None, f"member {key} must be a number between 1 and {hi}"
+            nm[key] = int(v) if key == "budget_chf" else round(float(v), 1)
+        norm.append(nm)
     out["members"] = norm
     notes = g.get("notes", "")
     if notes is None:
@@ -99,6 +107,35 @@ def worst_commute(listing: dict, group: dict) -> int | None:
     return min(vals) if vals else None
 
 
+OVER_BUDGET_TOLERANCE = 0.15   # a member more than 15% over their own budget kills the flat
+
+
+def member_shares(listing: dict, group: dict) -> list[dict]:
+    """Rent share per listed member. Rent is split by room size when it can be done honestly:
+    every seat has a member with room_m2, the ad gives living_area_m2 and enough bedrooms; each
+    person pays their room plus an equal part of the common area. Otherwise evenly."""
+    rent = listing.get("rent_chf") or 0
+    members = group.get("members") or []
+    size = group["size"]
+    if not rent or not members:
+        return []
+    even = rent / size
+    shares = [even] * len(members)
+    rooms = [m.get("room_m2") for m in members]
+    area = listing.get("living_area_m2")
+    beds = bedrooms_for(listing.get("rooms"))
+    if (len(members) == size and all(rooms) and area and beds is not None and beds >= size
+            and sum(rooms) <= area):
+        common = area - sum(rooms)
+        shares = [rent * (r + common / size) / area for r in rooms]
+    out = []
+    for i, (m, sh) in enumerate(zip(members, shares), 1):
+        out.append({"label": m.get("label") or f"member {i}", "share_chf": round(sh),
+                    "budget_chf": m.get("budget_chf") or group["budget_per_person_chf"],
+                    "own_budget": bool(m.get("budget_chf"))})
+    return out
+
+
 _NO_WG = re.compile(
     r"keine\s+(wg|wohngemeinschaft)|(wg|wohngemeinschaft)\w*\s+(nicht|leider\s+nicht)\s+(erlaubt|m[öo]glich|erw[üu]nscht)"
     r"|no\s+(shared\s+flats?|flat\s?shares?|wg)|not\s+suitable\s+for\s+(a\s+)?(wg|flat\s?share)"
@@ -139,17 +176,36 @@ def group_detail(listing: dict, group: dict, today: date | None = None) -> dict:
         s -= 10
     else:
         ratio = per_person / budget if budget else 9
-        if ratio <= 1.0:
+        shares = member_shares(listing, group) if any(m.get("budget_chf") for m in group.get("members", [])) else []
+        if shares:
+            over = [x for x in shares if x["share_chf"] > x["budget_chf"] * (1 + OVER_BUDGET_TOLERANCE)]
+            ratio = max(x["share_chf"] / x["budget_chf"] for x in shares)
+            if over:
+                deal.append("over budget by more than 15%: " + ", ".join(
+                    f"{x['label']} (CHF {x['share_chf']} vs {x['budget_chf']})" for x in over))
+            else:
+                slight = [x for x in shares if x["share_chf"] > x["budget_chf"]]
+                if slight:
+                    reasons.append("over budget: " + ", ".join(
+                        f"{x['label']} (CHF {x['share_chf']} vs {x['budget_chf']})" for x in slight))
+            if over:
+                ratio = 0  # already a dealbreaker; keep the generic ladder from duplicating it
+        if not ratio:
+            s -= 10
+        elif ratio <= 1.0:
             s += 15 + min(18, (1 - ratio) * 40)
             reasons.append(f"CHF {per_person} pp within budget")
         elif ratio <= 1.1:
             s += 5 - (ratio - 1) * 100
-            reasons.append(f"CHF {per_person} pp slightly over budget")
+            if not shares:   # with member budgets the named "over budget: ..." reason says it
+                reasons.append(f"CHF {per_person} pp slightly over budget")
         elif ratio <= 1.25:
             s -= (ratio - 1.1) * 150
-            reasons.append(f"CHF {per_person} pp over budget")
+            if not shares:
+                reasons.append(f"CHF {per_person} pp over budget")
         else:
-            deal.append(f"CHF {per_person} per person vs budget {budget}")
+            if not shares:
+                deal.append(f"CHF {per_person} per person vs budget {budget}")
 
     # worst commute
     if worst is None:
@@ -287,8 +343,13 @@ That is about CHF {detail["per_person_chf"]} per person for a group of {group["s
     return language, system, user
 
 
-def group_draft(listing: dict, profile: dict, group: dict) -> str:
-    _, system, user = build_group_prompt(listing, profile, group)
+def group_draft(listing: dict, profile: dict, group: dict, followup_of: str | None = None) -> str:
+    """Group opener, or (with followup_of=<the message already sent>) a short follow-up that
+    reuses the solo follow-up prompt: no profile or group facts, so nothing can be invented."""
+    if followup_of:
+        system, user = build_followup_prompt(listing, followup_of, detect_language(listing))
+    else:
+        _, system, user = build_group_prompt(listing, profile, group)
     try:
         msg = llm.get_client().messages.create(
             model=llm.DRAFT_MODEL,
@@ -308,8 +369,9 @@ def group_draft(listing: dict, profile: dict, group: dict) -> str:
 
 
 @router.post("/group/draft/{listing_id}")
-def group_draft_endpoint(listing_id: int):
-    """Draft a group-application opener. Never sends anything."""
+def group_draft_endpoint(listing_id: int, followup: bool = Query(False)):
+    """Draft a group-application opener (or, with ?followup=1, a short follow-up to the stored
+    first message). Never sends anything."""
     if not llm.has_key():
         return JSONResponse({"error": "ANTHROPIC_API_KEY is not set"}, status_code=503)
     listing = get_listing(listing_id)
@@ -319,9 +381,19 @@ def group_draft_endpoint(listing_id: int):
     if not validate_group(profile.get("group"))[0]:
         return JSONResponse({"error": "Set up your group profile first (size and budget)."},
                             status_code=422)
+    first = None
+    if followup:
+        sent = [m for m in get_sent_messages(listing_id) if m["kind"] == "first"]
+        if not sent:
+            return JSONResponse({"error": "No sent message is stored for this listing, so there is "
+                                 "nothing to follow up on. Mark a draft as sent first."},
+                                status_code=409)
+        first = sent[-1]["text"]
+        listing["last_sent_at"] = sent[-1]["sent_at"]
     try:
-        text = group_draft(listing, profile, get_group(profile))
+        text = group_draft(listing, profile, get_group(profile), followup_of=first)
     except GroupDraftError as e:
         print(f"[group-draft] failed for {listing_id}: {e}")
         return JSONResponse({"error": str(e)}, status_code=e.status)
-    return JSONResponse({"id": listing_id, "draft": text, "language": detect_language(listing)})
+    return JSONResponse({"id": listing_id, "draft": text, "language": detect_language(listing),
+                         "followup": followup})
