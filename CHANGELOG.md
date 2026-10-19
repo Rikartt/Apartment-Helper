@@ -10,6 +10,14 @@
 - Stored `term_end` / `move_in_stated` values correct themselves on the next upsert of the ad (the regular full refresh, default within 24 h).
 - New `tests/test_night_review2.py` also round-trips every column through `upsert_listing` (insert and update): the hand-merged column list, placeholders and values line up.
 
+## 2026-10-19: Flatfox placeholder streets
+
+### Fixed
+- Flatfox street fields that are placeholders ("----", "-", "W", the postcode "8426", or the town again as in "Dietikon, 8953 Dietikon") now count as no street, so the address is "8053 Zürich" instead of "----, 8053 Zürich". "8426, 8426 Lufingen" no longer passes for a house number in the cross-source duplicate key or trust's address checks. Live DB (4,213 ads): 10 addresses change, 1 dedupe key goes away (no duplicate group changes), no trust score changes. A short street that could be real ("Zür") is kept.
+
+### Notes
+- Street-less Flatfox ads cannot get their street back from the URL slug: when a poster hides the street, `street` is null and Flatfox builds `public_address` and the slug from postcode + place only ("8057-zurich"). 0 of 1,090 street-less ads in the live DB had a street in the slug; a live re-check of 50 showed the same.
+
 ## 2026-10-19: photos in the detail view
 
 ### Added
