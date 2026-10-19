@@ -58,7 +58,7 @@ Only these four call the Anthropic API. Costs are small but real; the default mo
 |---|---|---|
 | **Extract** (menu, top right) | Reads the ad text of up to 50 not-yet-extracted listings (newest first, only ones that pass rent and commute prefilters) and pulls out requirements, vibe, red flags. One small Haiku-class call per listing. | Lowest, per listing |
 | **Top 5** | Analyses your five best non-dealbreaker listings (strengths/weaknesses). One call, cached per set of top-5 ids, so reloading is free. | One small call |
-| **Draft** (in a listing's detail view) | Writes a first message from your template and profile. Sonnet-class model. Tone toggle: Warm (default, 4-7 sentences) or Short (2-3). When the ad's language (German or English) differs from your strongest profile language, a toggle lets you write in yours instead of the ad's. Changing an option regenerates (it asks first if you edited the text). In group mode it writes from the group's members and notes only (nothing invented), without the tone/language toggles. | One medium call per draft |
+| **Draft** (in a listing's detail view) | Writes a first message from your template and profile. Sonnet-class model. Tone toggle: Warm (default, 4-7 sentences) or Short (2-3). When the ad's language (German or English) differs from your strongest profile language, a toggle lets you write in yours instead of the ad's. Changing an option regenerates (it asks first if you edited the text). In group mode it writes from the group's members and notes only (nothing invented) and keeps the honest flat-share paragraph; the same toggles apply there (Short is 3-4 sentences so the flat-share point still fits). API: `POST /draft/{id}` and `POST /group/draft/{id}` both take `?tone=warm|short&lang=auto|de|en` (other values: 422); follow-ups ignore them. | One medium call per draft |
 | **Ad summary** (automatic, detail view) | Opening an extracted non-English ad in solo mode shows a one-line English summary under the title. Uses the extraction model; cached per listing, so each ad costs at most one successful call. Hidden on any error (no key, no credit). | One small call per ad, once |
 
 If the key is missing or the credit is exhausted the UI shows a clear error instead of failing silently. Auto-extraction after each ingest is on by default when a key is set (see `WGP_AUTO_EXTRACT`); set `WGP_AUTO_EXTRACT=0` to spend nothing until you press Extract.
@@ -250,6 +250,7 @@ The test starts `tools/dev_server.py` on a free port, then drives headless Chrom
 - Esc in the draft, which first leaves the textarea and closes the detail on the second press
 - the sync line during a mocked ingest
 - the reply stats page
+- the group-mode draft with its tone and language toggles (Short sends `tone=short`)
 - the group-mode follow-up draft
 
 It also fails on any console error. It prints PASS/FAIL per check and exits non-zero on a failure.

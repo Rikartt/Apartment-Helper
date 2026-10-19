@@ -30,16 +30,36 @@ profile, do not claim to meet it.
 TONES = ("warm", "short")
 LANGS = ("auto", "de", "en")
 
+# Shared by solo and group drafts (backend/group.py), so both say the same thing.
+MOVE_IN_RULE = ('(see "move_in" in the profile: if it says available immediately, say "available immediately" or '
+                '"from now", never quote a calendar date that is in the past)')
+
+
+def short_rule(cover: str, sentences: str = "2-3", words: str = "40-60") -> str:
+    """The "short" tone line: compact, no filler, and only the listed points."""
+    return (f"- SHORT version: {sentences} sentences, about {words} words. Friendly but compact, no filler and "
+            f"no small talk. Cover only: {cover}. Leave out everything else from the profile.")
+
+
+def normalize_tone(tone: str | None) -> str:
+    """warm (the default, original behaviour) or short; anything else falls back to warm."""
+    return tone if tone in TONES else "warm"
+
+
+def language_choice(lang: str | None, default: str) -> str:
+    """What goes after "Write in": the applicant's explicit choice (lang=de|en) wins over
+    the ad's language; "auto" (or anything else) keeps `default`."""
+    if lang in LANG_NAMES:
+        return f"{LANG_NAMES[lang]} (the applicant chose this language, even if the ad is written in another one)"
+    return default
+
+
 # The length/tone rule block. "warm" is the original behaviour, unchanged.
 TONE_RULES = {
-    "warm": """- 4-7 sentences. Warm, direct, not gushing. Include: who they are, why they fit what the ad said, \
-when they can move in (see "move_in" in the profile: if it says available immediately, say \
-"available immediately" or "from now", never quote a calendar date that is in the past) and how long they want to stay, and a clear ask to view the room.""",
-    "short": """- SHORT version: 2-3 sentences, about 40-60 words. Friendly but compact, no filler and no small talk. \
-Cover only: who they are in one clause, one concrete detail from the ad, when they can move in \
-(see "move_in" in the profile: if it says available immediately, say "available immediately" or \
-"from now", never quote a calendar date that is in the past) and how long they want to stay, and a clear ask to view the room. \
-Leave out everything else from the profile.""",
+    "warm": f"""- 4-7 sentences. Warm, direct, not gushing. Include: who they are, why they fit what the ad said, \
+when they can move in {MOVE_IN_RULE} and how long they want to stay, and a clear ask to view the room.""",
+    "short": short_rule(f"who they are in one clause, one concrete detail from the ad, when they can move in "
+                        f"{MOVE_IN_RULE} and how long they want to stay, and a clear ask to view the room"),
 }
 
 FOLLOWUP_SYSTEM_PROMPT = """You draft a SHORT follow-up to a housing-ad poster (WG room or whole flat) who has not answered the \
@@ -90,14 +110,9 @@ MY FIRST MESSAGE (sent {listing.get("last_sent_at") or "a few days ago"}, no rep
 def build_system_prompt(lang_code: str | None, tone: str = "warm", lang: str = "auto") -> str:
     """System prompt for a first message. `lang` overrides the ad's language (de|en);
     "auto" writes in the ad's language. `tone` is warm (default) or short."""
-    tone = tone if tone in TONE_RULES else "warm"
-    if lang in LANG_NAMES:
-        language = f"{LANG_NAMES[lang]} (the applicant chose this language, even if the ad is written in another one)"
-    elif lang_code in LANG_NAMES:
-        language = f"the ad's language ({LANG_NAMES[lang_code]})"
-    else:
-        language = "the same language the ad is written in"
-    return SYSTEM_PROMPT.format(language=language, tone_rules=TONE_RULES[tone])
+    default = (f"the ad's language ({LANG_NAMES[lang_code]})" if lang_code in LANG_NAMES
+               else "the same language the ad is written in")
+    return SYSTEM_PROMPT.format(language=language_choice(lang, default), tone_rules=TONE_RULES[normalize_tone(tone)])
 
 
 def draft(listing: dict, profile: dict, followup_of: str | None = None,

@@ -11,8 +11,8 @@ zero Anthropic calls), then drives headless Chromium at 1440x900 and 390x844 and
   trust chips; low-trust listings hidden until opted in  detail view (+ English summary)
   draft panel and the Warm/Short tone toggle             Esc in the draft keeps the detail open,
   sync line with a mocked running /ingest/status            a second Esc closes it
-  reply stats page (and the menu link to it)             group mode follow-up draft button
-  no console errors on any page
+  reply stats page (and the menu link to it)             group mode draft tone/language toggles
+  no console errors on any page                          and the follow-up draft button
 
 Needs Playwright (`pip install playwright`) and a Chromium. It uses Playwright's own browser
 (PLAYWRIGHT_BROWSERS_PATH is honoured), else WGP_CHROMIUM, else /opt/pw-browsers/chromium.
@@ -401,6 +401,41 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         check(f"{tag} group mode lists flats for the group",
               "group of" in pg.text_content("#sh-summary") and pg.locator(".card").count() > 0)
         pages.shot(pg, f"{tag}-10-group-list")
+
+    with step(f"{tag} group draft options", pg, pages):
+        gid = api["group_draft"]
+        pg.evaluate(f"selectListing({gid})")
+        pg.wait_for_selector("#draft-btn", state="visible", timeout=8000)
+        pg.click("#draft-btn")
+        pg.wait_for_function(f"$('draft-text') && $('draft-text').value.includes({json.dumps(FAKE_TAG)})",
+                             timeout=10000)
+        warm = pg.input_value("#draft-text")
+        segs = pg.locator("#draft-box .dseg").first.locator("button")
+        check(f"{tag} group draft shows the Warm|Short toggle, Warm pressed",
+              segs.count() == 2 and segs.nth(0).get_attribute("aria-pressed") == "true", segs.all_text_contents())
+        check(f"{tag} group draft requests /group/draft/{gid}?tone=warm&lang=auto",
+              any(f"POST /group/draft/{gid}?tone=warm&lang=auto" in r for r in pg.reqs))
+        pg.evaluate("$('draft-box').scrollIntoView({block:'nearest'})")
+        pages.shot(pg, f"{tag}-10b-group-draft-warm")
+        segs.nth(1).click()
+        pg.wait_for_function(f"$('draft-text') && $('draft-text').value !== {json.dumps(warm)}", timeout=10000)
+        check(f"{tag} group Short sends tone=short and shows a shorter draft",
+              any(f"POST /group/draft/{gid}?tone=short" in r for r in pg.reqs)
+              and len(pg.input_value("#draft-text").split()) < len(warm.split())
+              and pg.locator("#draft-box .dseg").first.locator("button").nth(1).get_attribute("aria-pressed") == "true")
+        pg.evaluate("$('draft-box').scrollIntoView({block:'nearest'})")
+        pages.shot(pg, f"{tag}-10c-group-draft-short")
+        lseg = pg.locator("#draft-box .dseg").nth(1).locator("button")
+        check(f"{tag} group draft shows the language toggle (seeded English flat, German-first profile)",
+              lseg.count() == 2, pg.text_content("#draft-box .draft-opts"))
+        lseg.nth(1).click()
+        pg.wait_for_function(f"$('draft-text') && $('draft-text').value.includes({json.dumps(FAKE_TAG)})"
+                             " && document.querySelectorAll('#draft-box .dseg')[1]"
+                             ".querySelectorAll('button')[1].getAttribute('aria-pressed') === 'true'", timeout=10000)
+        check(f"{tag} group language toggle sends tone=short&lang=de",
+              any(f"POST /group/draft/{gid}?tone=short&lang=de" in r for r in pg.reqs))
+
+    with step(f"{tag} group follow-up", pg, pages):
         fid = api["group_followup"]
         check(f"{tag} seed has a flat with a follow-up due", fid is not None)
         pg.evaluate(f"selectListing({fid})")
@@ -474,6 +509,8 @@ def main(argv=None) -> int:
         group = get_json(base, "/group/listings")
         gids = {l["id"] for l in group["listings"]}
         allrows = get_json(base, "/listings")
+        api["group_draft"] = next((l["id"] for l in allrows
+                                   if l["id"] in gids and not l.get("sent_at") and not l.get("last_sent_at")), None)
         api["group_followup"] = next((l["id"] for l in allrows
                                       if l["id"] in gids and l.get("followup_due")), None)
         print(f"[ui] {base}: {len(api['solo'])} solo listings, {len(gids)} group flats; screenshots -> {out}")

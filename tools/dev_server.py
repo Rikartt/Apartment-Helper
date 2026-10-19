@@ -80,8 +80,24 @@ def _fake_reply(kw: dict) -> str:
                 f"Ich hätte weiterhin grosses Interesse.\n\nViele Grüsse\n{FAKE_TAG}")
     german = "German" in system and "English (the applicant chose" not in system
     if "group" in low:
-        return (f"Hello,\n\nwe are a group of three ETH students looking for a long-term flat and your "
-                f"apartment fits us well. Could we arrange a viewing?\n\nBest regards\n{FAKE_TAG}")
+        if "SHORT version" in system:
+            return (f"Guten Tag, wir sind drei ETH-Studierende und möchten die Wohnung mit Balkon gemeinsam mieten; "
+                    f"alle würden den Mietvertrag unterschreiben. Wir sind ab sofort verfügbar. Dürfen wir sie "
+                    f"besichtigen? Freundliche Grüsse {FAKE_TAG}"
+                    if german else
+                    f"Hello, we are three ETH students who would like to rent your apartment with the balcony "
+                    f"together; all of us would sign the lease. We are available immediately. Could we view it? "
+                    f"Best regards {FAKE_TAG}")
+        return (f"Guten Tag\n\nwir sind eine Gruppe von drei ETH-Studierenden und suchen eine Wohnung für längere "
+                f"Zeit. Ihre Wohnung mit Balkon und der Lage nahe der ETH passt sehr gut zu uns. Wir möchten als "
+                f"Wohngemeinschaft zusammen wohnen und sind offen, das Mietverhältnis mit Ihnen zu besprechen, zum "
+                f"Beispiel dass alle den Mietvertrag unterschreiben. Wir sind ab sofort verfügbar. Hätten Sie Zeit "
+                f"für eine Besichtigung?\n\nFreundliche Grüsse\n{FAKE_TAG}"
+                if german else
+                f"Hello,\n\nwe are a group of three ETH students looking for a long-term flat, and your "
+                f"apartment with the balcony and its location near ETH fits us well. We would like to live together "
+                f"as a flat-share and are happy to discuss the tenancy arrangement, for example that all of us sign "
+                f"the lease. We are available immediately. Could we arrange a viewing?\n\nBest regards\n{FAKE_TAG}")
     if "SHORT version" in system:
         return (f"Hallo, ich bin ETH-Student, mag eure gemeinsamen Abendessen und könnte ab nächstem Monat "
                 f"langfristig einziehen. Darf ich das Zimmer besichtigen? Viele Grüsse {FAKE_TAG}"
