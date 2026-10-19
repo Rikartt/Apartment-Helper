@@ -4,8 +4,17 @@
 
 ### Fixed
 - Flatfox listings now use the ad's own headline as their title (`description_title`, whitespace collapsed, max 200 chars). Before, every room was titled "1.0-Zimmer WG-Zimmer in Zürich – N CHF" (shown as "WG-Zimmer in Zürich"), so the list, Message today and Top 5 showed five identical names. The generated title stays as the fallback for ads without a headline. Existing rows pick up the new title at the next full refresh (`WGP_FULL_REFRESH_HOURS`, default 24).
-- Trust scoring was slow on real data: with ~4200 real Flatfox ads (6.4 MB of text) a cold `/listings` took about 13-20 s, nearly all of it the scam-phrase regexes. Each phrase rule now has a keyword gate (`_TEXT_KEYS` in `trust.py`): its regex only runs when one of the words any match must contain is in the ad. Same results on all 4213 live ads, regex time 9.9 s to 1.8 s, a cold trust pass 20 s to 4.5 s. The trust cache is also warmed when startup skips the ingest (fresh last run) and after auto-extraction, so the first page load after a restart or an Extract run no longer pays for it.
+- Trust scoring was slow on real data: with ~4200 real Flatfox ads (6.4 MB of text) a cold `/listings` took about 13-20 s, nearly all of it the scam-phrase regexes. Each phrase rule now has a keyword gate (`_TEXT_KEYS` in `trust.py`): its regex only runs when one of the words any match must contain is in the ad. Same results on all 4213 live ads, regex time 9.9 s to 1.8 s, a cold trust pass 20 s to 4.5 s. The gate sits inside `_text_signals`, under the per-text memo cache; cache warming is the one mechanism already on main (startup skip, after extraction, after ingest), not doubled.
 - Group cards and the detail view showed minus reasons ("CHF 1350 pp over budget", "room count unknown", "2 red flags") as green ✓ chips. They are now amber "!" chips.
+
+## 2026-10-19: Top 5 follows the priority, befristet and area filters
+
+### Fixed
+- Top 5 ignored the list filters, so with "Hide priority/premium", "Hide befristet" or a drawn area it could still suggest exactly those listings. `GET /best` now takes `hide_promo`, `hide_fixed_term` and `area` (`lat,lng;lat,lng;...`, as drawn) and filters before it picks the five, so you still get five picks; the UI passes the current state and names the active filters at the top of the Top 5 window. The rent slider, Show tab and New only deliberately still don't apply (Top 5 ranks against your profile, not the current view). Top 5 stays solo-only.
+- The Top 5 analysis cache keeps the last 8 sets of picks instead of one, so ticking a filter and unticking it again does not pay for a second Claude call.
+
+### Changed
+- `promo_active()` and `is_fixed_term()` moved from `notify.py` to a new `backend/filters.py` (with the server copy of the point-in-polygon test), shared by phone alerts and Top 5.
 
 ## 2026-10-19: stats page stops re-attempting a hopeless training run
 

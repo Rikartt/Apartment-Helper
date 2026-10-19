@@ -52,7 +52,7 @@ A short first-run walkthrough (profile, then group and phone alerts, both option
 Each listing gets a 0-100 trust score with a reason for every deduction, computed locally (no API): price far below comparable listings nearby, scam phrases (payment before viewing, keys by post, "I am abroad", contact only via WhatsApp; DE/EN/FR/IT), the same description at another address or price, no house number or photos, agency poster, and red flags from Extract. High is 75+, medium 50-74, low under 50. A shield chip shows the score on cards and in the detail view. Low-trust listings are hidden by default ("Show low-trust" in More filters), get a warning above the draft button, and are left out of phone alerts, Top 5 and the Message today strip.
 
 ### Draw area (map filter)
-**✎ Draw area** (top right of the map) limits the list to a part of town: click or tap the corners of an area, then close it on the first corner, with a double-click or with Done (Esc or Cancel aborts). Pins, the list, Message today and the count follow it, it counts in "More filters (n)", and it is remembered in this browser until you press **✕ Clear area** or **reset**. Top 5 is ranked on the server and ignores list filters, the area included.
+**✎ Draw area** (top right of the map) limits the list to a part of town: click or tap the corners of an area, then close it on the first corner, with a double-click or with Done (Esc or Cancel aborts). Pins, the list, Message today and the count follow it, it counts in "More filters (n)", and it is remembered in this browser until you press **✕ Clear area** or **reset**. Top 5 follows the area too (see Top 5 below).
 
 ### Claude actions and their cost
 Only these four call the Anthropic API. Costs are small but real; the default models are cheap ones for bulk work.
@@ -60,7 +60,7 @@ Only these four call the Anthropic API. Costs are small but real; the default mo
 | Action | What it does | Cost |
 |---|---|---|
 | **Extract** (menu, top right) | Reads the ad text of up to 50 not-yet-extracted listings (newest first, only ones that pass rent and commute prefilters) and pulls out requirements, vibe, red flags. One small Haiku-class call per listing. | Lowest, per listing |
-| **Top 5** | Analyses your five best non-dealbreaker listings (strengths/weaknesses). One call, cached per set of top-5 ids, so reloading is free. | One small call |
+| **Top 5** | Analyses your five best non-dealbreaker listings (strengths/weaknesses). It honours "Hide priority/premium", "Hide befristet" and the drawn area (the picks are chosen after filtering, so you still get five); the rent slider, Show tab and New only don't apply, since Top 5 ranks against your profile, not the current view. One call, cached per set of top-5 ids (the last few sets), so reloading or ticking a filter on and off again is free. Solo mode only. | One small call |
 | **Draft** (in a listing's detail view) | Writes a first message from your template and profile. Sonnet-class model. Tone toggle: Warm (default, 4-7 sentences) or Short (2-3). When the ad's language (German or English) differs from your strongest profile language, a toggle lets you write in yours instead of the ad's. Changing an option regenerates (it asks first if you edited the text). In group mode it writes from the group's members and notes only (nothing invented) and keeps the honest flat-share paragraph; the same toggles apply there (Short is 3-4 sentences so the flat-share point still fits). API: `POST /draft/{id}` and `POST /group/draft/{id}` both take `?tone=warm|short&lang=auto|de|en` (other values: 422); follow-ups ignore them. | One medium call per draft |
 | **Ad summary** (automatic, detail view) | Opening an extracted non-English ad in solo mode shows a one-line English summary under the title. Uses the extraction model; cached per listing, so each ad costs at most one successful call. Hidden on any error (no key, no credit). | One small call per ad, once |
 
@@ -267,6 +267,7 @@ The two tools also work on their own:
 ```bash
 python tools/dev_seed.py /tmp/wgp.db --outcomes             # synthetic DB: ~200 listings, scams, extractions, history
 python tools/dev_server.py --fake-llm --outcomes --group    # app on such a DB at http://127.0.0.1:8765
+python tools/bench.py --browser                             # timings on a real-size DB (4000 listings, 300 contacted)
 ```
 
 `dev_server.py` works on a copy of `profile.json` and never touches `wgpendler.db`. It runs no ingest, and backups go to a temp folder. `--fake-llm` returns canned drafts and summaries; without it, the Claude features report a missing key. It never builds a real Anthropic client. `--clear-template` empties the message template so the walkthrough shows.
@@ -290,7 +291,7 @@ backend/   main.py (routes), db.py, ingest.py, ingestion/ (one adapter per sourc
 frontend/  index.html (Leaflet map UI, served at "/"), stats.html (reply stats),
            checklist.js (draft checklist), geo.js (draw-area maths), manifest.json, sw.js, pwa.js, icons/
 scripts/   phone-https.sh (optional Tailscale HTTPS helper)
-tools/     make_icons.py
+tools/     make_icons.py, dev_seed.py + dev_server.py (synthetic DB, offline app), bench.py (performance check)
 tests/     offline pytest suite + opt-in smoke_e2e.py
 profile.json   your applicant profile (edited in the UI)
 ```

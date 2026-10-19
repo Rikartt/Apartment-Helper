@@ -30,6 +30,7 @@ from .group import router as group_router, validate_group  # noqa: E402
 from . import backup  # noqa: E402
 from .ingest import run_ingest, ADAPTERS  # noqa: E402
 from . import learning  # noqa: E402
+from .filters import promo_active, is_fixed_term, parse_area, point_in_polygon, MAX_AREA_CHARS  # noqa: E402
 from .scoring import score_detail, load_profile, PROFILE_PATH  # noqa: E402
 
 BASE_DIR     = Path(__file__).parent.parent
@@ -149,10 +150,13 @@ def _tracked_ingest(sources: list[str], trigger: str = "manual",
 def _maybe_extract(tag: str):
     if AUTO_EXTRACT and llm.has_key():
         try:
-            print(f"[{tag}] extraction: {extract_batch(limit=AUTO_EXTRACT_LIMIT)}")
+            res = extract_batch(limit=AUTO_EXTRACT_LIMIT)
+            print(f"[{tag}] extraction: {res}")
         except Exception as e:
             print(f"[{tag}] extraction failed: {e}")
-        _warm_trust()   # extracted red flags change trust scores: rebuild the cache here, not on a request
+            return
+        if res.get("extracted"):   # new red flags change the trust signature: re-warm here
+            _warm_trust()
 
 
 def _startup_ingest():
@@ -165,7 +169,7 @@ def _startup_ingest():
         age = None
     if age is not None and age < interval * 60:
         print(f"[startup] last successful ingest {age/60:.0f} min ago; skipping")
-        _warm_trust()   # else the first /listings after a restart scores trust cold (seconds)
+        _warm_trust()   # so the first page load does not pay the cold trust pass
         return
     try:
         _tracked_ingest(STARTUP_SOURCES, trigger="startup")
@@ -253,8 +257,9 @@ def _decorate(l: dict, profile: dict) -> dict:
 
 
 def _warm_trust():
-    """Score trust on the ingest thread, so the first /listings after an ingest is fast
-    (a cold run over ~3000 listings takes a few seconds; later calls hit the cache)."""
+    """Score trust on the background thread (after an ingest, an extraction batch, or at
+    startup when the ingest is skipped), so the next /listings is fast: a cold run over
+    ~4000 listings takes about a second, later calls hit the cache."""
     try:
         trust.annotate(get_all_listings(True))
     except Exception as e:
@@ -275,7 +280,10 @@ def listings(include_raw: bool = Query(False), include_gone: bool = Query(False)
     (about 1.3 kB per ad and not needed to render the map). Listings that
     vanished from their source are hidden unless ?include_gone=1."""
     profile = _load_profile()
-    rows = _with_trust(get_all_listings(True, include_gone))
+    rows = get_all_listings(True, include_gone)
+    # one DB read: the trust universe is the live (not gone) part of the same rows
+    universe = [l for l in rows if l.get("gone_at") is None] if include_gone else rows
+    rows = _with_trust(rows, universe)
     if not include_raw:
         rows = [strip_raw(l) for l in rows]
     if kind:   # optional comma list, e.g. kind=wg_room,studio (default: everything)
@@ -385,19 +393,30 @@ def run_extraction(limit: Optional[int] = Query(None, ge=1, le=200)):
     only listings that pass rent/commute prefilters and were never extracted."""
     res = extract_batch(limit=limit)
     res["total"] = res["candidates"]  # kept for the existing UI button
+    if res.get("extracted"):   # re-score trust now, not on the reload this click triggers
+        _warm_trust()
     if res.get("error") and res["extracted"] == 0:
         return JSONResponse(res, status_code=res.get("error_status", 503))
     return JSONResponse(res)
 
 
 _best_cache: dict = {}
+_BEST_CACHE_MAX = 8   # a few recent top-5 sets, so ticking a filter on and off is free
 
 
 @app.get("/best")
-def best_listings():
+def best_listings(hide_promo: bool = Query(False), hide_fixed_term: bool = Query(False),
+                  area: Optional[str] = Query(None, max_length=MAX_AREA_CHARS)):
     """Top 5 listings by relevance with Claude-generated strengths/weaknesses.
-    The Claude call is cached per set of top-5 ids so page reloads cost nothing."""
+    The Claude call is cached per set of top-5 ids so page reloads cost nothing.
+
+    Honours the UI's "Hide priority/premium" (hide_promo), "Hide befristet" (hide_fixed_term)
+    and drawn map area (area="lat,lng;lat,lng;..."), filtering BEFORE the top 5 are picked.
+    Rent slider, Show tab and New only deliberately do not apply: Top 5 ranks against the
+    profile, not against the current view."""
     profile = _load_profile()
+    poly = parse_area(area)
+    now = datetime.now(timezone.utc)
     # whole flats belong to group mode: never suggest them as a WG room; likely scams
     # (low trust, hidden by default in the list) are never suggested either
     rows = get_all_listings(True)
@@ -405,7 +424,10 @@ def best_listings():
     eligible = [l for l in (_decorate(l, profile) for l in rows
                             if (l.get("kind") or "wg_room") != "apartment"
                             and l.get("trust_level") != "low")
-                if not l["is_dealbreaker"] and l["rent_chf"] > 0]
+                if not l["is_dealbreaker"] and l["rent_chf"] > 0
+                and not (hide_promo and promo_active(l, now))
+                and not (hide_fixed_term and is_fixed_term(l))
+                and (poly is None or point_in_polygon(l.get("lat"), l.get("lng"), poly))]
     eligible.sort(key=lambda r: (r["fit_score"] + r["reply_score"]) / 2, reverse=True)
     top5 = eligible[:5]
     if not top5:
@@ -461,8 +483,9 @@ def best_listings():
             raise llm.translate_error(e) from e
         parsed = llm.parse_json(llm.message_text(msg))
         by_id = {s["id"]: s for s in parsed if isinstance(s, dict) and "id" in s}
-        _best_cache.clear()
         _best_cache[key] = by_id
+        while len(_best_cache) > _BEST_CACHE_MAX:
+            _best_cache.pop(next(iter(_best_cache)))
         for l in top5:
             l["analysis"] = by_id.get(l["id"], {})
     except (llm.LLMError, ValueError, TypeError) as e:
@@ -537,8 +560,10 @@ def ingest(sources: list[str] = Query(default=None)):
 
 
 @app.get("/notify/status")
-def notify_status():
-    return JSONResponse(notify.status())
+def notify_status(pending: bool = Query(True)):
+    """?pending=0 skips counting the pending alert candidates (`pending` is then null): the
+    map page only needs channels / min_fit / filters, and the count scores every new ad."""
+    return JSONResponse(notify.status(pending=pending))
 
 
 @app.put("/notify/filters")

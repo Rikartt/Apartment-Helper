@@ -246,3 +246,22 @@ def test_sync_one_class_direct_calls_attempt_once(db, monkeypatch):
     for _ in range(4):
         assert learning.sync(NOW) is None
     assert calls == [1]
+
+
+def test_sync_retries_after_a_failed_fit(db, monkeypatch):
+    """A fit that crashes (e.g. 'database is locked' while storing the weights) is not a
+    finished attempt: the next sync() must try again instead of serving no model until
+    the outcomes happen to change."""
+    import sqlite3
+    seed(db, 25)
+    real_store, fails = learning._store, []
+
+    def flaky_store(model):
+        if not fails:
+            fails.append(1)
+            raise sqlite3.OperationalError("database is locked")
+        return real_store(model)
+    monkeypatch.setattr(learning, "_store", flaky_store)
+    assert learning.sync(NOW) is None            # the failed attempt
+    m = learning.sync(NOW)
+    assert m is not None and m["n"] == 25

@@ -109,15 +109,33 @@ _TEXT_KEYS = [
 ]
 
 
+_signals_cache: dict[str, tuple[tuple[int, str], ...]] = {}
+SIGNALS_CACHE_MAX = 10000
+
+
 def text_signals(text: str) -> list[tuple[int, str]]:
     """(penalty, reason) per scam-phrase category found in the ad text. A match with a
-    negation earlier in the same sentence ("keine Kaution vor der Besichtigung") is ignored."""
-    out = []
+    negation earlier in the same sentence ("keine Kaution vor der Besichtigung") is ignored.
+    A pure function of the text, so results are memoised by the text itself: the regex scan
+    is ~0.4 ms per ad and was most of a cold trust pass (each extraction or ingest changes
+    the trust signature, but only the new or edited ads need scanning again)."""
     if not text:
-        return out
+        return []
+    hit = _signals_cache.get(text)
+    if hit is not None:
+        return list(hit)
+    out = _text_signals(text)
+    if len(_signals_cache) >= SIGNALS_CACHE_MAX:
+        _signals_cache.clear()
+    _signals_cache[text] = tuple(out)
+    return out
+
+
+def _text_signals(text: str) -> list[tuple[int, str]]:
+    out = []
     low = text.lower()
     for (weight, reason, pat), keys in zip(_TEXT_RULES, _TEXT_KEYS):
-        if not any(k in low for k in keys):
+        if not any(k in low for k in keys):   # keyword gate: this rule cannot match
             continue
         for m in pat.finditer(text):
             before = re.split(r"[.!?\n]", text[max(0, m.start() - 25):m.start()])[-1]

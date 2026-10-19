@@ -4,7 +4,6 @@ import json
 import time
 
 from tests.conftest import FIXTURES
-import backend.main as m
 from backend import trust
 from backend.ingestion.flatfox_adapter import FlatfoxAdapter
 
@@ -43,6 +42,7 @@ class _Spy:
 def test_text_signals_skip_rules_whose_keywords_are_absent(monkeypatch):
     spies = [(w, r, _Spy(p)) for w, r, p in trust._TEXT_RULES]
     monkeypatch.setattr(trust, "_TEXT_RULES", spies)
+    monkeypatch.setattr(trust, "_signals_cache", {})   # bypass the per-text memo
     long_ad = ("Schönes helles Zimmer in ruhiger Lage, Küche und Bad geteilt, Waschmaschine im Keller. "
                "Bright room, shared kitchen, close to tram 4. ") * 40
     assert trust.text_signals(long_ad) == []
@@ -60,23 +60,3 @@ def test_text_signals_fast_on_real_sized_corpus():
     for i in range(1000):
         trust.text_signals(ad + str(i))
     assert time.perf_counter() - t < 1.5   # was ~3 ms per ad (3 s here) before the keyword gate
-
-
-# ---- trust cache is warmed when startup skips the ingest, and after extraction ----
-def test_startup_skip_warms_trust(db, monkeypatch):
-    warmed = []
-    monkeypatch.setattr(m, "_warm_trust", lambda: warmed.append(1))
-    monkeypatch.setattr(m, "last_ok_run_age_seconds", lambda: 60.0)   # fresh run: skip ingest
-    monkeypatch.setattr(m, "run_ingest", lambda s: (_ for _ in ()).throw(AssertionError("no ingest")))
-    m._startup_ingest()
-    assert warmed == [1]
-
-
-def test_extraction_rewarms_trust(monkeypatch):
-    warmed = []
-    monkeypatch.setattr(m, "_warm_trust", lambda: warmed.append(1))
-    monkeypatch.setattr(m, "AUTO_EXTRACT", True)
-    monkeypatch.setattr(m.llm, "has_key", lambda: True)
-    monkeypatch.setattr(m, "extract_batch", lambda limit: {"extracted": 3})
-    m._maybe_extract("periodic")
-    assert warmed == [1]

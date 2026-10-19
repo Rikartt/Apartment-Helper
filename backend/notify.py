@@ -13,7 +13,6 @@ The UI's "Hide priority/premium" and "Hide befristet" checkboxes are mirrored he
 PUT /notify/filters (stored in source_state under source 'notify'), so the digest skips
 what the owner hides on the map.
 """
-import json
 import os
 import threading
 from urllib.parse import quote
@@ -23,6 +22,7 @@ import httpx
 
 from . import trust
 from .db import get_conn, get_all_listings, utc_now, get_state, set_state
+from .filters import is_fixed_term, promo_active  # shared with Top 5 (/best)
 from .scoring import score_detail, load_profile, _best_transit
 from .group import get_group, group_detail, validate_group
 
@@ -94,36 +94,6 @@ def set_filters(**kw: bool | None) -> dict:
     return get_filters()
 
 
-def _parse_utc(s) -> datetime | None:
-    try:
-        t = datetime.fromisoformat(str(s).strip().replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
-
-
-def promo_active(l: dict, now: datetime | None = None) -> bool:
-    """Paid placement still in force (frontend promoActive): open-ended or ends in the future."""
-    if not l.get("promo"):
-        return False
-    until = _parse_utc(l["promo_until"]) if l.get("promo_until") else None
-    return until is None or until > (now or datetime.now(timezone.utc))
-
-
-def is_fixed_term(l: dict) -> bool:
-    """Befristet (frontend isFixedTerm): the source flag wins, else the extracted duration."""
-    v = l.get("fixed_term")
-    if v is not None and not isinstance(v, str):
-        return bool(v)
-    ext = l.get("extracted")
-    if isinstance(ext, str):
-        try:
-            ext = json.loads(ext)
-        except ValueError:
-            ext = None
-    return isinstance(ext, dict) and ext.get("duration") in ("fixed_term", "sublet")
-
-
 # ------------------------------------------------------------------ log table
 def _ensure_log():
     with get_conn() as c:
@@ -168,14 +138,16 @@ def pending_candidates(profile: dict | None = None, now: datetime | None = None)
     utc = now or datetime.now(timezone.utc)
     rows = trust.annotate(get_all_listings(include_raw=True))
     for l in rows:
+        # cheapest test first: most rows were already announced, acted on or are older
+        # than the window (the checks are independent, so their order changes nothing)
+        if l.get("notified_at") or l.get("status") or (l.get("created_at") or "") < cutoff:
+            continue
         if l.get("trust_level") == "low":   # likely scam: never worth a phone buzz
             continue
         # hidden on the map -> no buzz either; left un-notified so unticking can still surface it
         if filters["hide_promo"] and promo_active(l, utc):
             continue
         if filters["hide_fixed_term"] and is_fixed_term(l):
-            continue
-        if l.get("notified_at") or l.get("status") or (l.get("created_at") or "") < cutoff:
             continue
         kind = l.get("kind") or "wg_room"
         if kind in ("wg_room", "studio"):
@@ -295,11 +267,13 @@ def after_ingest() -> None:
         print(f"[notify] failed: {type(e).__name__}: {e}")
 
 
-def status() -> dict:
-    try:
-        pend = len(pending_candidates())
-    except Exception:
-        pend = None
+def status(pending: bool = True) -> dict:
+    pend = None
+    if pending:
+        try:
+            pend = len(pending_candidates())
+        except Exception:
+            pend = None
     last = _last_sent()
     return {"channels": channels(), "min_fit": min_fit(),
             "quiet_hours": os.environ.get("WGP_NOTIFY_QUIET", "23-07") or None,
