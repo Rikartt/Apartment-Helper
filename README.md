@@ -212,6 +212,39 @@ RUN_E2E=1 WGP_LIVE_API=1 python tests/smoke_e2e.py   # also exercises Claude (co
 
 `E2E_INGEST_WAIT` (default 240 seconds) is how long it waits for the first ingest.
 
+### UI smoke test
+
+An opt-in browser check of the UI. It needs Playwright and Chromium (`pip install playwright && playwright install chromium`). It makes no network requests and no Anthropic calls.
+
+```bash
+RUN_UI_SMOKE=1 python tests/ui_smoke.py            # screenshots go to <system temp>/wgp-ui-smoke/<time>/
+RUN_UI_SMOKE=1 python tests/ui_smoke.py --out DIR  # or to DIR (must be outside the repo)
+```
+
+The test starts `tools/dev_server.py` on a free port, then drives headless Chromium at 1440x900 and 390x844. At both sizes it checks:
+
+- the list renders, and the header count matches the API
+- the first-run walkthrough
+- trust chips, and that low-trust ads are hidden by default
+- the detail view, the draft panel and its tone toggle
+- Esc in the draft, which first leaves the textarea and closes the detail on the second press
+- the sync line during a mocked ingest
+- the reply stats page
+- the group-mode follow-up draft
+
+It also fails on any console error. It prints PASS/FAIL per check and exits non-zero on a failure.
+
+Leaflet loads from unpkg.com. If that is unreachable, the test serves Leaflet from a local copy in `WGP_LEAFLET_DIR` (default `~/.cache/wgpendler/leaflet`). Fill it once with `cd ~/.cache/wgpendler/leaflet && npm pack leaflet@1.9.4 leaflet.markercluster@1.5.3`; the test unpacks the tarballs itself. Do not commit them. `WGP_CHROMIUM` points the test at a specific Chromium binary.
+
+The two tools also work on their own:
+
+```bash
+python tools/dev_seed.py /tmp/wgp.db --outcomes             # synthetic DB: ~200 listings, scams, extractions, history
+python tools/dev_server.py --fake-llm --outcomes --group    # app on such a DB at http://127.0.0.1:8765
+```
+
+`dev_server.py` works on a copy of `profile.json` and never touches `wgpendler.db`. It runs no ingest, and backups go to a temp folder. `--fake-llm` returns canned drafts and summaries; without it, the Claude features report a missing key. It never builds a real Anthropic client. `--clear-template` empties the message template so the walkthrough shows.
+
 ## Troubleshooting
 
 - **`ModuleNotFoundError: No module named 'fastapi'`**: the venv is not active, see Running.
