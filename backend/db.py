@@ -23,6 +23,7 @@ NEW_COLUMNS = [
     ("rooms", "REAL"),                  # Swiss "Zimmer" count, e.g. 4.5
     ("living_area_m2", "REAL"),
     ("notified_at", "TEXT"),            # UTC; when a phone-alert digest included this ad
+    ("commute_source", "TEXT"),         # 'timetable' | 'estimate' (transit minutes)
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -126,6 +127,17 @@ def init_db():
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sent_listing ON sent_messages(listing_id)")
+        # transport.opendata.ch results per ~100 m grid cell and campus (see commute.py)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS commute_cache (
+                cell        TEXT NOT NULL,
+                campus      TEXT NOT NULL,
+                transit_min INTEGER NOT NULL,
+                station     TEXT,
+                walk_min    INTEGER,
+                fetched_at  TEXT NOT NULL,
+                PRIMARY KEY (cell, campus)
+            )""")
         for stmt in INDEXES:
             conn.execute(stmt)
         conn.commit()
@@ -143,8 +155,8 @@ def upsert_listing(ad: dict) -> bool:
                  available_from, raw_text, url,
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
-                 listed_at, fit_score, reply_score, kind, rooms, living_area_m2, last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
+                 listed_at, fit_score, reply_score, kind, rooms, living_area_m2, commute_source, last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -166,6 +178,7 @@ def upsert_listing(ad: dict) -> bool:
                 kind        = excluded.kind,
                 rooms          = excluded.rooms,
                 living_area_m2 = excluded.living_area_m2,
+                commute_source = excluded.commute_source,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 missed_runs  = 0,
                 gone_at      = NULL
@@ -180,6 +193,7 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("fit_score"), ad.get("reply_score"),
             ad.get("kind") or "wg_room",
             ad.get("rooms"), ad.get("living_area_m2"),
+            ad.get("commute_source") or "estimate",
         ))
         return not existed
 

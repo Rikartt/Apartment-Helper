@@ -16,6 +16,22 @@ def _no_api_key(monkeypatch):
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
 
+class NetworkForbidden(BaseException):
+    """BaseException so the commute fallback (`except Exception`) cannot swallow it."""
+
+
+@pytest.fixture(autouse=True)
+def _forbid_live_commute_api(monkeypatch):
+    """No test may reach transport.opendata.ch; no background refresh threads either."""
+    monkeypatch.setenv("WGP_COMMUTE_BACKGROUND", "0")
+    from backend import commute
+
+    def boom(*a, **k):
+        raise NetworkForbidden("transport.opendata.ch called from a test; mock commute._get_json")
+    boom.real = commute._get_json   # for tests of the HTTP layer itself (they mock httpx)
+    monkeypatch.setattr(commute, "_get_json", boom)
+
+
 @pytest.fixture(autouse=True)
 def _forbid_live_anthropic(monkeypatch):
     """Hard guard: any attempt to build a real Anthropic client fails the test."""

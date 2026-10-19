@@ -2,7 +2,7 @@ import re
 
 from .db import (upsert_listing, get_all_listings, mark_gone, last_source_count,
                  utc_now, GONE_MIN_RATIO)
-from .commute import commute_times
+from .commute import commute_times, start_background_refresh
 from .scoring import score, reply_likelihood
 from .ingestion.mock_adapter import MockAdapter
 from .ingestion.flatfox_adapter import FlatfoxAdapter
@@ -96,6 +96,8 @@ def run_ingest(sources: list[str] | None = None) -> dict:
                              f"only {len(ads)} listings vs {prev} before; gone-check skipped")
         per_source[name] = info
 
+    # Timetable commutes are fetched in the background (cache-only during the loop above).
+    start_background_refresh()
     if dupes:
         print(f"[ingest] skipped {dupes} cross-source duplicates")
     return {"total": total, "new": new, "gone": gone, "sources": per_source}
