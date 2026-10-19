@@ -496,8 +496,8 @@ def touch_seen(source: str, external_ids) -> int:
             chunk = ids[i:i + 500]
             n += conn.execute(
                 "UPDATE listings SET last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'), "
-                "missed_runs = 0, gone_at = NULL WHERE source = ? AND external_id IN (%s)"
-                % ",".join("?" * len(chunk)), [source, *chunk]).rowcount
+                "missed_runs = 0, gone_at = NULL WHERE source = ? AND external_id IN ("
+                + ",".join("?" * len(chunk)) + ")", [source, *chunk]).rowcount
     return n
 
 

@@ -2,8 +2,7 @@ import os
 import re
 import time
 import httpx
-from .base import BaseAdapter, full_refresh_hours, norm_dt
-from .. import db
+from .base import BaseAdapter, load_known, norm_dt
 from ..commute import estimate_commute, ETH_ZENTRUM, ETH_HOENGGERBERG
 
 SEARCH_PAGE = "https://flatfox.ch/en/search/"
@@ -90,8 +89,7 @@ class FlatfoxAdapter(BaseAdapter):
         # Details (1 request per 50 ads) are only fetched for pins we have not seen or whose
         # price changed, plus a full refresh at most every WGP_FULL_REFRESH_HOURS to catch
         # edits that leave the price alone.
-        self.full_refresh = db.full_refresh_due("flatfox", full_refresh_hours())
-        known = {} if self.full_refresh else db.get_known("flatfox")
+        self.full_refresh, known = load_known("flatfox")
         marker = {str(p["pk"]): _marker(p) for p in pins}
         to_fetch = []
         for p in pins:

@@ -11,8 +11,20 @@ URL that works without bot-block:
 
 Individual detail pages 403 without a real browser, so all data is extracted
 from the listing card on the results page (price, rooms, address, description).
-Geocoding via OSM Nominatim.
+
+The results page also embeds its data as JSON (window.__INITIAL_STATE__ ->
+resultList.search.fullSearch.result.listings). We read it for what the cards lack:
+the ad's creation date (meta.createdAt), coordinates (address.geoCoordinates, accuracy
+HIGH/MEDIUM only) and the structured street/postcode. Ads without usable embedded
+coordinates are geocoded (SQLite cache, then swisstopo with 4 parallel workers, then
+Nominatim at <=1 req/s).
+
+Incremental: the list pages are the "pin list" (still fetched every run, ~1 request per
+20 ads). Ads already enriched with the same rent are not re-processed (no geocoding, no
+re-parse) unless a full refresh is due (WGP_FULL_REFRESH_HOURS, default 24), but still
+count as seen for gone detection.
 """
+import json
 import re
 import time
 import os
@@ -20,8 +32,8 @@ import os
 import httpx
 from bs4 import BeautifulSoup
 
-from .base import BaseAdapter
-from .geocode import geocode as _geocode
+from .base import BaseAdapter, load_known, norm_dt
+from .geocode import geocode as _geocode, geocode_many as _geocode_many
 
 SEARCH_BASE  = (
     "https://www.homegate.ch/rent/real-estate/city-zurich/matching-list"
@@ -35,7 +47,6 @@ MAX_APARTMENTS = 300
 INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS", "1") != "0"
 MAX_APARTMENT_PRICE = 6000
 SCRAPE_DELAY = 1.0
-GEOCODE_DELAY = 1.0
 
 _UA = (
     "Mozilla/5.0 (X11; Linux x86_64) "
@@ -63,6 +74,9 @@ class HomegateAdapter(BaseAdapter):
 
     def fetch(self) -> list[dict]:
         self.truncated, self.truncated_reason = False, ""
+        self.seen_ids, self.known_updates, self.known_keep = set(), {}, None
+        self.requests = 0
+        self.full_refresh, known = load_known("homegate")
         session = httpx.Client(
             headers={
                 "User-Agent": _UA,
@@ -90,8 +104,12 @@ class HomegateAdapter(BaseAdapter):
                 self._truncate(f"page {page_num} returned {resp.status_code}")
                 break
 
+            self.requests += 1
             soup = BeautifulSoup(resp.text, "lxml")
             cards = self._parse_cards(soup)
+            state = self._parse_state(resp.text)
+            for card in cards:
+                self._merge_state(card, state.get(card.get("external_id", "")))
             new_this_page = 0
             for card in cards:
                 cid = card.get("external_id", "")
@@ -108,9 +126,10 @@ class HomegateAdapter(BaseAdapter):
                 self._truncate(f"hit MAX_PAGES={MAX_PAGES}")
             time.sleep(SCRAPE_DELAY)
 
-        # Filter to WG-like listings
-        ads = []
-        n_apt = 0
+        # Filter to WG-like listings. Caps count unchanged (skipped) ads too, so the window
+        # stays the same as in a full run.
+        picked: list[dict] = []
+        n_apt = n_wg = 0
         for card in raw_cards:
             card["kind"] = self._kind(card)
             is_apt = card["kind"] == "apartment"
@@ -121,15 +140,34 @@ class HomegateAdapter(BaseAdapter):
                 if n_apt >= MAX_APARTMENTS:
                     self._truncate(f"hit MAX_APARTMENTS={MAX_APARTMENTS}")
                     continue
-            elif len(ads) - n_apt >= MAX_ADS:
+            elif n_wg >= MAX_ADS:
                 self._truncate(f"hit MAX_ADS={MAX_ADS}")
                 continue
+            if not self._acceptable(card):
+                continue
+            if is_apt:
+                n_apt += 1
+            else:
+                n_wg += 1
+            if known.get(card["external_id"]) == str(card["rent_chf"]):
+                self.seen_ids.add(card["external_id"])   # unchanged: still on the list
+            else:
+                picked.append(card)
+
+        # Geocode only what has no embedded coordinates and is not cached (cache hits are
+        # free; the rest runs through the bounded pool).
+        need = [c["address"] or "Zürich" for c in picked if c.get("lat") is None]
+        coords = _geocode_many(need) if need else {}
+        ads = []
+        for card in picked:
+            if card.get("lat") is None:
+                card["lat"], card["lng"] = coords.get(card["address"] or "Zürich", (None, None))
             ad = self._enrich(card)
             if ad:
                 ads.append(ad)
-                n_apt += is_apt
+                self.known_updates[ad["external_id"]] = str(card["rent_chf"])
 
-        print(f"[homegate] {len(ads)} WG-candidate listings after filtering")
+        print(f"[homegate] {len(ads)} fetched/changed + {len(self.seen_ids)} unchanged WG-candidate listings")
         return ads
 
     def _truncate(self, reason: str):
@@ -205,6 +243,38 @@ class HomegateAdapter(BaseAdapter):
 
         return cards
 
+    @staticmethod
+    def _parse_state(html: str) -> dict[str, dict]:
+        """{listing id: listing dict} from the embedded window.__INITIAL_STATE__ (empty when
+        the page doesn't carry it or the format changed; the HTML cards still work then)."""
+        marker = "window.__INITIAL_STATE__ = "
+        i = html.find(marker)
+        if i < 0:
+            return {}
+        try:
+            obj, _ = json.JSONDecoder().raw_decode(html[i + len(marker):])
+            rows = obj["resultList"]["search"]["fullSearch"]["result"]["listings"]
+            return {str(r["listing"]["id"]): r["listing"] for r in rows if r.get("listing", {}).get("id")}
+        except (ValueError, KeyError, TypeError):
+            return {}
+
+    @staticmethod
+    def _merge_state(card: dict, lst: dict | None):
+        """Add listed_at / coordinates / fallbacks from the embedded JSON to an HTML card."""
+        if not lst:
+            return
+        card["listed_at"] = norm_dt((lst.get("meta") or {}).get("createdAt"))
+        a = lst.get("address") or {}
+        g = a.get("geoCoordinates") or {}
+        if g.get("accuracy") in ("HIGH", "MEDIUM") and g.get("latitude") and g.get("longitude"):
+            card["lat"], card["lng"] = float(g["latitude"]), float(g["longitude"])
+        if not card.get("address") and a.get("street"):
+            card["address"] = f"{a['street']}, {a.get('postalCode', '')} {a.get('locality', '')}".strip(", ")[:200]
+        if not card.get("rent_chf"):
+            gross = ((lst.get("prices") or {}).get("rent") or {}).get("gross")
+            if isinstance(gross, (int, float)) and gross > 0:
+                card["rent_chf"] = int(gross)
+
     def _kind(self, card: dict) -> str:
         """wg_room (explicit WG wording), studio (tiny unit) or apartment."""
         combined = " ".join([card.get("title_raw", ""), card.get("desc", ""), card.get("address", "")])
@@ -230,11 +300,17 @@ class HomegateAdapter(BaseAdapter):
             return True
         return False
 
-    def _enrich(self, card: dict) -> dict | None:
+    def _acceptable(self, card: dict) -> bool:
         rent = card["rent_chf"]
         if not rent or rent < 200:
-            return None
-        if card.get("kind") == "apartment" and rent > MAX_APARTMENT_PRICE:
+            return False
+        return not (card.get("kind") == "apartment" and rent > MAX_APARTMENT_PRICE)
+
+    def _enrich(self, card: dict) -> dict | None:
+        """Build the ad. card['lat'/'lng'] must be filled (embedded or geocoded) or the ad is
+        dropped; if absent, geocode it here (single-ad path used by tests/tools)."""
+        rent = card["rent_chf"]
+        if not self._acceptable(card):
             return None
 
         address = card["address"] or "Zürich"
@@ -251,7 +327,9 @@ class HomegateAdapter(BaseAdapter):
             title = " ".join(parts)
 
         # Geocode the address
-        lat, lng = _geocode(address)
+        lat, lng = card.get("lat"), card.get("lng")
+        if lat is None and "lat" not in card:
+            lat, lng = _geocode(address)
         if lat is None or lng is None:
             # Never invent a location: the Zürich-centre fallback made unplaceable ads
             # look like a 5-minute commute and rank at the top.
@@ -270,7 +348,7 @@ class HomegateAdapter(BaseAdapter):
             "available_from": "flexible",
             "raw_text":       raw_text,
             "url":            card["url"],
-            "listed_at":      None,
+            "listed_at":      card.get("listed_at"),
             "kind":           card.get("kind", "wg_room"),
             "rooms":          card.get("rooms"),
             "living_area_m2": float(card["space_m2"]) if card.get("space_m2") else None,

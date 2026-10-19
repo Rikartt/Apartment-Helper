@@ -52,3 +52,16 @@ def norm_dt(value) -> str | None:
     if dt > datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1) or dt.year < 2000:
         return None
     return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def load_known(source: str) -> tuple[bool, dict[str, str]]:
+    """(full_refresh, known {external_id: marker}) for an incremental source. Any DB problem
+    degrades to a full refresh rather than failing the run."""
+    from .. import db
+    try:
+        if db.full_refresh_due(source, full_refresh_hours()):
+            return True, {}
+        return False, db.get_known(source)
+    except Exception as e:
+        print(f"[{source}] known-ID store unavailable ({e}); doing a full refresh")
+        return True, {}
