@@ -315,6 +315,7 @@
   .map-legend .row { display:flex; align-items:center; gap:7px; white-space:nowrap; }
   .map-legend .swatch { width:18px; height:10px; border-radius:999px; border:1px solid #111; }
   .map-legend .eth-marker { width:10px; height:10px; box-shadow:none; margin:0 4px; }
+  .ring-label span { font-size:var(--fs-xs); background:#111c; padding:0 3px; opacity:.8; white-space:nowrap; letter-spacing:.04em; }
   .map-legend hr { border:none; border-top:1px solid #2a2a2a; margin:4px 0; }
 
   @media (max-width:760px) {
@@ -596,6 +597,21 @@ skipLeafletTabs();
 ethMarker(ETH_ZENTRUM, 'ETH Zentrum');
 ethMarker(ETH_HOENGGERBERG, 'ETH Hönggerberg');
 
+// Approximate commute rings (10/20/30 min) around the selected campus. Same straight-line model as
+// backend/commute.py (22 km/h transit, 15 km/h bike), so these are NOT real travel times.
+const RING_KMH = { transit: 22, bike: 15 };
+const ringLayer = L.layerGroup().addTo(map);
+function drawRings() {
+  ringLayer.clearLayers();
+  const c = campus === 'hoenggerberg' ? ETH_HOENGGERBERG : ETH_ZENTRUM, col = mode === 'bike' ? '#4caf50' : '#2196f3';
+  [30, 20, 10].forEach(min => {
+    const r = RING_KMH[mode] * min / 60 * 1000;
+    L.circle(c, { radius: r, interactive: false, color: col, weight: 1, opacity: .45, dashArray: '4 5', fillColor: col, fillOpacity: .035 }).addTo(ringLayer);
+    const lat = c[0] + r / 111320;   // label on the north edge of the ring
+    L.marker([lat, c[1]], { interactive: false, keyboard: false, icon: L.divIcon({ className: 'ring-label', html: `<span style="color:${col}">~${min} min</span>`, iconSize: [50, 12], iconAnchor: [25, 6] }) }).addTo(ringLayer);
+  });
+}
+
 const RENT_TIERS = [
   { key: 'low',  max: 800,      label: '≤ 800 CHF',    color: '#66bb6a' },
   { key: 'mid',  max: 1000,     label: '801–1000 CHF', color: '#42a5f5' },
@@ -792,8 +808,8 @@ async function api(url, opts) {
 // ── Filters ──────────────────────────────────────────────────────────────────
 function seg(ids, active) { ids.forEach(([id, v]) => $(id).classList.toggle('active', v === active)); }
 function syncPressed() { document.querySelectorAll('.seg button').forEach(b => b.setAttribute('aria-pressed', String(b.classList.contains('active')))); }
-function setCampus(c) { campus = c; seg([['btn-zentrum','zentrum'],['btn-hoenggerberg','hoenggerberg']], c); applyFilters(); }
-function setMode(m)   { mode = m;   seg([['btn-transit','transit'],['btn-bike','bike']], m); applyFilters(); }
+function setCampus(c) { campus = c; drawRings(); seg([['btn-zentrum','zentrum'],['btn-hoenggerberg','hoenggerberg']], c); applyFilters(); }
+function setMode(m)   { mode = m; drawRings();   seg([['btn-transit','transit'],['btn-bike','bike']], m); applyFilters(); }
 function setKind(k)   { kindFilter = k; seg([['btn-kind-wg','wg'],['btn-kind-studio','studio']], k); applyFilters(); }
 function setPoster(p) { posterFilter = p; seg([['btn-poster-all','all'],['btn-poster-private','private'],['btn-poster-agency','agency']], p); applyFilters(); }
 function setSort(s)   { sortMode = s; seg([['btn-sort-relevance','relevance'],['btn-sort-match','match'],['btn-sort-reply','reply'],['btn-sort-commute','commute'],['btn-sort-rent','rent']], s); applyFilters(); }
