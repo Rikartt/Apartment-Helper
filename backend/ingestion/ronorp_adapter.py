@@ -10,17 +10,17 @@ Geocoding via OSM Nominatim (shared cache with wgzimmer adapter).
 """
 import re
 import time
-from functools import lru_cache
 
 import httpx
 from bs4 import BeautifulSoup
 from playwright.sync_api import sync_playwright
 
 from .base import BaseAdapter
+from .geocode import geocode as _geocode
 
 BASE         = "https://ronorp.net"
 SEARCH_URL   = f"{BASE}/zurich/market/housing/zimmer-wg"
-MAX_PAGES    = 5       # pagination pages to walk
+MAX_PAGES    = 1       # robots.txt disallows ?page= URLs, so only the first page is read
 MAX_ADS      = 60
 SCRAPE_DELAY = 1.0    # seconds between detail-page fetches
 GEOCODE_DELAY = 1.0   # Nominatim policy: ≤1 req/sec
@@ -44,6 +44,10 @@ class RonorpAdapter(BaseAdapter):
     def fetch(self) -> list[dict]:
         urls = self._get_listing_urls()
         print(f"[ronorp] {len(urls)} listing URLs found")
+        # robots.txt forbids ?page=, so only page 1 is ever read: an ad that is not on it
+        # may simply be on page 2. Never treat "unseen" as "gone" for this source.
+        self.truncated = True
+        self.truncated_reason = "only the first results page is read (robots.txt)"
 
         ads = []
         for url in urls[:MAX_ADS]:
@@ -73,10 +77,17 @@ class RonorpAdapter(BaseAdapter):
                     url = SEARCH_URL if page_num == 1 else f"{SEARCH_URL}?page={page_num}"
                     try:
                         page.goto(url, timeout=30_000, wait_until="networkidle")
-                        # Wait for listing cards to appear
-                        page.wait_for_selector("a[href*='/market/posts/']", timeout=15_000)
+                        # Wait for either listing cards or the explicit empty-state text
+                        page.wait_for_function(
+                            "document.querySelector(\"a[href*='/market/posts/']\")"
+                            " || /Es sind noch keine Inhalte vorhanden/.test(document.body.innerText)",
+                            timeout=8_000)
                     except Exception as e:
                         print(f"[ronorp] page {page_num} timed out: {e}")
+                        break
+                    if _is_empty_state(page.inner_text("body")):
+                        print("[ronorp] category is empty on the site right now "
+                              "(\"Es sind noch keine Inhalte vorhanden\"); returning 0 listings")
                         break
 
                     soup = BeautifulSoup(page.content(), "lxml")
@@ -160,7 +171,7 @@ class RonorpAdapter(BaseAdapter):
         address = _extract_address(soup, text)
 
         # Filter out non-Zürich listings (Ronorp covers all Swiss cities)
-        if not _is_zurich(address, text):
+        if not address or not _is_zurich(address, text):
             return None
 
         # --- geocode ---
@@ -205,7 +216,7 @@ class RonorpAdapter(BaseAdapter):
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _extract_address(soup: BeautifulSoup, text: str) -> str:
+def _extract_address(soup: BeautifulSoup, text: str) -> str | None:
     """Best-effort address extraction from Ronorp listing page."""
     # Look for a Swiss postal code + city pattern: "8001 Zürich" etc.
     m = re.search(r"\b(80[0-9]{2}|8[1-9]\d{2})\s+(Zürich|Zuerich|Zurich|[A-ZÄÖÜ][a-zäöü]+)", text)
@@ -234,7 +245,13 @@ def _extract_address(soup: BeautifulSoup, text: str) -> str:
         if re.search(r"zürich|zuerich|zurich", ht, re.I):
             return ht[:100]
 
-    return "Zürich"
+    return None
+
+
+def _is_empty_state(body_text: str) -> bool:
+    """True if Ronorp's category page says it has no posts (checked 2026-10-18:
+    its API returned total_count 0 for Zürich zimmer-wg; not a block)."""
+    return "keine Inhalte vorhanden" in body_text
 
 
 def _is_zurich(address: str, text: str) -> bool:
@@ -246,27 +263,3 @@ def _is_zurich(address: str, text: str) -> bool:
     if re.search(r"zürich|zuerich|zurich", combined):
         return True
     return False
-
-
-@lru_cache(maxsize=256)
-def _geocode(address: str) -> tuple[float | None, float | None]:
-    """OSM Nominatim geocoder, cached per address string."""
-    try:
-        time.sleep(GEOCODE_DELAY)
-        resp = httpx.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": f"{address}, Switzerland",
-                "format": "json",
-                "limit": 1,
-                "countrycodes": "ch",
-            },
-            headers={"User-Agent": _GEOCODE_UA},
-            timeout=8,
-        )
-        data = resp.json()
-        if data:
-            return float(data[0]["lat"]), float(data[0]["lon"])
-    except Exception as e:
-        print(f"[ronorp] geocode failed for '{address}': {e}")
-    return None, None

@@ -1,7 +1,9 @@
+import os
 import re
 import time
 import httpx
 from .base import BaseAdapter
+from ..commute import estimate_commute, ETH_ZENTRUM, ETH_HOENGGERBERG
 
 SEARCH_PAGE = "https://flatfox.ch/en/search/"
 PIN_URL     = "https://flatfox.ch/api/v1/pin/"
@@ -10,12 +12,42 @@ DETAIL_URL  = "https://flatfox.ch/api/v1/public-listing/"
 # Bounding box centred on ETH Zentrum, ~25 km radius (covers ~60 min transit)
 BBOX = {"west": 8.22, "east": 8.88, "north": 47.60, "south": 47.15}
 
-BATCH = 50   # PKs per detail request
-DELAY = 1.5  # seconds between batches
+BATCH = 50    # PKs per detail request
+DELAY = 1.5   # seconds between batches
+MAX_PINS = 1000
+# Whole apartments (group mode) are on by default; set WGPENDLER_INCLUDE_APARTMENTS=0 to skip.
+INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS", "1") != "0"
+MAX_PIN_PRICE = 2500
+MAX_APARTMENT_PRICE = 6000  # CHF/month; anything dearer is not a student-group flat
+MIN_APARTMENT_PRICE = 700   # below this a "flat" is a parking space/storage, not a home
+MIN_PIN_PRICE = 250         # cheapest plausible WG room; drops parking/storage pins early
+APARTMENT_CATEGORIES = {"APARTMENT", "HOUSE"}
+MAX_APARTMENT_TRANSIT_MIN = 55  # straight-line transit estimate to the nearer campus
+PIN_DELAY = 0.5  # API hard cap (requests above this return a 400 ValidationError)
+
+
+def _num(v) -> float | None:
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if f > 0 else None
+
+
+def _keep_apartment(l: dict, ad: dict) -> bool:
+    """Residential flats/houses only, sane rent, reachable from ETH."""
+    if l.get("object_category") not in APARTMENT_CATEGORIES:
+        return False
+    if not (MIN_APARTMENT_PRICE <= ad["rent_chf"] <= MAX_APARTMENT_PRICE) or not ad.get("rooms"):
+        return False
+    t = min(estimate_commute(ad["lat"], ad["lng"], c)["transit_min"]
+            for c in (ETH_ZENTRUM, ETH_HOENGGERBERG))
+    return t <= MAX_APARTMENT_TRANSIT_MIN
 
 
 class FlatfoxAdapter(BaseAdapter):
     def fetch(self) -> list[dict]:
+        self.truncated, self.truncated_reason = False, ""
         session = httpx.Client(
             headers={
                 "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
@@ -33,14 +65,17 @@ class FlatfoxAdapter(BaseAdapter):
         session.headers["X-CSRFToken"] = csrf_token
         session.headers["Cookie"] = f"csrftoken={csrf_token}"
 
-        # get pin IDs in bounding box (all listing types; we filter to SHARED below)
-        r1 = session.get(PIN_URL, params={**BBOX, "listing_type": "rent", "max_count": 400})
-        r1.raise_for_status()
-        pins = r1.json()
-        if not isinstance(pins, list):
-            print(f"[flatfox] unexpected pin response: {pins}")
-            return []
-        print(f"[flatfox] {len(pins)} pins in bounding box")
+        # The pin API caps at 1000 pins per request (verified: max_count>1000
+        # -> 400) and ignores object_category filters, so tile the bbox
+        # recursively until every tile returns <1000 pins.
+        pins = self._collect_pins(session, BBOX)
+        # Shared rooms are cheap; skip pins priced far above any WG room to
+        # save detail requests (price_display is monthly total for rentals).
+        cap = MAX_APARTMENT_PRICE if INCLUDE_APARTMENTS else MAX_PIN_PRICE
+        pins = [p for p in pins if not p.get("price_display") or p["price_display"] <= cap]
+        if INCLUDE_APARTMENTS:
+            pins = [p for p in pins if not p.get("price_display") or p["price_display"] >= MIN_PIN_PRICE]
+        print(f"[flatfox] {len(pins)} candidate pins after tiling + price prefilter")
 
         ads = []
         for i in range(0, len(pins), BATCH):
@@ -50,12 +85,15 @@ class FlatfoxAdapter(BaseAdapter):
             r2.raise_for_status()
             listings = r2.json()
             if not isinstance(listings, list):
+                self.truncated, self.truncated_reason = True, "unexpected detail response"
                 continue
 
             for l in listings:
-                if l.get("object_category") != "SHARED":
+                if l.get("object_category") != "SHARED" and not INCLUDE_APARTMENTS:
                     continue
                 ad = self._to_ad(l)
+                if ad and ad["kind"] == "apartment" and not _keep_apartment(l, ad):
+                    continue
                 if ad:
                     ads.append(ad)
 
@@ -63,6 +101,27 @@ class FlatfoxAdapter(BaseAdapter):
 
         print(f"[flatfox] {len(ads)} SHARED_FLAT listings extracted")
         return ads
+
+    def _collect_pins(self, session, box: dict, depth: int = 0) -> list[dict]:
+        r = session.get(PIN_URL, params={**box, "listing_type": "rent", "max_count": MAX_PINS})
+        r.raise_for_status()
+        pins = r.json()
+        if not isinstance(pins, list):
+            print(f"[flatfox] unexpected pin response: {pins}")
+            return []
+        time.sleep(PIN_DELAY)
+        if len(pins) < MAX_PINS or depth >= 6:
+            if len(pins) >= MAX_PINS:   # tile still full at max depth: pins were cut off
+                self.truncated, self.truncated_reason = True, "pin tile still at the 1000 cap"
+            return pins
+        mx = (box["west"] + box["east"]) / 2
+        my = (box["south"] + box["north"]) / 2
+        out: dict[int, dict] = {}
+        for w, e in ((box["west"], mx), (mx, box["east"])):
+            for s_, n in ((box["south"], my), (my, box["north"])):
+                for p in self._collect_pins(session, {"west": w, "east": e, "south": s_, "north": n}, depth + 1):
+                    out[p["pk"]] = p
+        return list(out.values())
 
     def _to_ad(self, l: dict) -> dict | None:
         pk = l.get("pk")
@@ -85,7 +144,7 @@ class FlatfoxAdapter(BaseAdapter):
         rooms = l.get("number_of_rooms")
         if rooms:
             title_parts.append(f"{rooms}-Zimmer")
-        title_parts.append("WG-Zimmer")
+        title_parts.append("WG-Zimmer" if l.get("object_category", "SHARED") == "SHARED" else "Wohnung")
         if city:
             title_parts.append(f"in {city}")
         if rent:
@@ -110,4 +169,7 @@ class FlatfoxAdapter(BaseAdapter):
             "raw_text":     raw_text,
             "url":          url,
             "listed_at":    l.get("published") or l.get("created") or None,
+            "kind":         "wg_room" if l.get("object_category") == "SHARED" else "apartment",
+            "rooms":        _num(l.get("number_of_rooms")),
+            "living_area_m2": _num(l.get("surface_living")),
         }

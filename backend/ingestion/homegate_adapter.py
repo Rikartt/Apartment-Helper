@@ -15,19 +15,25 @@ Geocoding via OSM Nominatim.
 """
 import re
 import time
-from functools import lru_cache
+import os
 
 import httpx
 from bs4 import BeautifulSoup
 
 from .base import BaseAdapter
+from .geocode import geocode as _geocode
 
 SEARCH_BASE  = (
     "https://www.homegate.ch/rent/real-estate/city-zurich/matching-list"
     "?map=false&ep={page}"
 )
-MAX_PAGES    = 8        # pages of ~20 listings each (~160 listings total)
-MAX_ADS      = 80
+MAX_PAGES    = 40       # pages of ~20 listings each; stops early when a page adds nothing
+MAX_ADS      = 400
+MAX_APARTMENTS = 300
+# Whole apartments (kind="apartment") feed group mode; on by default,
+# WGPENDLER_INCLUDE_APARTMENTS=0 turns them off. Capped to a sane student-group rent.
+INCLUDE_APARTMENTS = os.environ.get("WGPENDLER_INCLUDE_APARTMENTS", "1") != "0"
+MAX_APARTMENT_PRICE = 6000
 SCRAPE_DELAY = 1.0
 GEOCODE_DELAY = 1.0
 
@@ -38,10 +44,14 @@ _UA = (
 )
 _GEOCODE_UA = "WGPendler/1.0 (blennhemrikard@gmail.com)"
 
-# Keywords in title/description that suggest a shared or room listing
+# Keywords in title/description that suggest a shared or room listing.
+# NOTE: bare "zimmer"/"room"/"möbliert" are deliberately excluded — German
+# rental ads state room *count* as "3.5 Zimmer" on every listing (not just
+# WGs), so those words alone aren't a WG signal and would match ~all ads.
 _WG_KEYWORDS = re.compile(
-    r"\b(wg|zimmer|mitbewohner|wohngemeinschaft|room|shared|untermiete"
-    r"|co.living|coliving|furnished room|möbliert)\b",
+    r"\b(wg|mitbewohner|wohngemeinschaft|flatshare|shared room|shared flat"
+    r"|shared apartment|room in a shared|room for rent|zimmer frei"
+    r"|möbliertes zimmer|untermiete|co.living|coliving)\b",
     re.I,
 )
 
@@ -52,6 +62,7 @@ _MAX_ROOMS = 2.5
 class HomegateAdapter(BaseAdapter):
 
     def fetch(self) -> list[dict]:
+        self.truncated, self.truncated_reason = False, ""
         session = httpx.Client(
             headers={
                 "User-Agent": _UA,
@@ -71,10 +82,12 @@ class HomegateAdapter(BaseAdapter):
                 resp = session.get(url)
             except Exception as e:
                 print(f"[homegate] HTTP error page {page_num}: {e}")
+                self._truncate(f"HTTP error on page {page_num}")
                 break
 
             if resp.status_code != 200:
                 print(f"[homegate] page {page_num} returned {resp.status_code}")
+                self._truncate(f"page {page_num} returned {resp.status_code}")
                 break
 
             soup = BeautifulSoup(resp.text, "lxml")
@@ -91,18 +104,37 @@ class HomegateAdapter(BaseAdapter):
             if new_this_page == 0:
                 break
 
+            if page_num == MAX_PAGES:
+                self._truncate(f"hit MAX_PAGES={MAX_PAGES}")
             time.sleep(SCRAPE_DELAY)
 
         # Filter to WG-like listings
         ads = []
+        n_apt = 0
         for card in raw_cards:
-            if self._is_wg_candidate(card) and len(ads) < MAX_ADS:
-                ad = self._enrich(card)
-                if ad:
-                    ads.append(ad)
+            card["kind"] = self._kind(card)
+            is_apt = card["kind"] == "apartment"
+            if is_apt:
+                # separate budget so flats never crowd out WG rooms (and geocoding stays bounded)
+                if not INCLUDE_APARTMENTS:
+                    continue
+                if n_apt >= MAX_APARTMENTS:
+                    self._truncate(f"hit MAX_APARTMENTS={MAX_APARTMENTS}")
+                    continue
+            elif len(ads) - n_apt >= MAX_ADS:
+                self._truncate(f"hit MAX_ADS={MAX_ADS}")
+                continue
+            ad = self._enrich(card)
+            if ad:
+                ads.append(ad)
+                n_apt += is_apt
 
         print(f"[homegate] {len(ads)} WG-candidate listings after filtering")
         return ads
+
+    def _truncate(self, reason: str):
+        if not self.truncated:
+            self.truncated, self.truncated_reason = True, reason
 
     # ------------------------------------------------------------------
     # Parse listing cards from results page HTML
@@ -173,6 +205,13 @@ class HomegateAdapter(BaseAdapter):
 
         return cards
 
+    def _kind(self, card: dict) -> str:
+        """wg_room (explicit WG wording), studio (tiny unit) or apartment."""
+        combined = " ".join([card.get("title_raw", ""), card.get("desc", ""), card.get("address", "")])
+        if _WG_KEYWORDS.search(combined):
+            return "wg_room"
+        return "studio" if self._is_wg_candidate(card) else "apartment"
+
     def _is_wg_candidate(self, card: dict) -> bool:
         """Return True if the card looks like a WG/shared-room listing."""
         combined = " ".join([
@@ -195,6 +234,8 @@ class HomegateAdapter(BaseAdapter):
         rent = card["rent_chf"]
         if not rent or rent < 200:
             return None
+        if card.get("kind") == "apartment" and rent > MAX_APARTMENT_PRICE:
+            return None
 
         address = card["address"] or "Zürich"
 
@@ -212,7 +253,9 @@ class HomegateAdapter(BaseAdapter):
         # Geocode the address
         lat, lng = _geocode(address)
         if lat is None or lng is None:
-            lat, lng = 47.3769, 8.5481  # Zürich centre fallback
+            # Never invent a location: the Zürich-centre fallback made unplaceable ads
+            # look like a 5-minute commute and rank at the top.
+            return None
 
         raw_text = f"{title}\n{card.get('desc', '')}".strip()[:3000]
 
@@ -228,32 +271,7 @@ class HomegateAdapter(BaseAdapter):
             "raw_text":       raw_text,
             "url":            card["url"],
             "listed_at":      None,
+            "kind":           card.get("kind", "wg_room"),
+            "rooms":          card.get("rooms"),
+            "living_area_m2": float(card["space_m2"]) if card.get("space_m2") else None,
         }
-
-
-# ---------------------------------------------------------------------------
-# Shared geocoder
-# ---------------------------------------------------------------------------
-
-@lru_cache(maxsize=256)
-def _geocode(address: str) -> tuple[float | None, float | None]:
-    """OSM Nominatim geocoder, cached per address string."""
-    try:
-        time.sleep(GEOCODE_DELAY)
-        resp = httpx.get(
-            "https://nominatim.openstreetmap.org/search",
-            params={
-                "q": f"{address}, Switzerland",
-                "format": "json",
-                "limit": 1,
-                "countrycodes": "ch",
-            },
-            headers={"User-Agent": _GEOCODE_UA},
-            timeout=8,
-        )
-        data = resp.json()
-        if data:
-            return float(data[0]["lat"]), float(data[0]["lon"])
-    except Exception as e:
-        print(f"[homegate] geocode failed for '{address}': {e}")
-    return None, None
