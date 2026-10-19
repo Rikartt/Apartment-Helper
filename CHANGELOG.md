@@ -6,6 +6,23 @@
 - A befristet listing whose rental period has already ended is now a dealbreaker, "Rental period already over (ended YYYY-MM-DD)", in solo and group mode, so it never reaches Top 5 or phone alerts. Flatfox has no end-of-rental field (only `moving_date` and `is_temporary`), so the end is read from the ad's own words ("bis zum 30.09.2026", "until January 10, 2027", "Dec 18 – Jan 4, 2026"; only dates with a year, latest one wins) by the new `backend/term_dates.py` and stored in a new `term_end` column at ingest (existing rows are filled from their stored text on startup, no refetch). It stays conservative: an ad whose start is still ahead, or whose end lies before its own publication date (a wrong-year typo), is never "over".
 - A befristet ad whose stated start is more than 60 days old no longer gets "Move-in fits". Live, these were almost all fresh ads with the wrong year in Flatfox's date picker (e.g. moving date 2025-12-18 on an ad published 2026-10-19 for Dec 2026 – Jan 2027), which ranked #1 in Top 5 on a move-in date that is really two months away. Old start dates on open-ended ads still mean "available now".
 
+## 2026-10-19: smaller /listings over the wire, instant single-listing replies
+
+### Changed
+- Responses are gzipped when the browser accepts it (Starlette `GZipMiddleware`, level 6, replies under 1 kB and PNG icons left alone). At 4000 listings `/listings?kind=wg_room,studio` goes from 4.6 MB to about 0.3 MB on the wire, which is what matters on mobile data; the server spends roughly 40-90 ms more per call compressing. The service worker is unaffected (the browser decodes before it sees the body).
+- `/listings` and `/group/listings` leave out columns no page reads: `extract_attempts`, `extracted_at`, `missed_runs`, `notified_at`, `last_seen_at` (`db.LIST_OMIT`), and `/listings` also drops `fit_reasons`, a copy of `match_reasons` (the UI already reads either). About 15% less JSON. `GET /listings/{id}` and `/listings?include_raw=1` still return everything.
+- `GET /listings/{id}` and the status/sent POSTs no longer re-read and hash all listings to look up one trust score: a `trust_gen` token in the DB changes (SQLite triggers) whenever a column the trust score reads is inserted, changed or deleted, and while it matches the cached annotation the cached result is used. Detail view: about 110 ms to 9 ms at 4000 listings, with identical results (tests/test_payload.py).
+- `tools/bench.py` also times the detail and status endpoints and shows the on-the-wire size.
+
+## 2026-10-19: accessibility and keyboard pass
+
+### Fixed
+- Keyboard: Esc now returns focus to whatever opened the thing it closes (⋯ menu, Keyboard shortcuts, Top 5, Profile/Group panels; closing the detail puts focus back on the card). Tab stays inside an open modal or side panel. Space opens a focused card like Enter, and focus moves into the detail ("← Listings") instead of getting lost when the list hides. ↑/↓/Home/End move through the ⋯ menu, and tabbing out of it closes it.
+- Contrast (WCAG AA on the dark theme): red text (rents, headings) uses a new `--red-txt` (#f44336); `#c00` stays for borders and buttons. Active Transit/Bike buttons use darker blue/green under the white text. The FIT/REPLY labels inside badges are no longer faded. Commute times, "CHF" after rents, greys in the detail/Top 5/popup, map ring labels, popup links and the stats page's outcome counts were nudged until they pass.
+- Screen readers: the ↗ link on cards, the Tone/Language toggles and the map now have names; the ETH campus pins are no longer unnamed tab stops; the page has header/main/filters landmarks. The listing count is announced once when filtering settles (a debounced hidden live region), not on every slider step.
+- At phone width the main actions (top bar, filter and sort toggles, detail back, Draft, draft actions, panel buttons) are at least 40px tall; the card's Sent/Replied/Skipped/draft/↗ buttons keep their look but get an invisible 40px hit area.
+- `tests/ui_smoke.py` checks all of the above at 1440 and 390 (`run_a11y`).
+
 ## 2026-10-19: fixes from a live Flatfox end-to-end run
 
 ### Fixed

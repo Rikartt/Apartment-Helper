@@ -11,8 +11,10 @@ API part (in-process, FastAPI TestClient against the same app the dev server run
   i.e. the first request after an ingest or extraction changed the data; per-text memos are
   kept, except in the "fresh process" row (a server restart before the startup warm-up).
   warm = median of --repeat further calls. Covers /listings (as the UI asks for it, and
-  the full list), /group/listings, /best (Top 5, fake LLM), /stats, notify.pending_candidates
-  and trust.annotate.
+  the full list), /group/listings, /best (Top 5, fake LLM), /stats, the single-listing
+  endpoints (detail, status change), notify.pending_candidates and trust.annotate. Sizes are
+  the decoded JSON and, after "wire", what went over HTTP (the client sends
+  Accept-Encoding: gzip like a browser).
 
 Browser part (--browser; needs Playwright + Chromium, Leaflet from the local copy that
 tests/ui_smoke.py uses): starts tools/dev_server.py on the same DB and measures, per viewport,
@@ -78,12 +80,24 @@ def api_bench(db: Path, work: Path, repeat: int) -> list[tuple[str, float, float
         return f
 
     universe = dbm.get_all_listings(True)
+    one = universe[len(universe) // 2]["id"]
+    quiet = next((l["id"] for l in universe if not l.get("status")), one)
+
+    def post(path, body):
+        def f():
+            r = client.post(path, json=body)
+            assert r.status_code == 200, (path, r.status_code, r.text[:200])
+            return r
+        return f
+
     cases = [
         ("GET /listings?kind=wg_room,studio", http("/listings?kind=wg_room,studio")),
         ("GET /listings (all)", http("/listings")),
         ("GET /group/listings", http("/group/listings")),
         ("GET /best (Top 5, fake LLM)", http("/best")),
         ("GET /stats", http("/stats")),
+        ("GET /listings/{id} (detail)", http(f"/listings/{one}")),
+        ("POST /listings/{id}/status", post(f"/listings/{quiet}/status", {"status": None})),
         ("notify.pending_candidates()", lambda: notify.pending_candidates(now=None)),
         ("trust.annotate(all rows)", lambda: trust.annotate([dict(r) for r in universe])),
         ("trust.annotate, fresh process", "fresh"),
@@ -110,7 +124,9 @@ def api_bench(db: Path, work: Path, repeat: int) -> list[tuple[str, float, float
             warm.append(_ms(t0))
         size = ""
         if hasattr(res, "content"):
-            size = f"{len(res.content) / 1e6:.1f} MB"
+            n, wire = len(res.content), res.num_bytes_downloaded
+            size = (f"{n / 1e6:.1f} MB" if n >= 1e5 else f"{n / 1e3:.1f} kB") + \
+                (f" (wire {wire / 1e3:.0f} kB)" if wire != n else "")
         elif isinstance(res, list):
             size = f"{len(res)} rows"
         out.append((name, cold, statistics.median(warm), size))

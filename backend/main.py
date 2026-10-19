@@ -10,6 +10,7 @@ from typing import Literal, Optional
 from dotenv import load_dotenv
 from fastapi import FastAPI, Query
 from fastapi.requests import Request
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -21,7 +22,8 @@ from .access import access_guard  # noqa: E402
 from .db import (  # noqa: E402
     init_db, get_all_listings, get_listing, set_status, get_stats, update_scores,
     start_run, finish_run, recent_runs, last_ok_run_age_seconds,
-    add_sent_message, get_sent_messages, delete_sent_message, strip_raw,
+    add_sent_message, get_sent_messages, delete_sent_message, strip_raw, trust_generation,
+    LIST_OMIT,
 )
 from .drafting import draft, DraftError, text_language  # noqa: E402
 from .summary import summarize as summarize_ad  # noqa: E402
@@ -229,6 +231,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="WGPendler", lifespan=lifespan)
+# Middleware added later wraps the earlier ones. GZip goes first (innermost) so it sees each
+# route's whole body in one piece; behind the guard's BaseHTTPMiddleware every reply arrives
+# streamed and would be gzipped regardless of minimum_size. /listings is ~4.6 MB of JSON at
+# 4000 ads and ~13x smaller gzipped, which matters on mobile data. Level 6 (zlib's default) is
+# ~25 kB bigger than 9 on that payload but twice as fast; small replies (< 1 kB) and
+# already-compressed types (PNG icons, event streams) are left alone.
+app.add_middleware(GZipMiddleware, minimum_size=1000, compresslevel=6)
 app.middleware("http")(access_guard)
 app.include_router(backup.router)
 app.include_router(group_router)  # Phase 7: /group/listings, /group/draft/{id}
@@ -238,16 +247,18 @@ def _load_profile() -> dict:
     return load_profile()
 
 
-def _decorate(l: dict, profile: dict) -> dict:
+def _decorate(l: dict, profile: dict, alias: bool = True) -> dict:
     """Attach live fit/reply scores, match-reason chips and dealbreakers.
     Scores are computed per request (pure arithmetic) so recency decay is always
-    current; commute minutes come from the DB, never recomputed."""
+    current; commute minutes come from the DB, never recomputed. alias=False leaves out
+    fit_reasons (a copy of match_reasons) for the big list payload."""
     d = score_detail(l, profile)
     l["fit_score"] = d["fit"]
     l["fit_precise"] = d["fit_precise"]      # unrounded fit, for tie-breaking the sort
     l["reply_score"] = d["reply"]
     l["match_reasons"] = d["reasons"]
-    l["fit_reasons"] = d["reasons"]          # alias of match_reasons
+    if alias:
+        l["fit_reasons"] = d["reasons"]      # alias of match_reasons
     l["dealbreakers"] = d["dealbreakers"]
     l["is_dealbreaker"] = bool(d["dealbreakers"])
     l["status"] = l.get("status") or None
@@ -256,20 +267,36 @@ def _decorate(l: dict, profile: dict) -> dict:
     return l
 
 
+def _live_universe() -> tuple[int | None, list[dict]]:
+    """Every live listing with raw text (the trust universe), plus the trust_gen token read
+    BEFORE the rows, so a write in between can only make the cache tag stale, never wrong."""
+    gen = trust_generation()
+    return gen, get_all_listings(True)
+
+
 def _warm_trust():
     """Score trust on the background thread (after an ingest, an extraction batch, or at
     startup when the ingest is skipped), so the next /listings is fast: a cold run over
     ~4000 listings takes about a second, later calls hit the cache."""
     try:
-        trust.annotate(get_all_listings(True))
+        gen, rows = _live_universe()
+        trust.annotate(rows, gen=gen)
     except Exception as e:
         print(f"[ingest] trust warm-up failed: {e}")
 
 
-def _with_trust(rows: list[dict], universe: list[dict] | None = None) -> list[dict]:
+def _with_trust(rows: list[dict], universe: list[dict] | None = None,
+                gen: int | None = None) -> list[dict]:
     """Attach trust_score / trust_level / trust_reasons. The price median and the duplicate
-    check look at every listing in the DB (with raw text), not just the requested rows."""
-    trust.annotate(rows, universe if universe is not None else get_all_listings(True))
+    check look at every listing in the DB (with raw text), not just the requested rows.
+    Without a universe (the single-listing endpoints) the cached result is used when the DB
+    has not changed since it was computed, instead of re-reading all ~4000 listings."""
+    if universe is None:
+        gen = trust_generation()
+        if trust.annotate_cached(rows, gen):
+            return rows
+        universe = get_all_listings(True)
+    trust.annotate(rows, universe, gen=gen)
     return rows
 
 
@@ -277,19 +304,29 @@ def _with_trust(rows: list[dict], universe: list[dict] | None = None) -> list[di
 def listings(include_raw: bool = Query(False), include_gone: bool = Query(False),
              kind: Optional[str] = Query(None)):
     """All listings with live scores. raw_text is omitted unless ?include_raw=1
-    (about 1.3 kB per ad and not needed to render the map). Listings that
-    vanished from their source are hidden unless ?include_gone=1."""
+    (about 1.3 kB per ad and not needed to render the map); without it the unread
+    bookkeeping columns (db.LIST_OMIT) and the fit_reasons alias of match_reasons are left
+    out too. Listings that vanished from their source are hidden unless ?include_gone=1."""
     profile = _load_profile()
+    gen = trust_generation()
     rows = get_all_listings(True, include_gone)
     # one DB read: the trust universe is the live (not gone) part of the same rows
     universe = [l for l in rows if l.get("gone_at") is None] if include_gone else rows
-    rows = _with_trust(rows, universe)
+    rows = _with_trust(rows, universe, gen)
     if not include_raw:
         rows = [strip_raw(l) for l in rows]
     if kind:   # optional comma list, e.g. kind=wg_room,studio (default: everything)
         want = {k.strip() for k in kind.split(",") if k.strip()}
         rows = [l for l in rows if (l.get("kind") or "wg_room") in want]
-    return JSONResponse([_decorate(l, profile) for l in rows])
+    out = [_decorate(l, profile, alias=include_raw) for l in rows]
+    return JSONResponse(out if include_raw else [_list_view(l) for l in out])
+
+
+def _list_view(l: dict) -> dict:
+    """Drop bookkeeping columns no page reads (db.LIST_OMIT) from a list-payload row."""
+    for k in LIST_OMIT:
+        l.pop(k, None)
+    return l
 
 
 @app.get("/listings/{listing_id}")
@@ -419,8 +456,8 @@ def best_listings(hide_promo: bool = Query(False), hide_fixed_term: bool = Query
     now = datetime.now(timezone.utc)
     # whole flats belong to group mode: never suggest them as a WG room; likely scams
     # (low trust, hidden by default in the list) are never suggested either
-    rows = get_all_listings(True)
-    rows = [strip_raw(l) for l in _with_trust(rows, rows)]
+    gen, rows = _live_universe()
+    rows = [strip_raw(l) for l in _with_trust(rows, rows, gen)]
     eligible = [l for l in (_decorate(l, profile) for l in rows
                             if (l.get("kind") or "wg_room") != "apartment"
                             and l.get("trust_level") != "low")

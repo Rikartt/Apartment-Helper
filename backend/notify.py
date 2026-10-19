@@ -21,7 +21,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import trust
-from .db import get_conn, get_all_listings, utc_now, get_state, set_state
+from .db import get_conn, get_all_listings, utc_now, get_state, set_state, trust_generation
 from .filters import is_fixed_term, promo_active  # shared with Top 5 (/best)
 from .scoring import score_detail, load_profile, _best_transit
 from .group import get_group, group_detail, validate_group
@@ -136,7 +136,8 @@ def pending_candidates(profile: dict | None = None, now: datetime | None = None)
     out = []
     filters = get_filters()
     utc = now or datetime.now(timezone.utc)
-    rows = trust.annotate(get_all_listings(include_raw=True))
+    gen = trust_generation()   # read before the rows (see main._live_universe)
+    rows = trust.annotate(get_all_listings(include_raw=True), gen=gen)
     for l in rows:
         # cheapest test first: most rows were already announced, acted on or are older
         # than the window (the checks are independent, so their order changes nothing)

@@ -9,7 +9,7 @@
 <style>
   :root {
     --bg:#1a1a1a; --panel:#111; --line:#333; --line2:#1e1e1e; --txt:#e0e0e0; --dim:#888; --faint:#555;
-    --red:#c00; --amber:#ffc107;
+    --red:#c00; --red-txt:#f44336; --amber:#ffc107;
     --fs-xs:.62rem; --fs-sm:.72rem; --fs-md:.8rem; --fs-lg:1.1rem;
     /* chart marks: validated for colour-vision deficiency on the #111 panel */
     --bar:#3d8fd6; --pos:#3d8fd6; --neg:#c97814; --track:#222;
@@ -19,7 +19,7 @@
   a { color:#64b5f6; }
   :focus-visible { outline:2px solid var(--amber); outline-offset:1px; }
   #topbar { background:var(--panel); border-bottom:2px solid var(--red); padding:8px 16px; display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:5; }
-  #topbar h1 { color:var(--red); font-size:var(--fs-lg); letter-spacing:.15em; text-transform:uppercase; }
+  #topbar h1 { color:var(--red-txt); font-size:var(--fs-lg); letter-spacing:.15em; text-transform:uppercase; }
   #topbar .sub { color:var(--dim); font-size:var(--fs-sm); letter-spacing:.08em; text-transform:uppercase; }
   #topbar a.back { margin-left:auto; border:1px solid var(--line); color:#b0b0b0; font-size:var(--fs-sm); padding:4px 10px; text-decoration:none; letter-spacing:.08em; white-space:nowrap; }
   #topbar a.back:hover { border-color:var(--red); color:var(--txt); }
@@ -32,7 +32,7 @@
   .tile .n { font-size:var(--fs-xs); color:var(--dim); margin-top:2px; }
   .panel { background:var(--panel); border:1px solid var(--line); padding:12px; }
   .panel h2 { font-size:var(--fs-xs); color:var(--dim); letter-spacing:.12em; text-transform:uppercase; font-weight:normal; margin-bottom:8px; display:flex; justify-content:space-between; gap:8px; }
-  .panel h2 span:last-child { color:var(--faint); }
+  .panel h2 span:last-child { color:var(--dim); }
   .learn { margin-bottom:16px; }
   .learn p { font-size:var(--fs-sm); line-height:1.5; color:#bbb; }
   .learn p b { color:var(--txt); font-weight:normal; }
@@ -60,6 +60,7 @@
     main { padding:10px; }
     #topbar { padding:8px 10px; }
     #topbar .sub { display:none; }
+    #topbar a.back { padding:12px 10px; }   /* 40px tap target */
     .tiles { grid-template-columns:1fr 1fr; }
     .tile:first-child { grid-column:1 / -1; }
     .tile .v { font-size:1.3rem; }
