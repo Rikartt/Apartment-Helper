@@ -806,7 +806,26 @@ function promoChip(l) {
   const tip = /flatfox priority/i.test(l.promo) ? `Flatfox Priority: only paying Priority members can apply${until ? ' until ' + until : ''}` : `${l.promo}: a paid placement on the source site`;
   return `<span class="promo-chip" title="${esc(tip)}">${/priority/i.test(l.promo) ? 'Priority' : 'Premium'}${until ? ' · ' + esc(until) : ''}</span>`;
 }
-function savePromo() { try { localStorage.setItem('wgp_hide_promo', $('hidePromo').checked ? '1' : '0'); localStorage.setItem('wgp_hide_term', $('hideTerm').checked ? '1' : '0'); } catch (_) {} }
+function savePromo() { try { localStorage.setItem('wgp_hide_promo', $('hidePromo').checked ? '1' : '0'); localStorage.setItem('wgp_hide_term', $('hideTerm').checked ? '1' : '0'); } catch (_) {} pushAlertFilters(); }
+// Phone alerts skip what these two checkboxes hide: mirror them to the server (best-effort).
+const ALERT_FILTERS = [['hidePromo', 'wgp_hide_promo', 'hide_promo'], ['hideTerm', 'wgp_hide_term', 'hide_fixed_term']];
+function pushAlertFilters() {
+  const body = Object.fromEntries(ALERT_FILTERS.map(([id, , k]) => [k, $(id).checked]));
+  fetch('/notify/filters', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).catch(() => {});
+}
+// On load: this browser's saved choice wins (push it if the server differs); a browser that
+// never chose adopts the server's (e.g. set from the phone).
+function syncAlertFilters(server) {
+  if (!server) return;
+  let push = false, adopt = false;
+  for (const [id, lsKey, k] of ALERT_FILTERS) {
+    let saved = null; try { saved = localStorage.getItem(lsKey); } catch (_) {}
+    if (saved == null) { if (!!server[k] !== $(id).checked) { $(id).checked = !!server[k]; adopt = true; } }
+    else if ((saved === '1') !== !!server[k]) push = true;
+  }
+  if (adopt) { try { for (const [id, lsKey] of ALERT_FILTERS) localStorage.setItem(lsKey, $(id).checked ? '1' : '0'); } catch (_) {} if (allListings.length) applyFilters(); }
+  if (push) pushAlertFilters();
+}
 try { $('hidePromo').checked = localStorage.getItem('wgp_hide_promo') === '1'; $('hideTerm').checked = localStorage.getItem('wgp_hide_term') === '1'; } catch (_) {}
 // Fixed-term (befristet): the source's own flag when it has one (Flatfox), else the ad text
 // match done at ingest, else the duration Claude extracted.
@@ -929,7 +948,7 @@ function closeMenu() { $('more-menu').hidden = true; $('more-btn').setAttribute(
 document.addEventListener('click', e => { if (!e.target.closest('.menu-wrap')) closeMenu(); });
 // Phone alerts (backend/notify.py): show status; send a test when configured.
 async function refreshAlertsState() {
-  try { const st = await api('/notify/status'); const ch = st.channels || [];
+  try { const st = await api('/notify/status'); const ch = st.channels || []; syncAlertFilters(st.filters);
     $('alerts-state').textContent = ch.length ? `on · ${ch.join(', ')} · fit ≥ ${st.min_fit}` : 'not set up';
     return st; } catch (_) { $('alerts-state').textContent = 'unavailable'; return null; }
 }
