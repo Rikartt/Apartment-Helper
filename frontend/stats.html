@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WGPendler · Reply stats</title>
+<meta name="theme-color" content="#111111">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<style>
+  :root {
+    --bg:#1a1a1a; --panel:#111; --line:#333; --line2:#1e1e1e; --txt:#e0e0e0; --dim:#888; --faint:#555;
+    --red:#c00; --amber:#ffc107;
+    --fs-xs:.62rem; --fs-sm:.72rem; --fs-md:.8rem; --fs-lg:1.1rem;
+    /* chart marks: validated for colour-vision deficiency on the #111 panel */
+    --bar:#3d8fd6; --pos:#3d8fd6; --neg:#c97814; --track:#222;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { font-family:'Courier New',Courier,monospace; background:var(--bg); color:var(--txt); min-height:100vh; }
+  a { color:#64b5f6; }
+  :focus-visible { outline:2px solid var(--amber); outline-offset:1px; }
+  #topbar { background:var(--panel); border-bottom:2px solid var(--red); padding:8px 16px; display:flex; align-items:center; gap:12px; position:sticky; top:0; z-index:5; }
+  #topbar h1 { color:var(--red); font-size:var(--fs-lg); letter-spacing:.15em; text-transform:uppercase; }
+  #topbar .sub { color:var(--dim); font-size:var(--fs-sm); letter-spacing:.08em; text-transform:uppercase; }
+  #topbar a.back { margin-left:auto; border:1px solid var(--line); color:#b0b0b0; font-size:var(--fs-sm); padding:4px 10px; text-decoration:none; letter-spacing:.08em; white-space:nowrap; }
+  #topbar a.back:hover { border-color:var(--red); color:var(--txt); }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  .tiles { display:grid; grid-template-columns:repeat(5, 1fr); gap:1px; background:var(--line); border:1px solid var(--line); margin-bottom:16px; }
+  .tile { background:var(--panel); padding:10px 12px; }
+  .tile .k { font-size:var(--fs-xs); color:var(--dim); letter-spacing:.1em; text-transform:uppercase; }
+  .tile .v { font-size:1.6rem; color:var(--amber); font-variant-numeric:tabular-nums; margin-top:4px; }
+  .tile .v small { font-size:var(--fs-sm); color:var(--dim); margin-left:4px; }
+  .tile .n { font-size:var(--fs-xs); color:var(--dim); margin-top:2px; }
+  .panel { background:var(--panel); border:1px solid var(--line); padding:12px; }
+  .panel h2 { font-size:var(--fs-xs); color:var(--dim); letter-spacing:.12em; text-transform:uppercase; font-weight:normal; margin-bottom:8px; display:flex; justify-content:space-between; gap:8px; }
+  .panel h2 span:last-child { color:var(--faint); }
+  .learn { margin-bottom:16px; }
+  .learn p { font-size:var(--fs-sm); line-height:1.5; color:#bbb; }
+  .learn p b { color:var(--txt); font-weight:normal; }
+  .state { display:inline-block; font-size:var(--fs-xs); letter-spacing:.1em; text-transform:uppercase; padding:1px 6px; border:1px solid; margin-right:6px; }
+  .state.on { color:#66bb6a; border-color:#1a4a20; background:#10261a; }
+  .state.off { color:var(--amber); border-color:#5a4a10; background:#2a2000; }
+  .progress { margin-top:8px; }
+  .progress svg { display:block; width:100%; height:12px; }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  .rows { display:flex; flex-direction:column; gap:3px; }
+  .row { display:grid; grid-template-columns:minmax(80px, 34%) 1fr auto; gap:8px; align-items:center; font-size:var(--fs-sm); padding:2px 0; }
+  .row .lab { color:#bbb; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .row .val { color:var(--txt); font-variant-numeric:tabular-nums; white-space:nowrap; text-align:right; min-width:9ch; }
+  .row .val small { color:var(--dim); }
+  .row.few .lab, .row.few .val { color:var(--dim); }
+  .row svg { display:block; width:100%; height:12px; overflow:visible; }
+  .row:hover .lab, .row:focus-visible .lab { color:var(--txt); }
+  .row:hover rect.hit, .row:focus-visible rect.hit { fill:#ffffff10; }
+  .note { font-size:var(--fs-xs); color:var(--dim); margin-top:12px; line-height:1.5; }
+  .empty { font-size:var(--fs-sm); color:var(--dim); padding:6px 0; }
+  .factors .row { grid-template-columns:minmax(80px, 34%) 1fr 16ch; }
+  #err { display:none; border:1px solid #5a1010; background:#1a0a0a; color:#e57373; padding:8px 10px; font-size:var(--fs-sm); margin-bottom:16px; }
+  #tip { position:fixed; pointer-events:none; background:#000; border:1px solid var(--line); color:var(--txt); font-size:var(--fs-xs); padding:4px 7px; z-index:10; display:none; white-space:nowrap; letter-spacing:.03em; }
+  @media (max-width:760px) {
+    main { padding:10px; }
+    #topbar { padding:8px 10px; }
+    #topbar .sub { display:none; }
+    .tiles { grid-template-columns:1fr 1fr; }
+    .tile:first-child { grid-column:1 / -1; }
+    .tile .v { font-size:1.3rem; }
+    .grid { grid-template-columns:1fr; gap:10px; }
+    .row { grid-template-columns:minmax(70px, 38%) 1fr auto; }
+    .factors .row { grid-template-columns:minmax(0, 1fr) 28% auto; }
+    .factors .row .val small { display:none; }
+  }
+</style>
+</head>
+<body>
+<header id="topbar">
+  <h1>WGPendler</h1><span class="sub">Reply stats</span>
+  <a class="back" href="/">← Back to map</a>
+</header>
+<main>
+  <div id="err" role="alert"></div>
+  <section class="tiles" id="tiles" aria-label="Summary"></section>
+  <section class="panel learn" id="learn" aria-label="Learning"></section>
+  <div class="grid" id="charts"></div>
+  <p class="note">An outcome is a listing you marked Replied (a reply) or one still marked Sent 7 days after your first message (no reply). Skipped listings and recent sends are left out. Groups with fewer than 5 outcomes are greyed: too few to read much into.</p>
+</main>
+<div id="tip" role="tooltip"></div>
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pct = r => r == null ? '–' : Math.round(r * 100) + '%';
+const FEW = 5;
+
+const SECTIONS = [
+  ['by_source_rate', 'By source'],
+  ['by_message_length', 'By message length'],
+  ['by_rent_band', 'By rent (CHF)'],
+  ['by_days_after_posting', 'By how soon you wrote'],
+  ['by_fit_band', 'By fit score'],
+  ['by_commute_band', 'By commute'],
+];
+
+// One horizontal bar on a fixed 0-100% scale, so every chart reads the same way.
+function rateBar(rate) {
+  const w = Math.max(0, Math.min(1, rate || 0)) * 100;
+  return `<svg viewBox="0 0 100 12" preserveAspectRatio="none" aria-hidden="true">
+    <rect class="hit" x="0" y="0" width="100" height="12" fill="transparent"/>
+    <rect x="0" y="2" width="100" height="8" fill="var(--track)"/>
+    ${w > 0 ? `<path d="${barPath(0, w, 2, 8)}" fill="var(--bar)"/>` : ''}
+  </svg>`;
+}
+// Bar anchored at x0 with a 4px-style rounded data end (in viewBox units the radius is small).
+function barPath(x0, x1, y, h) {
+  const left = Math.min(x0, x1), right = Math.max(x0, x1), r = Math.min(1.5, (right - left) / 2);
+  if (x1 >= x0)   // rounded on the right
+    return `M${left},${y}H${right - r}Q${right},${y} ${right},${y + r}V${y + h - r}Q${right},${y + h} ${right - r},${y + h}H${left}Z`;
+  return `M${right},${y}H${left + r}Q${left},${y} ${left},${y + r}V${y + h - r}Q${left},${y + h} ${left + r},${y + h}H${right}Z`;
+}
+
+function rateRows(rows) {
+  if (!rows || !rows.length) return '<div class="empty">No outcomes yet.</div>';
+  return '<div class="rows">' + rows.map(r => {
+    const tip = `${r.label}: ${r.replied} of ${r.n} replied (${pct(r.rate)})`;
+    return `<div class="row${r.n < FEW ? ' few' : ''}" tabindex="0" data-tip="${esc(tip)}" aria-label="${esc(tip)}">
+      <span class="lab" title="${esc(r.label)}">${esc(r.label)}</span>${rateBar(r.rate)}
+      <span class="val">${pct(r.rate)} <small>${r.replied}/${r.n}</small></span></div>`;
+  }).join('') + '</div>';
+}
+
+// Learned weights: diverging bars around zero, signed values so colour is never the only cue.
+function factorRows(factors) {
+  if (!factors || !factors.length) return '';
+  // scale to at least 1.0 so a model of tiny weights does not look like strong effects
+  const max = Math.max(1, ...factors.map(f => Math.abs(f.weight)));
+  return '<div class="rows factors">' + factors.map(f => {
+    const x = 50 + 50 * f.weight / max, pos = f.weight >= 0;
+    const verdict = Math.abs(f.weight) < 0.05 ? 'no effect' : pos ? 'helps' : 'hurts';
+    const tip = `${f.label}: weight ${f.weight > 0 ? '+' : ''}${f.weight.toFixed(2)} (${verdict})`;
+    return `<div class="row" tabindex="0" data-tip="${esc(tip)}" aria-label="${esc(tip)}">
+      <span class="lab" title="${esc(f.label)}">${esc(f.label)}</span>
+      <svg viewBox="0 0 100 12" preserveAspectRatio="none" aria-hidden="true">
+        <rect class="hit" x="0" y="0" width="100" height="12" fill="transparent"/>
+        <rect x="0" y="2" width="100" height="8" fill="var(--track)"/>
+        ${Math.abs(x - 50) > 0.2 ? `<path d="${barPath(50, x, 2, 8)}" fill="var(${pos ? '--pos' : '--neg'})"/>` : ''}
+        <rect x="49.75" y="0" width="0.5" height="12" fill="#777"/>
+      </svg>
+      <span class="val">${f.weight > 0 ? '+' : f.weight < 0 ? '−' : ''}${Math.abs(f.weight).toFixed(2)} <small>${verdict}</small></span></div>`;
+  }).join('') + '</div>';
+}
+
+function render(s) {
+  const L = s.learning || { min_outcomes: 20, active: false, n: 0 };
+  const sent = (s.resolved || 0) + (s.pending || 0);
+  const tiles = [
+    ['Reply rate', pct(s.resolved_reply_rate), s.resolved ? `${s.replied_resolved} of ${s.resolved} outcomes` : 'no outcomes yet'],
+    ['Messages sent', sent, `${s.pending || 0} still waiting (< 7 days)`],
+    ['Replies', s.counts ? s.counts.replied : 0, 'marked Replied'],
+    ['Median reply time', s.median_reply_hours == null ? '–' : s.median_reply_hours < 1 ? '&lt;1<small>h</small>' : s.median_reply_hours < 48 ? `${Math.round(s.median_reply_hours)}<small>h</small>` : `${(s.median_reply_hours / 24).toFixed(1)}<small>d</small>`, 'from your first message'],
+    ['Skipped', s.counts ? s.counts.rejected : 0, 'not outcomes'],
+  ];
+  $('tiles').innerHTML = tiles.map(([k, v, n]) => `<div class="tile"><div class="k">${k}</div><div class="v">${v}</div><div class="n">${esc(n)}</div></div>`).join('');
+
+  const need = L.min_outcomes || 20, have = s.resolved || 0;
+  $('learn').innerHTML = L.active
+    ? `<h2><span>What gets replies (learned)</span><span>${L.n} outcomes</span></h2>
+       <p><span class="state on">Active</span>The reply score now blends in a model fitted to your outcomes, at <b>${Math.round(L.blend_weight * 100)}%</b> weight (it grows as more outcomes come in, up to 70%). Trained ${esc((L.trained_at || '').slice(0, 16))} UTC.</p>
+       <div class="note" style="margin:8px 0 6px">Weights (positive = more replies, all else equal):</div>
+       ${factorRows(L.factors)}`
+    : `<h2><span>Learning from your replies</span><span>${have} / ${need} outcomes</span></h2>
+       <p><span class="state off">Not yet</span>After <b>${need}</b> outcomes the reply score starts learning what actually got answers. You have <b>${have}</b>${have ? '' : ': mark listings Sent and Replied as you go'}.</p>
+       <div class="progress">${rateBar(Math.min(1, have / need))}</div>`;
+
+  $('charts').innerHTML = SECTIONS.map(([key, title]) => {
+    const rows = s[key] || [];
+    const n = rows.reduce((a, r) => a + r.n, 0);
+    return `<section class="panel" aria-label="${esc(title)}"><h2><span>${esc(title)}</span><span>${n ? n + ' outcomes' : ''}</span></h2>${rateRows(rows)}</section>`;
+  }).join('');
+}
+
+// hover / focus tooltip
+const tip = $('tip');
+function showTip(el, x, y) {
+  tip.textContent = el.dataset.tip; tip.style.display = 'block';
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  tip.style.left = Math.max(4, Math.min(innerWidth - w - 4, x - w / 2)) + 'px';
+  tip.style.top = Math.max(4, y - h - 10) + 'px';
+}
+document.addEventListener('mousemove', e => {
+  const el = e.target.closest('[data-tip]');
+  if (el) showTip(el, e.clientX, e.clientY); else tip.style.display = 'none';
+});
+document.addEventListener('focusin', e => {
+  const el = e.target.closest('[data-tip]'); if (!el) return;
+  const r = el.getBoundingClientRect(); showTip(el, r.left + r.width / 2, r.top);
+});
+document.addEventListener('focusout', () => { tip.style.display = 'none'; });
+
+fetch('/stats', { credentials: 'same-origin', cache: 'no-store' })
+  .then(r => r.ok ? r.json() : Promise.reject(new Error(`server answered ${r.status}`)))
+  .then(render)
+  .catch(e => { $('err').style.display = 'block'; $('err').textContent = `✗ Could not load stats: ${e.message}`; render({}); });
+</script>
+</body>
+</html>

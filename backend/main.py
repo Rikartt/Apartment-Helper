@@ -16,18 +16,20 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-from . import llm, notify  # noqa: E402  (after load_dotenv so model env overrides apply)
+from . import llm, notify, trust  # noqa: E402  (after load_dotenv so model env overrides apply)
 from .access import access_guard  # noqa: E402
 from .db import (  # noqa: E402
     init_db, get_all_listings, get_listing, set_status, get_stats, update_scores,
     start_run, finish_run, recent_runs, last_ok_run_age_seconds,
-    add_sent_message, get_sent_messages, delete_sent_message,
+    add_sent_message, get_sent_messages, delete_sent_message, strip_raw,
 )
 from .drafting import draft, DraftError  # noqa: E402
+from .summary import summarize as summarize_ad  # noqa: E402
 from .extraction import extract_batch  # noqa: E402
 from .group import router as group_router, validate_group  # noqa: E402
 from . import backup  # noqa: E402
 from .ingest import run_ingest, ADAPTERS  # noqa: E402
+from . import learning  # noqa: E402
 from .scoring import score_detail, load_profile, PROFILE_PATH  # noqa: E402
 
 BASE_DIR     = Path(__file__).parent.parent
@@ -137,6 +139,7 @@ def _tracked_ingest(sources: list[str], trigger: str = "manual",
             _ingest_state.update(running=False, gone=gone,
                                  last_finished_at=datetime.now().isoformat())
         notify.after_ingest()   # phone digest; never raises
+        _warm_trust()
         return {"total": total, "new": new}
     finally:
         _ingest_lock.release()
@@ -246,6 +249,22 @@ def _decorate(l: dict, profile: dict) -> dict:
     return l
 
 
+def _warm_trust():
+    """Score trust on the ingest thread, so the first /listings after an ingest is fast
+    (a cold run over ~3000 listings takes a few seconds; later calls hit the cache)."""
+    try:
+        trust.annotate(get_all_listings(True))
+    except Exception as e:
+        print(f"[ingest] trust warm-up failed: {e}")
+
+
+def _with_trust(rows: list[dict], universe: list[dict] | None = None) -> list[dict]:
+    """Attach trust_score / trust_level / trust_reasons. The price median and the duplicate
+    check look at every listing in the DB (with raw text), not just the requested rows."""
+    trust.annotate(rows, universe if universe is not None else get_all_listings(True))
+    return rows
+
+
 @app.get("/listings")
 def listings(include_raw: bool = Query(False), include_gone: bool = Query(False),
              kind: Optional[str] = Query(None)):
@@ -253,7 +272,9 @@ def listings(include_raw: bool = Query(False), include_gone: bool = Query(False)
     (about 1.3 kB per ad and not needed to render the map). Listings that
     vanished from their source are hidden unless ?include_gone=1."""
     profile = _load_profile()
-    rows = get_all_listings(include_raw, include_gone)
+    rows = _with_trust(get_all_listings(True, include_gone))
+    if not include_raw:
+        rows = [strip_raw(l) for l in rows]
     if kind:   # optional comma list, e.g. kind=wg_room,studio (default: everything)
         want = {k.strip() for k in kind.split(",") if k.strip()}
         rows = [l for l in rows if (l.get("kind") or "wg_room") in want]
@@ -267,6 +288,7 @@ def listing_detail(listing_id: int):
     if not l:
         return JSONResponse({"error": "listing not found"}, status_code=404)
     l["messages"] = get_sent_messages(listing_id)
+    _with_trust([l])
     return JSONResponse(_decorate(l, _load_profile()))
 
 
@@ -284,9 +306,10 @@ def post_sent(listing_id: int, body: SentBody):
     if not text:
         return JSONResponse({"error": "message text is empty"}, status_code=422)
     msg = add_sent_message(listing_id, text, body.kind)
+    learning.refresh()
     if not msg:
         return JSONResponse({"error": "listing not found"}, status_code=404)
-    l = _decorate(get_listing(listing_id, include_raw=False), _load_profile())
+    l = _decorate(_with_trust([get_listing(listing_id, include_raw=False)])[0], _load_profile())
     l["messages"] = get_sent_messages(listing_id)
     return JSONResponse({"message": msg, "listing": l})
 
@@ -306,7 +329,9 @@ class StatusUpdate(BaseModel):
 def post_status(listing_id: int, body: StatusUpdate):
     if not set_status(listing_id, body.status):
         return JSONResponse({"error": "listing not found"}, status_code=404)
-    return JSONResponse(_decorate(get_listing(listing_id, include_raw=False), _load_profile()))
+    learning.refresh()
+    return JSONResponse(_decorate(_with_trust([get_listing(listing_id, include_raw=False)])[0],
+                                  _load_profile()))
 
 
 @app.get("/stats")
@@ -446,7 +471,9 @@ def best_listings():
 
 
 @app.post("/draft/{listing_id}")
-def draft_message(listing_id: int, followup: bool = Query(False)):
+def draft_message(listing_id: int, followup: bool = Query(False),
+                  tone: str = Query("warm", pattern="^(short|warm)$"),
+                  lang: str = Query("auto", pattern="^(auto|de|en)$")):
     """Draft a first message for one listing (or, with ?followup=1, a short follow-up to
     the message already sent). Never sends anything."""
     if not llm.has_key():
@@ -465,13 +492,23 @@ def draft_message(listing_id: int, followup: bool = Query(False)):
         listing["last_sent_at"] = sent[-1]["sent_at"]
     try:
         text = (draft(listing, _load_profile(), followup_of=first) if followup
-                else draft(listing, _load_profile()))
+                else draft(listing, _load_profile(), tone=tone, lang=lang))
     except DraftError as e:
         print(f"[draft] failed for {listing_id}: {e}")
         return _llm_error_response(e)
     lang = (listing.get("extracted") or {}).get("language")
     return JSONResponse({"id": listing_id, "draft": text, "language": lang,
-                         "followup": followup})
+                         "followup": followup, "tone": tone})
+
+
+@app.get("/listings/{listing_id}/summary")
+def listing_summary(listing_id: int):
+    """One-line English summary of a non-English ad, cached. Never an error status for
+    LLM trouble (missing key, billing): `summary` is just null and the UI hides it."""
+    listing = get_listing(listing_id)
+    if not listing:
+        return JSONResponse({"error": "listing not found"}, status_code=404)
+    return JSONResponse({"id": listing_id, "summary": summarize_ad(listing)})
 
 
 @app.post("/ingest")

@@ -146,6 +146,13 @@
   .chips { margin-top:5px; display:flex; flex-wrap:wrap; gap:3px; }
   .chip { font-size:.6rem; padding:1px 5px; border-radius:2px; background:#10261a; color:#66bb6a; border:1px solid #1a4a20; white-space:nowrap; }
   .chip.bad { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .trust-chip { font-size:.6rem; padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid; }
+  .trust-chip.high { background:#10261a; color:#66bb6a; border-color:#1a4a20; }
+  .trust-chip.medium { background:#2a2000; color:var(--amber); border-color:#5a4a10; }
+  .trust-chip.low { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .trust-warn { margin-top:14px; border:1px solid #5a1010; background:#1a0a0a; color:#e57373; padding:8px; font-size:.7rem; line-height:1.45; }
+  .trust-warn b { letter-spacing:.06em; text-transform:uppercase; font-size:.62rem; }
+  .trust-warn ul { margin:4px 0 0 16px; padding:0; color:#ccc; }
   .chip.dealbreaker { text-decoration:none; }
   .card-meta { font-size:.6rem; color:#8c8c8c; margin-top:5px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
   .card-actions { display:flex; gap:4px; margin-top:6px; align-items:center; flex-wrap:wrap; }
@@ -219,6 +226,14 @@
   .lang-warn { color:#ff9800; text-transform:none; letter-spacing:0; }
   #draft-text { width:100%; min-height:240px; background:#0a0a0a; color:var(--txt); border:1px solid var(--line); font-family:inherit; font-size:.76rem; line-height:1.5; padding:8px; resize:vertical; }
   #draft-text:focus { outline:none; border-color:var(--amber); }
+  .draft-opts { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:2px 0 6px; }
+  .dseg { display:inline-flex; border:1px solid var(--line); }
+  .dseg button { background:none; border:0; color:var(--dim); font-size:.62rem; padding:3px 8px; cursor:pointer; letter-spacing:.06em; text-transform:uppercase; font-family:inherit; }
+  .dseg button + button { border-left:1px solid var(--line); }
+  .dseg button[aria-pressed="true"] { color:var(--amber); background:#241a00; }
+  .seg-label { font-size:.6rem; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; }
+  .ad-summary { font-size:.7rem; color:#b5b5b5; line-height:1.4; margin:3px 0 2px; }
+  .ad-summary .lbl { font-size:.56rem; color:var(--amber); letter-spacing:.08em; text-transform:uppercase; border:1px solid #5a4400; padding:0 4px; margin-right:6px; }
   .draft-actions { display:flex; gap:6px; margin-top:6px; align-items:center; flex-wrap:wrap; }
   .draft-actions button { background:none; border:1px solid #555; color:#bbb; font-size:.68rem; padding:5px 10px; cursor:pointer; letter-spacing:.05em; }
   .draft-actions button:hover { border-color:var(--amber); color:var(--amber); }
@@ -231,7 +246,7 @@
   .ck .box { flex:0 0 14px; text-align:center; font-weight:700; }
   .ck li.ok .box { color:var(--bike); } .ck li.ok .t { color:#9a9a9a; }
   .ck li.miss .box { color:var(--amber); } .ck li.miss .t { color:var(--txt); }
-  .ck .t { flex:0 1 auto; min-width:0; } .ck .hint { color:var(--amber); font-size:.64rem; flex-basis:100%; padding-left:21px; } .ck .tag { font-size:.55rem; color:#8c8c8c; border:1px solid #333; padding:0 4px; letter-spacing:.06em; text-transform:uppercase; }
+  .ck .t { flex:1 1 0; min-width:0; } .ck .hint { color:var(--amber); font-size:.64rem; flex-basis:100%; padding-left:21px; } .ck .tag { font-size:.55rem; color:#8c8c8c; border:1px solid #333; padding:0 4px; letter-spacing:.06em; text-transform:uppercase; }
   .fu-chip { font-size:.56rem; font-weight:700; letter-spacing:.08em; padding:1px 5px; border-radius:2px; border:1px solid var(--amber); color:var(--amber); text-transform:uppercase; }
   .fu-chip { margin-left:auto; } .fu-chip + .stbadge { margin-left:6px; }
   .sr-only { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
@@ -388,6 +403,7 @@
       <button class="topbar-btn" id="more-btn" onclick="toggleMenu()" aria-haspopup="true" aria-expanded="false" aria-label="More actions" title="More actions">⋯</button>
       <div id="more-menu" role="menu" hidden>
         <button role="menuitem" class="solo-only" onclick="closeMenu();runExtract()" id="extract-btn" title="Reads every unprocessed ad with Claude (uses API credits)">Extract ads <small>uses API credits</small></button>
+        <button role="menuitem" onclick="closeMenu();location.href='/stats.html'">Reply stats <small>what got answers</small></button>
         <button role="menuitem" onclick="closeMenu();showHelp()">Keyboard shortcuts <small>?</small></button>
         <button role="menuitem" onclick="closeMenu();phoneAlerts()" id="alerts-btn">Phone alerts <small id="alerts-state">…</small></button>
       </div>
@@ -495,6 +511,7 @@
       <div class="seg plain" role="group" aria-labelledby="lbl-new"><button id="btn-new-only" onclick="setNewOnly(!newOnly)" title="Only listings first seen since your last visit">New only</button></div>
     </div>
     <label class="chk"><input type="checkbox" id="hideDeal" onchange="applyFilters()"> Hide dealbreakers</label>
+    <label class="chk" title="Listings with a trust score under 50 (possible scams) are hidden by default"><input type="checkbox" id="showLow" onchange="applyFilters()"> Show low-trust</label>
   </div>
 </div>
 
@@ -732,6 +749,15 @@ function scoreChip(s) {
   const cls = s >= 72 ? 'score-high' : s >= 55 ? 'score-mid' : 'score-low';   // fit now spans ~30-95
   return `<span class="badge ${cls}" title="Fit score: how well this matches your profile (0–100)"><i>FIT</i>${s}</span>`;
 }
+function trustChip(l) {
+  if (!l.trust_level) return '';
+  const tip = `Trust ${l.trust_score}/100 (${l.trust_level})` + ((l.trust_reasons || []).length ? ': ' + l.trust_reasons.join('; ') : ': no warning signs found');
+  return `<span class="trust-chip ${esc(l.trust_level)}" title="${esc(tip)}">⛨ ${l.trust_score}</span>`;
+}
+function trustWarn(l) {
+  if (l.trust_level !== 'low') return '';
+  return `<div class="trust-warn" role="alert"><b>⛨ Low trust (${l.trust_score}/100): possible scam</b><ul>${(l.trust_reasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>Check the ad carefully before you reply. Never pay or send documents before a viewing.</div>`;
+}
 function replyChip(s) {
   if (s == null) return '';
   const cls = s >= 60 ? 'reply-high' : s >= 35 ? 'reply-mid' : 'reply-low';
@@ -815,7 +841,7 @@ function setNewOnly(v) { newOnly = !!v; $('btn-new-only').classList.toggle('acti
 function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
 function resetFilters() {
   $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
-  $('maxCommute').value = 60; $('hideDeal').checked = false;
+  $('maxCommute').value = 60; $('hideDeal').checked = false; $('showLow').checked = false;
   setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance'); setNewOnly(false);
   applyModeUI();
 }
@@ -854,6 +880,7 @@ function syncFilterCollapse() { $('filters').classList.toggle('collapsed', mq.ma
 mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
 
 function passes(l, f) {
+  if (l.trust_level === 'low' && !f.showLow) return false;
   if (priceOf(l) > f.maxRent) return false;
   if (f.filterCommute && commuteMin(l) > f.maxCommute) return false;
   const kind = l.kind || 'wg_room';
@@ -897,14 +924,14 @@ function applyFilters() {
   const maxRent = parseInt($('maxRent').value), maxCommute = parseInt($('maxCommute').value);
   $('rentLabel').textContent = `${maxRent} CHF`;
   $('commuteLabel').textContent = maxCommute >= 60 ? 'any' : `≤ ${maxCommute} min`;
-  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0);
+  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0) + ($('showLow').checked ? 1 : 0);
   $('more-count').textContent = nMore ? `(${nMore}) ` : '';
   syncPressed();
   const nFu = allListings.filter(l => l.followup_due).length, fb = $('btn-show-followup');
   if (fb) fb.textContent = nFu ? `Follow-ups (${nFu})` : 'Follow-ups';
   cancelAnimationFrame(_raf);
   _raf = requestAnimationFrame(() => {
-    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked };
+    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked, showLow: $('showLow').checked };
     renderAll(allListings.filter(l => passes(l, f)).sort(sortFn));
   });
 }
@@ -983,7 +1010,7 @@ function cardHtml(l) {
       <div class="card-top">
         <span class="card-dot" style="background:${deal.length ? '#777' : tier.color}" title="${tier.label}"></span>
         <span class="card-rent">${headPrice(l)}</span>
-        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
+        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${trustChip(l)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
         ${l.followup_due ? `<span class="fu-chip" title="Sent ${l.days_since_sent != null ? Math.floor(l.days_since_sent) + ' days ago' : 'a while ago'} with no reply">Follow up?</span>` : ''}
         ${l.status ? `<span class="stbadge ${l.status}">${STATUS_LABEL[l.status]}</span>` : ''}
       </div>
@@ -1017,7 +1044,7 @@ let curList = [], renderedN = 0, cursorId = null;
 function todayPicks(list) {
   const pick = [];
   for (const l of list) {
-    if (l._deal.length || l.status) continue;
+    if (l._deal.length || l.status || l.trust_level === 'low') continue;
     const d = daysAgo(l);
     const boost = (isNew(l) ? 6 : 0) + (d == null ? 0 : d <= 1 ? 10 : d <= 3 ? 6 : d <= 7 ? 2 : 0);
     pick.push([relevanceScore(l) + boost, l]);
@@ -1215,9 +1242,10 @@ function showDetail(l) {
     <div class="detail-rent">${groupMode ? fmtChf(priceOf(l)) + ' CHF <span style="font-size:.6rem;color:#777">/ person / month</span>' : l.rent_chf + ' CHF <span style="font-size:.6rem;color:#777">/ month</span>'}</div>
     ${groupMode ? `<div class="group-line">${groupLine(l)}</div>` : ''}
     <div class="detail-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
+    <div id="ad-summary" class="ad-summary" hidden></div>
     <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
     ${commuteGrid(l)}
-    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)}</div>
+    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)}</div>
     ${deal.length ? `<div class="chips">${deal.map(d => `<span class="chip bad">✗ ${esc(d)}</span>`).join('')}</div>`
       : reasons.length ? `<div class="chips">${reasons.map(r => `<span class="chip">✓ ${esc(r)}</span>`).join('')}</div>` : ''}
     <div class="detail-section"><div class="detail-section-label">Track</div><div class="card-actions" id="detail-status" style="margin-top:0">${statusBar(l)}</div></div>
@@ -1232,6 +1260,7 @@ function showDetail(l) {
     ${incl ? `<div class="detail-section"><div class="detail-section-label">Include in Your Message</div>${incl}</div>` : ''}
     ${flags ? `<div class="detail-section"><div class="detail-section-label">Red Flags</div>${flags}</div>` : ''}
     ${!hasExt && !groupMode ? '<div class="note-inline">Ad not analysed yet — run Extract for requirements, vibe and red flags.</div>' : ''}
+    ${trustWarn(l)}
     <button class="draft-btn" id="draft-btn" onclick="draftMessage(${l.id})">${groupMode ? '✎ Draft Group Application' : '✎ Draft Message'}</button>
     <div id="draft-area"></div>
     <div id="rawtext-slot">${l.raw_text ? `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>` : ''}</div>
@@ -1239,6 +1268,7 @@ function showDetail(l) {
   if (FD[l.id] && viewMode[l.id] === 'followup') renderDraft(l.id, FD[l.id], 'followup');
   else if (D()[l.id]) renderDraft(l.id, D()[l.id]);
   loadSent(l);
+  loadSummary(l);
   // /listings omits raw_text to keep the payload small; fetch it for the detail view.
   if (!l.raw_text && l.has_raw_text) {
     api(`/listings/${l.id}`).then(full => {
@@ -1516,17 +1546,54 @@ function guessLang(text) {
   return de === en ? null : de > en ? 'de' : 'en';
 }
 const LANG_NAME = { de: 'German', en: 'English' };
+const draftOpts = {}, GEN = {}, SUM = {};   // per-listing tone/lang choice, last generated text, ad summaries
+const LEVEL_RANK = ['native', 'near-native', 'fluent', 'advanced', 'c2', 'c1', 'b2', 'intermediate', 'b1', 'a2', 'basic', 'a1'];
+function strongestLang() {   // 'de' | 'en' | null, from the profile's languages
+  let best = null, bi = 99;
+  for (const x of (_profile.languages || [])) {
+    const i = LEVEL_RANK.indexOf(String(x.level || '').toLowerCase()), r = i < 0 ? 50 : i;
+    const code = /^(german|deutsch|de)$/i.test(x.lang) ? 'de' : /^(english|englisch|en)$/i.test(x.lang) ? 'en' : null;
+    if (r < bi) { bi = r; best = code; }
+  }
+  return best;
+}
+function draftOptsFor(id) { return draftOpts[id] || (draftOpts[id] = { tone: 'warm', lang: 'auto' }); }
+function setDraftOpt(id, key, val) {
+  const o = draftOptsFor(id), old = o[key]; if (old === val) return;
+  o[key] = val;
+  const ta = $('draft-text');
+  if (ta && ta.value.trim() && ta.value !== GEN[id]) {   // edited: only regenerate on confirm
+    if (!confirm('Regenerate with this option? Your edits in the box will be replaced (and this uses API credits).')) { o[key] = old; renderDraft(id, ta.value); return; }
+  }
+  draftMessage(id, true);
+}
+function draftOptsHtml(id, l) {
+  const o = draftOptsFor(id), adLang = ext(l).language, mine = strongestLang();
+  const seg = (key, items) => `<span class="dseg" role="group">` + items.map(([v, t]) =>
+    `<button type="button" aria-pressed="${o[key] === v}" onclick="setDraftOpt(${id},'${key}','${v}')">${t}</button>`).join('') + `</span>`;
+  const showLang = (adLang === 'de' || adLang === 'en') && mine && adLang !== mine;
+  return `<div class="draft-opts"><span class="seg-label">Tone</span>${seg('tone', [['warm', 'Warm'], ['short', 'Short']])}` +
+    (showLang ? `<span class="seg-label">Language</span>${seg('lang', [['auto', 'Ad (' + adLang.toUpperCase() + ')'], [mine, mine.toUpperCase()]])}` : '') + `</div>`;
+}
+async function loadSummary(l) {
+  const box = $('ad-summary'), lang = ext(l).language;
+  if (!box || groupMode || !lang || lang === 'en') return;
+  const show = t => { const b = $('ad-summary'); if (b && selectedId === l.id && t) { b.innerHTML = '<span class="lbl">summary</span>'; b.append(t); b.hidden = false; } };
+  if (l.id in SUM) { show(SUM[l.id]); return; }
+  try { const r = await api(`/listings/${l.id}/summary`); SUM[l.id] = r && r.summary || null; show(SUM[l.id]); }
+  catch (_) { /* hide on any error */ }
+}
 
-async function draftMessage(id) {
+async function draftMessage(id, fromOpt = false) {
   const btn = $('draft-btn'), area = $('draft-area');
   if (!btn || !area || selectedId !== id) return;
   if (groupMode && !_profile.group) { toast('Set up your group first (size and budget), then draft.'); openGroup(); return; }
-  if (D()[id] && !confirm('Redraft? Your current text in the box will be replaced (and this uses API credits).')) return;
+  if (!fromOpt && D()[id] && !confirm('Redraft? Your current text in the box will be replaced (and this uses API credits).')) return;
   btn.disabled = true; btn.textContent = 'Drafting…';
   area.innerHTML = `<div class="note-inline">Claude is writing ${groupMode ? 'a group application' : 'a message'} in the ad's language…</div>`;
   try {
-    const body = await api(groupMode ? `/group/draft/${id}` : `/draft/${id}`, { method: 'POST' });
-    D()[id] = body.draft;
+    const body = await api(groupMode ? `/group/draft/${id}` : `/draft/${id}?tone=${draftOptsFor(id).tone}&lang=${draftOptsFor(id).lang}`, { method: 'POST' });
+    D()[id] = body.draft; if (!groupMode) GEN[id] = body.draft;
     if (selectedId === id) renderDraft(id, body.draft);
   } catch (e) {
     if (selectedId === id) { area.innerHTML = '<div class="draft-error"></div>'; area.firstChild.textContent = '✗ ' + e.message; }
@@ -1548,7 +1615,7 @@ function renderChecklist(id) {
   const box = $('draft-check'), ta = $('draft-text'); if (!box || !ta) return;
   const items = window.WGChecklist ? WGChecklist.items(ext(byId[id] || {})) : [];
   if (!items.length) { box.innerHTML = ''; return; }
-  const rows = items.map(it => ({ it, r: WGChecklist.check(it, ta.value) }));
+  const rows = items.map(it => ({ it, r: WGChecklist.check(it, ta.value, ext(byId[id] || {})) }));
   const done = rows.filter(x => x.r.ok).length;
   box.innerHTML = `<div class="ck-wrap"><div class="ck-head">What the ad asked for · ${done}/${rows.length} covered</div><ul class="ck">` +
     rows.map(({ it, r }) => `<li class="${r.ok ? 'ok' : 'miss'}"><span class="box" aria-hidden="true">${r.ok ? '✓' : '!'}</span><span class="t">${esc(it.text)}</span>` +
@@ -1562,6 +1629,7 @@ function renderDraft(id, text, mode = 'first') {
   $('draft-area').innerHTML = `
     <div id="draft-box">
       <div class="draft-head"><span>${fu ? 'Follow-up draft' : 'Draft'}</span><span class="lang-tag" id="draft-lang"></span><span class="lang-warn" id="draft-warn"></span><span style="margin-left:auto" id="draft-count"></span></div>
+      ${!fu && !groupMode ? draftOptsHtml(id, l) : ''}
       <textarea id="draft-text" spellcheck="true" aria-label="Draft message — editable" style="${fu ? 'min-height:120px' : ''}"></textarea>
       <div id="draft-check"></div>
       <div class="draft-actions">

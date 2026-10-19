@@ -13,7 +13,8 @@ from fastapi.responses import JSONResponse
 
 from . import llm
 from .drafting import profile_for_draft, build_followup_prompt
-from .db import get_all_listings, get_listing, get_sent_messages
+from . import trust
+from .db import get_all_listings, get_listing, get_sent_messages, strip_raw
 from .scoring import load_profile, _parse_date, price_implausible
 
 router = APIRouter()
@@ -269,8 +270,10 @@ def group_listings(listings: list[dict], group: dict, include_dealbreakers: bool
 @router.get("/group/listings")
 def group_listings_endpoint(include_dealbreakers: bool = Query(False)):
     group = get_group()
+    rows = trust.annotate(get_all_listings(True))   # median + duplicates need the raw text
+    rows = [strip_raw(l) for l in rows]
     return JSONResponse({"group": group, "listings": group_listings(
-        get_all_listings(False), group, include_dealbreakers)})
+        rows, group, include_dealbreakers)})
 
 
 # --------------------------------------------------------------------------- drafting

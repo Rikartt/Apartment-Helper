@@ -83,7 +83,7 @@ def test_solo_and_group_prompts_use_immediate_move_in():
     _, system, user = g.build_group_prompt(listing, prof, grp)
     assert "2020-01-01" not in user and "available immediately" in user
     assert "never quote a past calendar date" in system or "past calendar date" in system
-    assert "past" in drafting.SYSTEM_PROMPT
+    assert "past" in drafting.build_system_prompt("de")
 
 
 # ---- review fixes ----
