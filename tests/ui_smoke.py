@@ -273,7 +273,8 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         pg.wait_for_timeout(300)
 
     with step(f"{tag} priority filter and Message today", pg, pages):
-        check(f"{tag} seed has priority/premium listings", pg.evaluate("allListings.some(l => l.promo)"))
+        check(f"{tag} seed has running and expired priority listings",
+              pg.evaluate("allListings.some(l => promoActive(l)) && allListings.some(l => l.promo && !promoActive(l))"))
         pg.evaluate("setShow('sent')")
         pg.wait_for_timeout(300)
         check(f"{tag} Message today stays visible outside the To do view", pg.evaluate("!$('today').hidden"))
@@ -281,9 +282,11 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         pg.evaluate("$('hidePromo').checked = true; savePromo(); applyFilters()")
         pg.wait_for_timeout(400)
         check(f"{tag} 'Hide priority/premium' removes them from the list",
-              pg.evaluate("curList.length > 0 && !curList.some(l => l.promo)"))
+              pg.evaluate("curList.length > 0 && !curList.some(l => promoActive(l))"))
+        check(f"{tag} ...but keeps listings whose Priority period is over",
+              pg.evaluate("curList.some(l => l.promo && !promoActive(l)) || !allListings.some(l => l.promo && !promoActive(l) && passes(l, {..._todayF, hidePromo: false}))"))
         check(f"{tag} ...and from Message today",
-              pg.evaluate("!$('today').hidden && ![...document.querySelectorAll('.today-row')].some(r => byId[+r.dataset.id].promo)"))
+              pg.evaluate("!$('today').hidden && ![...document.querySelectorAll('.today-row')].some(r => promoActive(byId[+r.dataset.id]))"))
         pg.evaluate("$('hidePromo').checked = false; savePromo(); applyFilters()")
         pg.wait_for_timeout(300)
 

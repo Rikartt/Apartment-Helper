@@ -25,6 +25,8 @@ NEW_COLUMNS = [
     ("notified_at", "TEXT"),            # UTC; when a phone-alert digest included this ad
     ("commute_source", "TEXT"),         # 'timetable' | 'estimate' (transit minutes)
     ("promo", "TEXT"),                  # paid placement, e.g. 'Flatfox Priority'; NULL = none
+    ("promo_until", "TEXT"),            # UTC end of a time-limited placement (Priority); NULL = open-ended
+    ("photo_count", "INTEGER"),         # number of photos when the source reports it
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -184,8 +186,8 @@ def upsert_listing(ad: dict) -> bool:
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
                  listed_at, fit_score, reply_score, kind, rooms, living_area_m2, commute_source, promo,
-                 last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
+                 promo_until, photo_count, last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -209,6 +211,8 @@ def upsert_listing(ad: dict) -> bool:
                 living_area_m2 = excluded.living_area_m2,
                 commute_source = excluded.commute_source,
                 promo          = excluded.promo,
+                promo_until    = excluded.promo_until,
+                photo_count    = excluded.photo_count,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 missed_runs  = 0,
                 gone_at      = NULL
@@ -224,7 +228,7 @@ def upsert_listing(ad: dict) -> bool:
             ad.get("kind") or "wg_room",
             ad.get("rooms"), ad.get("living_area_m2"),
             ad.get("commute_source") or "estimate",
-            ad.get("promo"),
+            ad.get("promo"), ad.get("promo_until"), ad.get("photo_count"),
         ))
         return not existed
 

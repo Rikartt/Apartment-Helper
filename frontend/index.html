@@ -793,8 +793,15 @@ function scoreChip(s) {
   const cls = s >= 72 ? 'score-high' : s >= 55 ? 'score-mid' : 'score-low';   // fit now spans ~30-95
   return `<span class="badge ${cls}" title="Fit score: how well this matches your profile (0–100)"><i>FIT</i>${s}</span>`;
 }
+// Paid placement still in force? Flatfox Priority is time-limited (promo_until, UTC): after
+// that date anyone can apply, so the listing counts as normal again.
+function promoUntil(l) { const t = l.promo_until ? Date.parse(String(l.promo_until).replace(' ', 'T') + 'Z') : NaN; return isNaN(t) ? null : t; }
+function promoActive(l) { if (!l.promo) return false; const t = promoUntil(l); return t == null || t > Date.now(); }
 function promoChip(l) {
-  return l.promo ? `<span class="promo-chip" title="${esc(l.promo)}: a paid placement on the source site">${/priority/i.test(l.promo) ? 'Priority' : 'Premium'}</span>` : '';
+  if (!promoActive(l)) return '';
+  const t = promoUntil(l), until = t ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
+  const tip = /flatfox priority/i.test(l.promo) ? `Flatfox Priority: only paying Priority members can apply${until ? ' until ' + until : ''}` : `${l.promo}: a paid placement on the source site`;
+  return `<span class="promo-chip" title="${esc(tip)}">${/priority/i.test(l.promo) ? 'Priority' : 'Premium'}${until ? ' · ' + esc(until) : ''}</span>`;
 }
 function savePromo() { try { localStorage.setItem('wgp_hide_promo', $('hidePromo').checked ? '1' : '0'); } catch (_) {} }
 try { $('hidePromo').checked = localStorage.getItem('wgp_hide_promo') === '1'; } catch (_) {}
@@ -930,7 +937,7 @@ mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
 
 function passes(l, f) {
   if (l.trust_level === 'low' && !f.showLow) return false;
-  if (f.hidePromo && l.promo) return false;
+  if (f.hidePromo && promoActive(l)) return false;
   if (priceOf(l) > f.maxRent) return false;
   if (f.filterCommute && commuteMin(l) > f.maxCommute) return false;
   const kind = l.kind || 'wg_room';

@@ -53,3 +53,38 @@ def test_upgrade_forces_one_full_refresh(db):
     db.set_state("flatfox", "last_full_refresh", db.utc_now())
     db.init_db()                                           # later startups leave it alone
     assert db.full_refresh_due("flatfox", 24) is False
+
+
+# ------------------------------------------------------------------ real Flatfox data
+# Trimmed from the public-listing API (2026-10-19): one ad in its Flatfox Priority period,
+# one normal ad. Priority is the field flatfox_priority_exclusive_until (null otherwise).
+import json
+from tests.conftest import FIXTURES
+from backend.ingestion.base import norm_dt, utc_text
+
+
+def _real():
+    return json.loads((FIXTURES / "flatfox_priority.json").read_text())
+
+
+def test_real_flatfox_priority_ad():
+    pri, normal = _real()
+    ad = ff.FlatfoxAdapter()._to_ad(pri)
+    assert ad["promo"] == "Flatfox Priority"
+    assert ad["promo_until"] == utc_text(pri["flatfox_priority_exclusive_until"])
+    assert ad["promo_until"].endswith("22:59:59")              # 23:59:59 +01:00 in UTC
+    assert ad["photo_count"] == len(pri["images"])
+    ad = ff.FlatfoxAdapter()._to_ad(normal)
+    assert ad["promo"] is None and ad["promo_until"] is None and ad["photo_count"] == len(normal["images"])
+
+
+def test_future_dates_allowed_for_end_times_not_for_posting_dates():
+    assert utc_text("2099-01-01T00:00:00+01:00") == "2098-12-31 23:00:00"
+    assert norm_dt("2099-01-01T00:00:00+01:00") is None
+
+
+def test_priority_end_and_photos_stored(db):
+    pri, _ = _real()
+    db.upsert_listing(ff.FlatfoxAdapter()._to_ad(pri))
+    row = db.get_all_listings()[0]
+    assert row["promo"] == "Flatfox Priority" and row["promo_until"] and row["photo_count"] == len(pri["images"])

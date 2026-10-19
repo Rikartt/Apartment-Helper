@@ -36,10 +36,10 @@ class BaseAdapter(ABC):
         """
 
 
-def norm_dt(value) -> str | None:
-    """Normalise a source timestamp (ISO 8601 with Z/offset, or a bare date) to UTC
-    'YYYY-MM-DD HH:MM:SS', the same shape as created_at, so string ordering in SQL is
-    chronological. Returns None when unparseable or implausible (empty, future by >1 day)."""
+def utc_text(value, allow_future: bool = True) -> str | None:
+    """A source timestamp (ISO 8601 with Z/offset, or a bare date) as UTC 'YYYY-MM-DD HH:MM:SS',
+    the same shape as created_at, so string ordering in SQL is chronological. None when
+    unparseable, before 2000, or (allow_future=False) more than a day in the future."""
     from datetime import datetime, timedelta, timezone
     raw = str(value or "").strip()
     if not raw:
@@ -50,9 +50,15 @@ def norm_dt(value) -> str | None:
         return None
     if dt.tzinfo is not None:
         dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-    if dt > datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1) or dt.year < 2000:
+    if dt.year < 2000 or (not allow_future and
+                          dt > datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=1)):
         return None
     return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def norm_dt(value) -> str | None:
+    """Posting dates: like utc_text, but a date in the future is bogus (None)."""
+    return utc_text(value, allow_future=False)
 
 
 def load_known(source: str) -> tuple[bool, dict[str, str]]:

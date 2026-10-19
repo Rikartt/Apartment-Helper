@@ -1,0 +1,91 @@
+[
+ {
+  "pk": 86462638,
+  "slug": "zollstrasse-59-8005-zurich",
+  "object_category": "APARTMENT",
+  "rent_gross": 4150,
+  "rent_net": null,
+  "price_display": 4150,
+  "latitude": 47.3806477,
+  "longitude": 8.5329324,
+  "city": "Zürich",
+  "street": "Zollstrasse 59",
+  "number_of_rooms": "4.5",
+  "description_title": "4.5 Zimmer-Wohnung nahe Zürich HB (6 Monate, befristet und möbliert)",
+  "short_title": "4 ½ rooms apartment",
+  "description": "Wir möchten unsere schöne 4.5 Zimmer-Wohnung für rund 6 Monate (Januar 2027 bis und mit Juni 2027) möbliert untervermieten. Die genauen Ein- und Auszugsdaten können wir gemeinsam festlegen.  \n  \nDie W",
+  "moving_date": "2027-01-01",
+  "published": "2026-10-18T15:01:13.066307+02:00",
+  "created": "2026-10-18T15:01:12.976798+02:00",
+  "flatfox_priority_exclusive_until": "2026-11-01T23:59:59+01:00",
+  "images": [
+   {
+    "pk": 50818710
+   },
+   {
+    "pk": 50818703
+   },
+   {
+    "pk": 50818708
+   },
+   {
+    "pk": 50818707
+   },
+   {
+    "pk": 50818706
+   },
+   {
+    "pk": 50818709
+   },
+   {
+    "pk": 50818704
+   },
+   {
+    "pk": 50818705
+   },
+   {
+    "pk": 50818702
+   }
+  ]
+ },
+ {
+  "pk": 86305845,
+  "slug": "stockerstrasse-44-8002-zurich",
+  "object_category": "INDUSTRY",
+  "rent_gross": 6250,
+  "rent_net": 6100,
+  "price_display": 6250,
+  "latitude": 47.3680561,
+  "longitude": 8.5346769,
+  "city": "Zürich",
+  "street": "Stockerstrasse 44",
+  "number_of_rooms": null,
+  "description_title": "Ladenlokal mit grosszügigem Schaufenster",
+  "short_title": "97m² shop",
+  "description": "* **Beschreibung**   \nIhre Bühne im Herzen von Zürich! \n\n**Die Lage**   \nIhr neues Geschäftslokal liegt im Erdgeschoss zwischen Paradeplatz und Bahnhof Enge, an einer der gefragtesten Adressen der Sta",
+  "moving_date": null,
+  "published": "2026-10-19T14:27:43.627379+02:00",
+  "created": "2026-08-25T13:43:29.575892+02:00",
+  "flatfox_priority_exclusive_until": null,
+  "images": [
+   {
+    "pk": 50838003
+   },
+   {
+    "pk": 50838004
+   },
+   {
+    "pk": 50838005
+   },
+   {
+    "pk": 50838006
+   },
+   {
+    "pk": 50838007
+   },
+   {
+    "pk": 50838008
+   }
+  ]
+ }
+]

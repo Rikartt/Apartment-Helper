@@ -3,9 +3,11 @@
 ## 2026-10-19: priority/premium filter, steadier Message today
 
 ### New
-- Paid placements (e.g. Flatfox Priority, premium/top ads) are detected during ingest (new `promo` column), shown with a PRIORITY/PREMIUM chip, and hidden with one "Hide priority/premium" switch in More filters. The first ingest after updating re-fetches Flatfox/Homegate details once, so existing listings are checked too.
+- Paid placements are detected during ingest (new `promo` / `promo_until` columns), shown with a PRIORITY/PREMIUM chip, and hidden with one "Hide priority/premium" switch in More filters. Flatfox Priority comes from Flatfox's own field `flatfox_priority_exclusive_until`: only paying Priority members can apply until that date, after which the listing counts as normal again (live check: 611 of ~4300 Flatfox listings were in their Priority period). Other sources use a best-effort match. The first ingest after updating re-fetches Flatfox/Homegate details once, so existing listings are checked too.
+- Flatfox photo counts are stored (`photo_count`), which turns on the trust score's "no photos" signal.
 
 ### Fixed
+- Incremental Flatfox ingest re-fetched ~1800 ads every run: the pin API reports the same ad at different prices per session (e.g. 2100 vs 2720), so the price looked changed. Incremental runs now fetch only new pins (live: 144 instead of ~1800, 55 s instead of 139 s); price and text edits arrive with the daily full refresh.
 - The Message today strip disappeared outside the "To do" view, with "New only" on, or when fewer than two picks qualified. It now uses your filters but not the Show tab or New only, and shows from one pick.
 
 ## 2026-10-19: real commute times (PR #4)
