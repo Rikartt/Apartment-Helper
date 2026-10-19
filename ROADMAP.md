@@ -7,7 +7,7 @@ Each block is sized for one working session with a few parallel agents.
 1. **Real commute times.** `backend/commute.py` estimates commute times from straight-line distance at 22 km/h, which ignores tram lines, transfers and the Hönggerberg hill. Use real timetable connections (transport.opendata.ch, free, rate-limited), with a weekday 8:00 arrival and caching per address. Keep the estimate as a fallback, and show which one a listing uses.
 2. **Incremental ingest.** Flatfox fetches details for every pin, which takes about 6 min per run. Only fetch new pins and pins whose price changed, so the periodic refresh takes seconds and alerts arrive sooner.
 3. **Reliable listing dates.** Many listings lack `listed_at`, so recency falls back to first-seen time. Parse the posting date from every source, so "fresh" really means fresh.
-4. **Trust score (scam check).** Today scams are only partly caught, by the extracted `red_flags` and implausible-price checks. Add a 0–100 trust score with a reason for each signal:
+4. ~~**Trust score (scam check).**~~ Done (see CHANGELOG). Today scams are only partly caught, by the extracted `red_flags` and implausible-price checks. Add a 0–100 trust score with a reason for each signal:
    - price far below the area median for its size
    - payment or deposit before viewing, or "I'm abroad, keys by post"
    - contact only via WhatsApp or an external email
