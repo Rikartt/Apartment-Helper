@@ -1,5 +1,16 @@
 # Changelog
 
+## Block D: backups, group extras, phone HTTPS
+
+### New
+- Daily database backups (`backend/backup.py`, SQLite backup API, safe while running): `backups/wgpendler-YYYY-MM-DD.db`, newest `WGP_BACKUP_KEEP` (7) kept, `WGP_BACKUP_DIR` to move them; on startup if today's is missing, then checked hourly. `GET /backup/status`, `POST /backup/now`, restore steps in the README.
+- Group mode: members' own budgets (a CHF field per member in the group editor); a flat is a dealbreaker when a member would pay more than 15% over their budget, naming who. Rent splits by room size when every member has `room_m2` and the ad gives the living area.
+- Group follow-up drafts for flats (`POST /group/draft/{id}?followup=1`, and the "Draft follow-up" button in group mode). Like solo follow-ups they reuse no profile facts and never repeat the first message.
+- Phone over HTTPS: `scripts/phone-https.sh` (wraps `tailscale serve`), with a mkcert alternative in the README.
+
+### Fixed
+- The test suite no longer writes a backup of its test database into the repo's `backups/` folder.
+
 ## Follow-up loop
 
 ### New
