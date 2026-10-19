@@ -267,6 +267,13 @@ def _row_to_dict(row, include_raw: bool = True) -> dict:
     return d
 
 
+def strip_raw(d: dict) -> dict:
+    """Same shape _row_to_dict(include_raw=False) gives: raw_text dropped, has_raw_text set."""
+    d["has_raw_text"] = bool(d.get("raw_text"))
+    d.pop("raw_text", None)
+    return d
+
+
 def get_all_listings(include_raw: bool = True, include_gone: bool = False) -> list[dict]:
     """One query, no per-row work beyond JSON decoding. Listings that vanished
     from their source (gone_at set) are hidden unless include_gone."""
