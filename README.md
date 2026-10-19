@@ -62,7 +62,7 @@ Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view
 ### Draft to reply loop
 - **Draft checklist**: under a draft, a checklist of what the ad asked for (and its hard requirements). A keyword/date/number heuristic ticks what your text already covers; the rest get an amber hint. It runs in the browser, costs nothing and never edits your text.
 - **Sent history**: Mark as sent from the draft panel (or after Copy & open ad) saves the final text and time; the detail view shows "You sent this on ...".
-- **Follow-ups**: a listing still marked Sent after `WGP_FOLLOWUP_DAYS` days (default 3) gets a "Follow up?" chip and appears under Show > Follow-ups. "Draft follow-up" asks Claude for a short, polite note in the ad's language that does not repeat your first message (one small API call, solo mode only). You still send it yourself.
+- **Follow-ups**: a listing still marked Sent after `WGP_FOLLOWUP_DAYS` days (default 3) gets a "Follow up?" chip and appears under Show > Follow-ups. "Draft follow-up" asks Claude for a short, polite note in the ad's language that does not repeat your first message (one small API call; in group mode it uses `/group/draft/{id}?followup=1`). You still send it yourself.
 - **Copy & open ad**: copies the draft, opens the ad in a new tab and asks "Mark as sent?".
 
 ### Fresh listings

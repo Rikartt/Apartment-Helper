@@ -53,6 +53,8 @@ def test_member_budget_dealbreaker_names_member(ad_factory):
         {"label": "Sam", "campus": "zentrum", "budget_chf": 1000}]))   # 10% over: allowed, noted
     assert not ok["group_dealbreakers"]
     assert any("Sam" in r and "over budget" in r for r in ok["group_reasons"])
+    # the named reason replaces the generic per-person one (no duplicate "over budget")
+    assert sum("over budget" in r for r in ok["group_reasons"]) == 1
 
 
 def test_member_split_by_room_size(ad_factory):

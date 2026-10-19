@@ -1646,7 +1646,7 @@ function renderSent(l) {
   if (!msgs.length && l.status !== 'sent') { slot.innerHTML = ''; return; }
   const body = msgs.length ? msgs.map(m => `<div class="sent-item"><div class="sent-when">${m.kind === 'followup' ? 'You followed up on' : 'You sent this on'} ${esc(fmtSentDate(m.sent_at))}</div><pre class="sent-text">${esc(m.text)}</pre></div>`).join('')
     : `<div class="sent-when">Marked as sent${l.sent_at ? ' on ' + esc(fmtSentDate(l.sent_at)) : ''} — no message text was saved.</div>`;
-  const canFollow = !groupMode && msgs.some(m => m.kind === 'first');
+  const canFollow = msgs.some(m => m.kind === 'first');   // group mode drafts it via /group/draft
   const fu = l.followup_due ? `<div class="fu-note">No reply ${l.days_since_sent != null ? 'after ' + Math.floor(l.days_since_sent) + ' days' : 'yet'}. A short, polite nudge is fine.</div>` +
     (canFollow ? `<button class="fu-btn" id="fu-btn" onclick="draftFollowup(${l.id})">✎ Draft follow-up (uses API credits)</button>` : '') : '';
   slot.innerHTML = `<div class="detail-section"><div class="detail-section-label">Sent</div>${body}${fu}</div>`;
@@ -1657,7 +1657,7 @@ async function draftFollowup(id) {
   if (FD[id] && !confirm('Redraft the follow-up? Your current follow-up text will be replaced (and this uses API credits).')) return;
   btn.disabled = true; btn.textContent = 'Drafting…';
   try {
-    const body = await api(`/draft/${id}?followup=1`, { method: 'POST' });
+    const body = await api(groupMode ? `/group/draft/${id}?followup=1` : `/draft/${id}?followup=1`, { method: 'POST' });
     FD[id] = body.draft;
     if (selectedId === id) { renderDraft(id, body.draft, 'followup'); $('draft-area').scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
   } catch (e) {

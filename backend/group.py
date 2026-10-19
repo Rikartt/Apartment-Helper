@@ -196,10 +196,12 @@ def group_detail(listing: dict, group: dict, today: date | None = None) -> dict:
             reasons.append(f"CHF {per_person} pp within budget")
         elif ratio <= 1.1:
             s += 5 - (ratio - 1) * 100
-            reasons.append(f"CHF {per_person} pp slightly over budget")
+            if not shares:   # with member budgets the named "over budget: ..." reason says it
+                reasons.append(f"CHF {per_person} pp slightly over budget")
         elif ratio <= 1.25:
             s -= (ratio - 1.1) * 150
-            reasons.append(f"CHF {per_person} pp over budget")
+            if not shares:
+                reasons.append(f"CHF {per_person} pp over budget")
         else:
             if not shares:
                 deal.append(f"CHF {per_person} per person vs budget {budget}")
