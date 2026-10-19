@@ -176,6 +176,8 @@ def fit_logistic(X: list[list[float]], y: list[int], l2: float = L2,
                 gw[j] += e * xi[j] / n
         w = [wi - lr * g for wi, g in zip(w, gw)]
         b -= lr * gb
+        if max(abs(gb), *(abs(g) for g in gw)) < 1e-6:   # converged
+            break
     return w, b
 
 
@@ -222,7 +224,7 @@ def _store(model):
             conn.execute("INSERT INTO learned_model VALUES (1,?,?,?,?,?)",
                          (model["n"], model["intercept"], model["mean_len"],
                           model["base_rate"], model["trained_at"]))
-    _cache.clear()
+    _cache[str(dbm.DB_PATH)] = model
 
 
 def load_model() -> dict | None:
@@ -236,31 +238,53 @@ def load_model() -> dict | None:
             "base_rate": m["base_rate"], "trained_at": m["trained_at"], "weights": ws}
 
 
+# Model cache per DB file. Scoring reads it on every request, so it must stay a cheap
+# in-memory lookup: no outcome scan and never a fit. Only refresh() and the stats page train.
 _cache: dict = {}
+_MISSING = object()
 
 
-def current_model(ttl: float = 30.0) -> dict | None:
-    """Stored model, cached briefly (scoring runs on every request). Retrains lazily when
-    the number of resolved outcomes differs from the stored fit; refresh() drops the cache."""
+def current_model() -> dict | None:
+    """The stored model (or None), read from SQLite once and then served from memory.
+    train() replaces the cached value, so this never goes stale within the process."""
     key = str(dbm.DB_PATH)
-    hit = _cache.get(key)
-    if hit and time.monotonic() - hit[0] < ttl:
-        return hit[1]
-    try:
-        m = load_model()
-        resolved = sum(1 for r in collect() if r["outcome"] is not None)
-        want = resolved if resolved >= min_outcomes() else 0
-        if (m["n"] if m else 0) != want:
-            m = train()
-    except Exception:   # never let learning break scoring
-        m = None
-    _cache[key] = (time.monotonic(), m)
+    m = _cache.get(key, _MISSING)
+    if m is _MISSING:
+        try:
+            m = load_model()
+        except Exception:   # never let learning break scoring
+            m = None
+        _cache[key] = m
     return m
 
 
-def refresh():
-    """Call after outcomes change (status or sent message)."""
-    _cache.clear()
+def _resolved_count(now: datetime | None = None) -> int:
+    return sum(1 for r in collect(now) if r["outcome"] is not None)
+
+
+def refresh(now: datetime | None = None) -> dict | None:
+    """Retrain after outcomes change (status or sent message). The only place besides the
+    stats page where fitting happens. Never raises: on error the old model stays."""
+    try:
+        return train(now)
+    except Exception as e:
+        print(f"[learning] retrain failed: {e}")
+        return current_model()
+
+
+def sync(now: datetime | None = None) -> dict | None:
+    """Retrain only if the number of resolved outcomes moved (a 'sent' turns into a no-reply
+    outcome after NOANSWER_DAYS without any click). Used by the stats page."""
+    try:
+        resolved = _resolved_count(now)
+        want = resolved if resolved >= min_outcomes() else 0
+        m = current_model()
+        if (m["n"] if m else 0) != want:
+            m = train(now)
+        return m
+    except Exception as e:
+        print(f"[learning] sync failed: {e}")
+        return current_model()
 
 
 def predict(model: dict, x: list[float]) -> float:
@@ -303,7 +327,7 @@ def outcome_stats() -> dict:
     res = [r for r in allr if r["outcome"] is not None]
     rt = [r["reply_days"] for r in allr if r["reply_days"] is not None]
     n_min = min_outcomes()
-    m = current_model(ttl=0) if len(res) >= n_min else None
+    m = sync() if len(res) >= n_min else None
     factors = []
     if m:
         factors = sorted(({"name": k, "label": LABELS.get(k, k), "weight": round(v, 3)}

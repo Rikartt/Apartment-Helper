@@ -115,3 +115,58 @@ def test_stats_endpoint_backward_compatible_and_extended(client, db):
     assert sum(x["n"] for x in r["by_rent_band"]) == 30
     assert r["learning"]["active"] is True and r["learning"]["factors"]
     assert r["learning"]["blend_weight"] > 0
+
+
+def test_scoring_path_never_trains_or_scans_outcomes(client, db, monkeypatch):
+    """Training happens only in refresh() and /stats; scoring just reads the cached model."""
+    seed(db, 30)
+    learning.refresh()
+    assert learning.current_model()["n"] == 30
+
+    def boom(*a, **k):
+        raise AssertionError("scoring path must not train or scan outcomes")
+    monkeypatch.setattr(learning, "train", boom)
+    monkeypatch.setattr(learning, "collect", boom)
+    monkeypatch.setattr(learning, "load_model", boom)   # cached: no DB read either
+    from backend.scoring import score_detail
+    for l in db.get_all_listings(include_gone=True):
+        score_detail(l, {"budget_chf": {"max": 1200}})
+    assert client.get("/listings").status_code == 200
+
+
+def test_current_model_reads_db_once(db, monkeypatch):
+    seed(db, 30)
+    learning.train(now=NOW)
+    monkeypatch.setattr(learning, "_cache", {})
+    calls = []
+    real = learning.load_model
+    monkeypatch.setattr(learning, "load_model", lambda: calls.append(1) or real())
+    for _ in range(50):
+        assert learning.current_model()["n"] == 30
+    assert calls == [1]
+
+
+def test_refresh_and_status_change_retrain(client, db):
+    seed(db, 25)
+    assert learning.current_model() is None            # nothing trained yet
+    lid = db.get_all_listings()[0]["id"]
+    client.post(f"/listings/{lid}/status", json={"status": "rejected"})   # one outcome fewer
+    m = learning.current_model()
+    assert m is not None and m["n"] == 24
+    with db.get_conn() as conn:
+        conn.execute("UPDATE listings SET status = 'rejected' WHERE id IN "
+                     "(SELECT id FROM listings WHERE status IN ('sent','replied') LIMIT 10)")
+    assert learning.refresh() is None and learning.current_model() is None   # below 20 again
+
+
+def test_stats_trains_when_outcomes_age_in(client, db):
+    seed(db, 30)
+    assert learning.current_model() is None
+    r = client.get("/stats").json()
+    assert r["learning"]["active"] and learning.current_model()["n"] == 30
+
+
+def test_stats_page_served_and_linked(client):
+    page = client.get("/stats.html")
+    assert page.status_code == 200 and "fetch('/stats'" in page.text
+    assert "/stats.html" in client.get("/").text      # the ⋯ menu links to it
