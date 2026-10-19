@@ -109,7 +109,10 @@ def pending_candidates(profile: dict | None = None, now: datetime | None = None)
     if g:
         group = g
     out = []
-    for l in get_all_listings(include_raw=True):
+    rows = trust.annotate(get_all_listings(include_raw=True))
+    for l in rows:
+        if l.get("trust_level") == "low":   # likely scam: never worth a phone buzz
+            continue
         if l.get("notified_at") or l.get("status") or (l.get("created_at") or "") < cutoff:
             continue
         kind = l.get("kind") or "wg_room"
