@@ -74,6 +74,8 @@ Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view
 ### Group mode
 Switch with the **Solo | Group** toggle. Group mode shows whole flats (not WG rooms), scored per person: each member has a campus, and the worst-case commute counts. Edit group size, members and shared notes in the group editor. Per-person pills show how each member fares; group drafts use only the facts you entered.
 
+Each member may carry their own monthly `budget_chf` (a field in the group editor; empty means the group budget). Rent is split evenly, or by room size when every seat has a member with `room_m2` (set via `PUT /profile`) and the ad gives living area and enough bedrooms (each pays their room plus an equal share of the common area). A flat is a dealbreaker if any member would pay more than 15% over their own budget; the member is named in the dealbreakers, and smaller overruns appear in the reasons. `POST /group/draft/{id}?followup=1` drafts a short follow-up to the stored first message (409 if none is stored); it never repeats the first message and adds no new facts.
+
 ### Keyboard shortcuts
 Press `?` in the app for the list.
 
@@ -102,6 +104,21 @@ Notes:
 - Optional guard: set `WGP_ACCESS_TOKEN=some-long-random-string` in `.env`. Every request then needs it: open `http://<ip>:8000/?token=some-long-random-string` once on the phone; the server sets a cookie and redirects, and you are in. It is off by default. This is a simple shared secret over plain HTTP, not real authentication; use a VPN or HTTPS if you need more.
 - Regenerate the icons with `python tools/make_icons.py` (standard library only).
 
+### Phone over HTTPS (optional)
+Plain `http://<ip>:8000` works, but some browsers only fully install the PWA from HTTPS, and the access token travels unencrypted. Preferred fix: Tailscale, which gives real HTTPS on your private tailnet.
+1. Install Tailscale on the Mac and the phone, sign in to the same tailnet, and enable HTTPS certificates in the admin console (DNS).
+2. Start the app on localhost as usual (no `--host 0.0.0.0` needed), then run `scripts/phone-https.sh` (wraps `tailscale serve --bg 8000`; `stop` and `status` also work).
+3. Open the printed `https://<machine>.<tailnet>.ts.net` URL on the phone and Add to Home Screen.
+
+Alternative: `mkcert` (local CA). Run `mkcert -install`, `mkcert <lan-ip>`, start uvicorn with `--ssl-keyfile` and `--ssl-certfile`, and install mkcert's root CA on the phone (iOS also needs it enabled under Certificate Trust Settings). More fiddly, and LAN-only.
+
+The app depends on neither. `WGP_ACCESS_TOKEN` still works the same: open `https://<url>/?token=...` once; over HTTPS the token and cookie are encrypted in transit. Keep it set if other devices share your tailnet, since Tailscale's HTTPS protects the transport, not who on the tailnet can reach the app.
+
+### Database backups
+Once a day (and on startup if today's is missing) the app copies `wgpendler.db` to `backups/wgpendler-YYYY-MM-DD.db` using SQLite's backup API, which is safe while the app runs. The newest `WGP_BACKUP_KEEP` (default 7) are kept; `backups/` is git-ignored. `GET /backup/status` shows the state, `POST /backup/now` forces one.
+
+Restore: stop the app, then `cp backups/wgpendler-YYYY-MM-DD.db wgpendler.db` and delete `wgpendler.db-wal` and `wgpendler.db-shm` if present, then start the app again.
+
 ### Phone alerts (optional)
 After each ingest, the app can send one digest (max 5 listings) of new listings whose fit is at or above `WGP_NOTIFY_MIN_FIT`. Alerts go only to you, never to landlords. Nothing is sent unless you configure a channel.
 
@@ -129,6 +146,8 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | `WGP_EXTRACT_MODEL` | `claude-haiku-5-5` | Model for extraction |
 | `WGP_BEST_MODEL` | same as extract model | Model for Top 5 |
 | `WGP_DRAFT_MODEL` | `claude-sonnet-5-5` | Model for drafts |
+| `WGP_BACKUP_KEEP` | `7` | Daily DB backups to keep |
+| `WGP_BACKUP_DIR` | `backups/` in repo root | Backup folder |
 | `WGP_ACCESS_TOKEN` | none (off) | Shared secret for phone/LAN access, see "Use it on your phone" |
 | `WGP_ENABLE_RONORP` | `0` | `1` adds Ronorp back to the default sources |
 | `WGP_INGEST_INTERVAL_MIN` | `45` | Minutes between background ingests; `0` = off |
