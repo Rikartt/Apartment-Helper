@@ -410,6 +410,12 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         pg.wait_for_timeout(400)
         check(f"{tag} group mode lists flats for the group",
               "group of" in pg.text_content("#sh-summary") and pg.locator(".card").count() > 0)
+        check(f"{tag} group minus reasons (over budget, unknown, red flags) are amber '!' chips, not ticks",
+              pg.evaluate("['CHF 1350 pp over budget', 'room count unknown', '2 red flags'].every(r => "
+                          "/chip warn/.test(reasonChip(r)) && !reasonChip(r).includes('✓'))"
+                          " && /✓/.test(reasonChip('CHF 900 pp within budget'))"
+                          " && ![...document.querySelectorAll('.card .chip')].some(c => "
+                          "c.textContent.startsWith('✓') && MINUS_REASON.test(c.textContent))"))
         pages.shot(pg, f"{tag}-10-group-list")
 
     with step(f"{tag} group draft options", pg, pages):

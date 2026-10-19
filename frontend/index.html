@@ -152,6 +152,7 @@
   .chips { margin-top:5px; display:flex; flex-wrap:wrap; gap:3px; }
   .chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; background:#10261a; color:#66bb6a; border:1px solid #1a4a20; white-space:nowrap; }
   .chip.bad { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .chip.warn { background:#2a2010; color:#e0b050; border-color:#5a4410; }
   .promo-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid #6a4a8a; color:#c39be6; background:#1c1226; letter-spacing:.06em; text-transform:uppercase; }
   .term-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid #555; color:#bbb; background:#1c1c1c; letter-spacing:.06em; text-transform:uppercase; }
   .chk-note { font-size:var(--fs-xs); color:var(--dim); flex-basis:100%; margin-top:-4px; }
@@ -848,6 +849,13 @@ function ageLabel(l) {
   return d === 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`;
 }
 
+// Group reasons also carry minuses ("CHF 1350 pp over budget", "room count unknown", "2 red
+// flags"); those get an amber "!" chip instead of a green tick.
+const MINUS_REASON = /over budget|unknown|red flag/i;
+function reasonChip(r) {
+  return MINUS_REASON.test(r) ? `<span class="chip warn" title="Counts against this listing">! ${esc(r)}</span>`
+    : `<span class="chip" title="Why this fits">✓ ${esc(r)}</span>`;
+}
 function fitReasons(l) {
   const srv = l.fit_reasons || l.match_reasons;
   if (Array.isArray(srv) && srv.length) return srv.map(String).slice(0, 4);  // server-computed
@@ -1196,7 +1204,7 @@ function cardHtml(l) {
   const reasons = deal.length ? [] : fitReasons(l);
   const chips = deal.length
     ? deal.slice(0, 3).map(d => `<span class="chip bad" title="Dealbreaker">✗ ${esc(d)}</span>`).join('')
-    : reasons.map(r => `<span class="chip" title="Why this fits">✓ ${esc(r)}</span>`).join('');
+    : reasons.map(reasonChip).join('');
   const link = safeUrl(l.url);
   const cls = ['card'];
   if (l.id === selectedId) cls.push('selected');
@@ -1459,7 +1467,7 @@ function showDetail(l) {
     ${commuteGrid(l)}
     <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)} ${promoChip(l)} ${termChip(l)}</div>
     ${deal.length ? `<div class="chips">${deal.map(d => `<span class="chip bad">✗ ${esc(d)}</span>`).join('')}</div>`
-      : reasons.length ? `<div class="chips">${reasons.map(r => `<span class="chip">✓ ${esc(r)}</span>`).join('')}</div>` : ''}
+      : reasons.length ? `<div class="chips">${reasons.map(reasonChip).join('')}</div>` : ''}
     <div class="detail-section"><div class="detail-section-label">Track</div><div class="card-actions" id="detail-status" style="margin-top:0">${statusBar(l)}</div></div>
     <div id="sent-slot"></div>
     <div class="detail-section"><div class="detail-section-label">Available</div>

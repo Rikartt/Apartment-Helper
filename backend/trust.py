@@ -88,6 +88,26 @@ _TEXT_RULES = [
     (12, "Pressure language (decide today / many interested)", _PRESSURE),
 ]
 
+# Keyword gate, one tuple per rule above (same order): every match of the rule's pattern
+# contains at least one of these (lower-case) substrings, so a rule whose keywords are all
+# absent cannot match and its regex is skipped. Live, ~4200 real Flatfox ads (6.4 MB of
+# text) took ~13 s in the regexes alone; most ads trip no keyword of most rules.
+# Keep each tuple in sync with its pattern (tests/test_trust.py checks every snippet).
+_TEXT_KEYS = [
+    ("kaution", "anzahlung", "reservierung", "vorauszahlung", "erste monatsmiete", "deposit",
+     "first month", "reservation fee", "caution", "acompte", "cauzione", "caparra",
+     "vor besichtigung", "vor der besichtigung", "before viewing", "before the viewing",
+     "avant la visite", "frais de réservation"),
+    ("western union", "moneygram", "airbnb", "schlüssel", "key", "per post", "zahlen", "überweis",
+     "first", "clés", "l'argent d'abord", "chiavi", "bonifico"),
+    ("ausland", "nicht in der schweiz", "verreist", "abroad", "overseas", "switzerland", "country",
+     "étranger", "estero"),
+    ("whatsapp", "telegram", "mail", "yahoo", "proton"),
+    ("interessenten", "anfragen", "bewerber", "entscheiden", "melden", "überweisen", "zusagen",
+     "nur noch heute", "interested", "inquiries", "requests", "applicants", "decid", "or never",
+     "first come", "act now", "act fast", "act quickly", "intéressés", "décid", "interessati"),
+]
+
 
 _signals_cache: dict[str, tuple[tuple[int, str], ...]] = {}
 SIGNALS_CACHE_MAX = 10000
@@ -113,7 +133,10 @@ def text_signals(text: str) -> list[tuple[int, str]]:
 
 def _text_signals(text: str) -> list[tuple[int, str]]:
     out = []
-    for weight, reason, pat in _TEXT_RULES:
+    low = text.lower()
+    for (weight, reason, pat), keys in zip(_TEXT_RULES, _TEXT_KEYS):
+        if not any(k in low for k in keys):   # keyword gate: this rule cannot match
+            continue
         for m in pat.finditer(text):
             before = re.split(r"[.!?\n]", text[max(0, m.start() - 25):m.start()])[-1]
             if _NEG.search(before) or _NEG.search(m.group(0)[:12]):
