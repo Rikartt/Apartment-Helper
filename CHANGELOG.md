@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-19: instant Sent / Replied / Skipped buttons
+
+### Changed
+- `POST /listings/{id}/status` and `POST /listings/{id}/sent` no longer wait for the learned reply model to retrain. They queue `learning.refresh()` on one background thread (`learning.schedule_refresh()`) and answer straight away: at 4000 listings with 300 contacted, a status tap goes from about 305 ms to 11-15 ms (`tools/bench.py`; the retrain itself still takes about 300 ms, now after the reply). The retrain starts once no tap came for 1.5 s (`learning.QUIET_S`), so a burst of taps is not slowed by a CPU-bound fit in between (on a live dev server, six taps 0.4 s apart: 7-28 ms each; without the quiet period, taps during a fit took 120-160 ms). Taps coalesce: per database at most one retrain waits behind the running one, and it starts after the last tap, so it sees every change. Until it is stored, scores use the previous model, as before a retrain. Training still happens only in `refresh()` and on the stats page (`sync()`), which waits for a retrain in flight, so `/stats` is always current. All fits are serialised by a lock, and the worker pins the database file it was asked to train. `WGP_LEARNING_BACKGROUND=0` keeps the old inline retrain (tests run that way).
+- `tools/bench.py` waits for background retrains between timed calls and adds a "status + background retrain done" row.
+
 ## 2026-10-19: befristet ads whose rental period is over
 
 ### Fixed
