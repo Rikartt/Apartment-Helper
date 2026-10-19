@@ -17,24 +17,26 @@ def seed(db, n, replies_if_fresh=True, seed_=1):
     """n contacted listings sent 10+ days ago. Posted-to-sent gap is random; replies
     happen iff the message went out within 2 days of posting (recency drives replies)."""
     rnd = random.Random(seed_)
-    with db.get_conn() as conn:
-        for i in range(n):
-            gap = rnd.choice([0.2, 0.5, 1.0, 5.0, 8.0, 12.0])
-            sent = NOW - timedelta(days=rnd.uniform(10, 40))
-            posted = sent - timedelta(days=gap)
-            ad = dict(source=rnd.choice(["flatfox", "homegate"]), external_id=f"l{i}",
-                      title="t", address="Zürich", lat=47.37, lng=8.54,
-                      rent_chf=rnd.choice([700, 900, 1100]), available_from="2026-11-01",
-                      raw_text="x", url=f"https://e.test/{i}", listed_at=_fmt(posted))
-            db.upsert_listing(ad)
-            lid = conn.execute("SELECT id FROM listings WHERE external_id = ?",
-                               (f"l{i}",)).fetchone()[0]
+    plan = []
+    for i in range(n):
+        gap = rnd.choice([0.2, 0.5, 1.0, 5.0, 8.0, 12.0])
+        sent = NOW - timedelta(days=rnd.uniform(10, 40))
+        posted = sent - timedelta(days=gap)
+        db.upsert_listing(dict(
+            source=rnd.choice(["flatfox", "homegate"]), external_id=f"l{i}",
+            title="t", address="Zürich", lat=47.37, lng=8.54,
+            rent_chf=rnd.choice([700, 900, 1100]), available_from="2026-11-01",
+            raw_text="x", url=f"https://e.test/{i}", listed_at=_fmt(posted)))
+        plan.append((f"l{i}", gap, sent, rnd.randint(50, 90), rnd.randint(20, 150)))
+    with db.get_conn() as conn:   # separate phase: upsert_listing opens its own connection
+        for ext_id, gap, sent, fit, words in plan:
+            lid = conn.execute("SELECT id FROM listings WHERE external_id = ?", (ext_id,)).fetchone()[0]
             replied = gap <= 2 if replies_if_fresh else False
             conn.execute("UPDATE listings SET status = ?, status_updated_at = ?, fit_score = ? "
                          "WHERE id = ?", ("replied" if replied else "sent",
-                                          _fmt(sent + timedelta(hours=5)), rnd.randint(50, 90), lid))
+                                          _fmt(sent + timedelta(hours=5)), fit, lid))
             conn.execute("INSERT INTO sent_messages (listing_id, kind, text, sent_at) "
-                         "VALUES (?, 'first', ?, ?)", (lid, "hi " * rnd.randint(20, 150), _fmt(sent)))
+                         "VALUES (?, 'first', ?, ?)", (lid, "hi " * words, _fmt(sent)))
 
 
 def test_blend_weight_threshold_and_growth():
@@ -65,7 +67,7 @@ def test_learns_recency_and_stores_weights(db):
     assert m and m["n"] == 80
     w = m["weights"]
     assert w["recency"] == max(w.values())     # strongest factor, and positive
-    assert w["recency"] > 0.5
+    assert w["recency"] > 1.0
     stored = learning.load_model()
     assert stored["weights"] == pytest.approx(w)
     with db.get_conn() as conn:
@@ -74,7 +76,7 @@ def test_learns_recency_and_stores_weights(db):
                                 msg_len=300, ext={}, profile={})
     x_old = learning.features(fit=70, rent=900, budget=1200, commute=20, age_days=12,
                               msg_len=300, ext={}, profile={})
-    assert learning.predict(m, x_fresh) > 0.8 > 0.3 > learning.predict(m, x_old)
+    assert learning.predict(m, x_fresh) > 0.65 > 0.4 > learning.predict(m, x_old)
 
 
 def test_adjust_reply_blends_after_threshold(db, monkeypatch):

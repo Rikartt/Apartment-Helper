@@ -19,7 +19,7 @@ from . import db as dbm
 NOANSWER_DAYS = 7
 MAX_BLEND = 0.7        # the learned model never fully replaces the hand-made score
 BLEND_HALF = 60        # blend reaches half of MAX_BLEND about 60 outcomes past the threshold
-L2 = 0.5               # ridge strength on the mean log-loss
+L2 = 0.05              # ridge strength on the mean log-loss
 FEATURES = ["fit", "rent_headroom", "commute", "recency", "msg_length", "lang_match", "private_poster"]
 LABELS = {
     "fit": "Fit score", "rent_headroom": "Rent under budget", "commute": "Short commute",
@@ -161,7 +161,7 @@ def _sigmoid(z):
 
 
 def fit_logistic(X: list[list[float]], y: list[int], l2: float = L2,
-                 iters: int = 600, lr: float = 1.0) -> tuple[list[float], float]:
+                 iters: int = 1500, lr: float = 1.0) -> tuple[list[float], float]:
     """Batch gradient descent on mean log-loss + l2/2*|w|^2 (intercept unpenalised)."""
     n, d = len(X), len(X[0])
     w = [0.0] * d
@@ -303,7 +303,7 @@ def outcome_stats() -> dict:
     res = [r for r in allr if r["outcome"] is not None]
     rt = [r["reply_days"] for r in allr if r["reply_days"] is not None]
     n_min = min_outcomes()
-    m = load_model() if len(res) >= n_min else None
+    m = current_model(ttl=0) if len(res) >= n_min else None
     factors = []
     if m:
         factors = sorted(({"name": k, "label": LABELS.get(k, k), "weight": round(v, 3)}
