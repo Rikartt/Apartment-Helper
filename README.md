@@ -59,6 +59,8 @@ If the key is missing or the credit is exhausted the UI shows a clear error inst
 ### Tracking
 Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view hides what you've handled. Status survives re-ingests and is never changed by the app, even when a listing disappears.
 
+**Reply stats** (menu ⋯ > Reply stats, `/stats.html`): your reply rate by source, message length, rent, how soon you wrote, fit and commute. An outcome is a listing marked Replied, or one still marked Sent 7 days after your first message. Once there are `WGP_LEARN_MIN_OUTCOMES` (20) outcomes, a small model fitted to them is blended into the reply score (more weight as outcomes grow, at most 70%); the page shows what it learned. It retrains when you change a status or log a sent message, and when the stats page finds new outcomes. Weights are stored in the `learned_weights` table.
+
 ### Draft to reply loop
 - **Draft checklist**: under a draft, a checklist of what the ad asked for (and its hard requirements). A keyword/date/number heuristic ticks what your text already covers; the rest get an amber hint. It runs in the browser, costs nothing and never edits your text.
 - **Sent history**: Mark as sent from the draft panel (or after Copy & open ad) saves the final text and time; the detail view shows "You sent this on ...".
@@ -139,6 +141,7 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | `WGP_TELEGRAM_TOKEN`, `WGP_TELEGRAM_CHAT_ID` | none | Telegram alerts (both needed) |
 | `WGP_NOTIFY_MIN_FIT` | `75` | Minimum fit score to alert on |
 | `WGP_NOTIFY_QUIET` | `23-07` (set it empty to disable) | Quiet hours (local time); digests are held |
+| `WGP_LEARN_MIN_OUTCOMES` | `20` | Outcomes (replies, or sends with no reply after 7 days) needed before the reply score starts learning from them |
 | `WGP_LIVE_API`, `E2E_INGEST_WAIT`, `RUN_E2E` | see Tests | Only used by the e2e script |
 
 ## Sources
