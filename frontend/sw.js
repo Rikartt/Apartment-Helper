@@ -2,9 +2,9 @@
 // Bump SHELL when the caching logic changes; the activate step deletes every other cache.
 const SHELL = 'wgp-shell-v2';
 const LIB = 'wgp-lib-v1';
-// pwa.js and checklist.js are loaded by index.html: without them the offline page has no banner
+// pwa.js, checklist.js and geo.js are loaded by index.html: without them the offline page has no banner
 // and the draft checklist throws. They are fetched network-first like the page itself.
-const SHELL_URLS = ['/', '/manifest.json', '/pwa.js', '/checklist.js',
+const SHELL_URLS = ['/', '/manifest.json', '/pwa.js', '/checklist.js', '/geo.js',
                     '/icons/icon-192.png', '/icons/icon-512.png'];
 const SHELL_TIMEOUT_MS = 8000;   // flaky wifi: fall back to the cached shell instead of hanging
 
