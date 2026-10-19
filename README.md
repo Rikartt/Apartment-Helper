@@ -43,7 +43,7 @@ A short first-run walkthrough (profile, then group and phone alerts, both option
 
 ### Scoring
 - **Fit score**: how well the listing matches your profile (rent, commute to both campuses, location, move-in date, house rules, languages, wants). Computed locally, no API cost.
-- **Commute times** are straight-line estimates (about 22 km/h by transit, 15 km/h by bike), not timetable data. The map shows dashed ~10/20/30 min rings around the selected campus for the chosen mode, using the same estimate.
+- **Commute times**: transit minutes come from real timetable connections once a listing's area has been looked up, and are a straight-line estimate (about 22 km/h, shown with `~`) until then; bike minutes are always an estimate. See Commute times below. The map's dashed ~10/20/30 min rings around the selected campus always use the straight-line estimate.
 - **Reply score**: how likely you are to get an answer (ad age, private vs agency, what the ad asks for).
 - **Dealbreakers**: hard no's (over budget, implausible price, "no students", too far, etc.). Dealbreaker listings are marked and can be hidden with the "Hide dealbreakers" filter; they are never suggested in Top 5.
 - Edit your profile in the **Profile** panel; it is saved to `profile.json`.
@@ -62,6 +62,13 @@ Only these four call the Anthropic API. Costs are small but real; the default mo
 | **Ad summary** (automatic, detail view) | Opening an extracted non-English ad in solo mode shows a one-line English summary under the title. Uses the extraction model; cached per listing, so each ad costs at most one successful call. Hidden on any error (no key, no credit). | One small call per ad, once |
 
 If the key is missing or the credit is exhausted the UI shows a clear error instead of failing silently. Auto-extraction after each ingest is on by default when a key is set (see `WGP_AUTO_EXTRACT`); set `WGP_AUTO_EXTRACT=0` to spend nothing until you press Extract.
+
+### Commute times
+- **Transit** minutes are real timetable connections from [transport.opendata.ch](https://transport.opendata.ch) (free, rate-limited): nearest stops to the listing, median of the connections arriving at ETH Zentrum (Zürich, ETH/Universitätsspital) or ETH Hönggerberg around 08:00 on the next weekday, plus the walk to the first stop. Results are cached in SQLite (`commute_cache`) per ~100 m grid cell and campus for 90 days.
+- Lookups run in a background thread after each ingest (throttled to 2 requests/s, backing off on HTTP 429), never in a request handler. Listings the incremental ingest does not re-fetch are upgraded from the cache right after the run, so they need no extra API calls when a neighbour in the same cell was already looked up. Until a listing is looked up, or if the API is down, it shows a straight-line estimate with a `~` prefix (`commute_source` is `estimate`; `timetable` otherwise).
+- **Bike** minutes remain an estimate (15 km/h straight-line) plus a climb penalty of up to 5 min for Hönggerberg, which sits about 100 m above the city.
+- Areas with no stop within about 25 minutes' walk, or no connection to the campus, keep the estimate; they are looked up again after 7 days rather than on every ingest.
+- Backfill existing rows (resumable): `python -m backend.commute [--max-cells N]`. Roughly 5 API calls per new grid cell; a full database takes a while at the polite rate.
 
 ### Tracking
 Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view hides what you've handled. Status survives re-ingests and is never changed by the app, even when a listing disappears.
@@ -161,6 +168,7 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | `WGP_ACCESS_TOKEN` | none (off) | Shared secret for phone/LAN access, see "Use it on your phone" |
 | `WGP_ENABLE_RONORP` | `0` | `1` adds Ronorp back to the default sources |
 | `WGP_INGEST_INTERVAL_MIN` | `45` | Minutes between background ingests; `0` = off |
+| `WGP_COMMUTE_BACKGROUND` | `1` | `0` stops the background timetable lookups after ingests (listings then keep estimates until you run `python -m backend.commute`) |
 | `WGPENDLER_INCLUDE_APARTMENTS` | `1` | `0` stops Flatfox/Homegate from collecting whole flats (needed for group mode) |
 | `WGP_FULL_REFRESH_HOURS` | `24` | Flatfox/Homegate re-fetch every ad's details at most this often; runs in between only fetch new ads and ads whose price changed. `0` = every run is a full refresh |
 | `WGPENDLER_GEOCACHE` | `geocache.sqlite` in repo root | Path of the address-to-coordinates cache |

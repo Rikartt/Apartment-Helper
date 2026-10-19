@@ -18,6 +18,7 @@ class Listing(BaseModel):
     transit_zentrum_min: Optional[int] = None
     bike_hoenggerberg_min: Optional[int] = None
     transit_hoenggerberg_min: Optional[int] = None
+    commute_source: Optional[str] = None  # 'timetable' | 'estimate'
     seen: bool = False
     sent: bool = False
     replied: bool = False

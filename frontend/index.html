@@ -622,7 +622,8 @@ ethMarker(ETH_ZENTRUM, 'ETH Zentrum');
 ethMarker(ETH_HOENGGERBERG, 'ETH Hönggerberg');
 
 // Approximate commute rings (10/20/30 min) around the selected campus. Same straight-line model as
-// backend/commute.py (22 km/h transit, 15 km/h bike), so these are NOT real travel times.
+// the fallback estimate in backend/commute.py (22 km/h transit, 15 km/h bike, without the Hönggerberg
+// climb), so these are NOT real travel times; listing transit minutes come from the timetable unless shown with "~".
 const RING_KMH = { transit: 22, bike: 15 };
 const ringLayer = L.layerGroup().addTo(map);
 function drawRings() {
@@ -673,7 +674,7 @@ function legendHtml() {
     ${tiers().map(t => `<div class="row"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`).join('')}
     <div class="row"><span class="swatch" style="background:#777"></span>dealbreaker</div>
     <hr><div class="row"><span class="eth-marker"></span>ETH campus</div>
-    <div class="row" title="Straight-line estimate, not real travel time">dashed rings: ~10/20/30 min</div>`;
+    <div class="row" title="Straight-line estimate, not real travel time. Listing transit times are from the timetable unless marked ~">dashed rings: ~10/20/30 min</div>`;
 }
 legend.onAdd = () => {
   const div = L.DomUtil.create('div', 'map-legend');
@@ -740,8 +741,7 @@ function fitReasons(l) {
   if (l.rent_chf > 0 && l.rent_chf <= budget - 100) r.push(`CHF ${budget - l.rent_chf} under budget`);
   const t = l.transit_zentrum_min, th = l.transit_hoenggerberg_min;
   const best = Math.min(t ?? 999, th ?? 999);
-  if (best <= 15) r.push(`${best} min to ETH`);
-  else if (best <= 25) r.push(`${best} min to ETH`);
+  if (best <= 25) r.push(`${tMin(l, best)} min to ETH`);
   const av = (l.available_from || '').slice(0, 10);
   if (!av || av === 'flexible' || /^\D/.test(av)) r.push('flexible start');
   else if (av <= moveIn) r.push('available on time');
@@ -758,14 +758,19 @@ function relevanceScore(l) { if (groupMode) return l.fit_score ?? 0; return Math
 function relevanceP(l) { return groupMode ? fitP(l) : (fitP(l) + (l.reply_score ?? 0)) / 2; }
 function commuteMin(l) { if (groupMode) return l.worst_commute_min ?? 999; return l[`${mode}_${campus}_min`] ?? 999; }
 
+// Transit minutes come from the timetable (transport.opendata.ch, 08:00 arrival, incl. walk)
+// or, until the background lookup has run, a straight-line estimate shown with a "~".
+function tMin(l, t) { return t == null ? '–' : (l.commute_source === 'timetable' ? '' : '~') + t; }
+function tTitle(l) { return l.commute_source === 'timetable' ? 'Public transport (timetable, weekday 08:00 arrival, incl. walk)' : 'Public transport (rough straight-line estimate; no timetable result yet)'; }
+
 function commuteGrid(l) {
   const row = c => {
     const t = l[`transit_${c}_min`], b = l[`bike_${c}_min`];
     if (t == null && b == null) return '';
     const on = c === campus;
     return `<span class="cn ${on ? 'on' : ''}">${CAMPUS_NAME[c]}</span>
-      <span class="t ${on && mode === 'transit' ? 'on' : ''}" title="Public transport">${t ?? '–'} min</span>
-      <span class="b ${on && mode === 'bike' ? 'on' : ''}" title="Bike">${b ?? '–'} min</span><span></span>`;
+      <span class="t ${on && mode === 'transit' ? 'on' : ''}" title="${tTitle(l)}">${tMin(l, t)} min</span>
+      <span class="b ${on && mode === 'bike' ? 'on' : ''}" title="Bike (estimate: 15 km/h straight line, plus the climb to Hönggerberg)">${b ?? '–'} min</span><span></span>`;
   };
   const h = row('zentrum') + row('hoenggerberg');
   return h ? `<div class="commute">${h}</div>` : '';
@@ -773,7 +778,7 @@ function commuteGrid(l) {
 function commuteInline(l) {
   const t = l[`transit_${campus}_min`], b = l[`bike_${campus}_min`];
   const p = [];
-  if (t != null) p.push(`<span class="t">transit ${t} min</span>`);
+  if (t != null) p.push(`<span class="t" title="${tTitle(l)}">transit ${tMin(l, t)} min</span>`);
   if (b != null) p.push(`<span class="b">bike ${b} min</span>`);
   return p.length ? `${CAMPUS_NAME[campus]}: ${p.join(' · ')}` : '';
 }
@@ -1015,7 +1020,7 @@ function groupLine(l) {
   bits.push(l.bedrooms != null ? `~<b>${l.bedrooms}</b> bedroom${l.bedrooms === 1 ? '' : 's'}` : 'bedrooms ?');
   if (l.living_area_m2) bits.push(`${Math.round(l.living_area_m2)} m²`);
   bits.push(`CHF ${fmtChf(l.rent_chf)} total`);
-  if (l.worst_commute_min != null) bits.push(`worst commute <b>${l.worst_commute_min}</b> min`);
+  if (l.worst_commute_min != null) bits.push(`<span title="Worst transit time over the members' campuses. ${tTitle(l)}">worst commute <b>${tMin(l, l.worst_commute_min)}</b> min</span>`);
   return bits.join(' · ');
 }
 function headPriceText(l) { return groupMode ? `CHF ${fmtChf(priceOf(l))} per person` : `CHF ${l.rent_chf}`; }
@@ -1096,8 +1101,8 @@ function renderToday(list) {
   box.hidden = false;
   box.innerHTML = `<button class="today-head" aria-expanded="${todayOpen}" onclick="toggleToday()">${todayOpen ? '▾' : '▸'} Message today <small>${picks.length} best fresh picks</small></button>` +
     (todayOpen ? picks.map((l, i) => {
-      const mins = commuteMin(l);
-      return `<button class="today-row" data-id="${l.id}"><span class="rk">${i + 1}</span><span class="pr">${fmtChf(priceOf(l))}</span><span class="tt">${esc(cleanTitle(l))}${isNew(l) ? '<span class="nw">NEW</span>' : ''}</span><span class="mn ${!groupMode && m === 'bike' ? 'bike' : ''}">${mins < 999 ? mins + ' min' : ''}</span></button>`;
+      const mins = commuteMin(l), shown = (groupMode || m === 'transit') ? tMin(l, mins) : mins;
+      return `<button class="today-row" data-id="${l.id}"><span class="rk">${i + 1}</span><span class="pr">${fmtChf(priceOf(l))}</span><span class="tt">${esc(cleanTitle(l))}${isNew(l) ? '<span class="nw">NEW</span>' : ''}</span><span class="mn ${!groupMode && m === 'bike' ? 'bike' : ''}">${mins < 999 ? shown + ' min' : ''}</span></button>`;
     }).join('') : '');
 }
 function toggleToday() { todayOpen = !todayOpen; try { localStorage.setItem('wgp_today', todayOpen ? '1' : '0'); } catch (_) {} renderToday(curList); }

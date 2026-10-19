@@ -2,7 +2,7 @@ import re
 
 from .db import (upsert_listing, get_all_listings, mark_gone, last_source_count,
                  utc_now, GONE_MIN_RATIO, touch_seen, save_known, set_state)
-from .commute import commute_times
+from .commute import commute_times, apply_cached_pending, start_background_refresh
 from .scoring import score, reply_likelihood
 from .ingestion.mock_adapter import MockAdapter
 from .ingestion.flatfox_adapter import FlatfoxAdapter
@@ -110,6 +110,11 @@ def run_ingest(sources: list[str] | None = None) -> dict:
                              f"only {n_fetched} listings vs {prev} before; gone-check skipped")
         per_source[name] = info
 
+    # Timetable commutes: the loop above only reads the cache. Listings that were not
+    # re-fetched (incremental sources) are upgraded from the cache here; everything still
+    # on an estimate is looked up by the background thread.
+    apply_cached_pending()
+    start_background_refresh()
     if dupes:
         print(f"[ingest] skipped {dupes} cross-source duplicates")
     return {"total": total, "new": new, "gone": gone, "sources": per_source}

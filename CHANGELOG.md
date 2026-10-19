@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-19: real commute times (PR #4)
+
+### New
+- Transit commute minutes now come from real timetable connections (transport.opendata.ch, 08:00 weekday arrival, including the walk to the first stop), cached per ~100 m grid cell and campus in SQLite and fetched in a background step after ingest. Straight-line estimate stays as fallback; `commute_source` (`timetable` | `estimate`) is stored per listing and the UI prefixes estimates with `~`.
+- `python -m backend.commute` backfills existing listings.
+- Works with the incremental ingest: listings that were only confirmed present (not re-fetched) are upgraded from the cache after each run, and the background refresh applies cache hits before making any API call.
+- Map legend and card tooltips say which numbers are estimates (rings stay a straight-line estimate; bike minutes are always estimated). The `~` also marks estimates in the "N min to ETH" chip, the Message-today strip, the group "worst commute" and phone alerts.
+- Areas without a usable timetable result (no stop within walking range, or no connection) are remembered for 7 days instead of being looked up again after every ingest.
+- Bike estimate adds a climb penalty (up to 5 min) for Hönggerberg.
+
 ## 2026-10-19: after the merges (PRs #13, #14)
 
 ### New
