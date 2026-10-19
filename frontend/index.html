@@ -648,7 +648,8 @@ function legendHtml() {
   return `<div class="map-legend-title">${groupMode ? 'Rent per person' : 'Monthly rent'}</div>
     ${tiers().map(t => `<div class="row"><span class="swatch" style="background:${t.color}"></span>${t.label}</div>`).join('')}
     <div class="row"><span class="swatch" style="background:#777"></span>dealbreaker</div>
-    <hr><div class="row"><span class="eth-marker"></span>ETH campus</div>`;
+    <hr><div class="row"><span class="eth-marker"></span>ETH campus</div>
+    <div class="row" title="Straight-line estimate, not real travel time">dashed rings: ~10/20/30 min</div>`;
 }
 legend.onAdd = () => {
   const div = L.DomUtil.create('div', 'map-legend');
@@ -1766,6 +1767,7 @@ new MutationObserver(syncOffline).observe(document.body, { childList: true });
 window.addEventListener('resize', () => { if (document.documentElement.style.getPropertyValue('--ob') !== '0px') syncOffline(); });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
+drawRings();
 applyModeUI();
 applyFilters();
 loadProfileBasics().finally(() => { loadListings().then(() => { applyFilters(); checkIngest(); updateHint(); }); });
