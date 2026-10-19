@@ -15,6 +15,7 @@ zero Anthropic calls), then drives headless Chromium at 1440x900 and 390x844 and
   no console errors on any page                          and the follow-up draft button
   draw-area map filter (mouse at 1440, touch taps at 390): list, pins, Message today, More
      filters count, kept over a reload, Esc cancels drawing without closing the detail, reset
+  Top 5 honours Hide priority/premium, Hide befristet and the drawn area (other filters don't)
 
 Needs Playwright (`pip install playwright`) and a Chromium. It uses Playwright's own browser
 (PLAYWRIGHT_BROWSERS_PATH is honoured), else WGP_CHROMIUM, else /opt/pw-browsers/chromium.
@@ -567,6 +568,58 @@ def run_area(pages: Pages, base: str, w: int, h: int):
     pg.context.close()
 
 
+def run_top5(pages: Pages, base: str, w: int, h: int):
+    """Top 5 is ranked on the server; ticking a hide filter or drawing an area must change it."""
+    tag = str(w)
+    pg = pages.new(w, h, touch=w <= 760)
+
+    def top5() -> list[int]:
+        pg.evaluate("closeBest(); showBest()")
+        pg.wait_for_function("!document.querySelector('#best-list #best-loading')", timeout=10000)
+        return pg.evaluate("[...document.querySelectorAll('#best-list .best-entry')].map(e => +e.innerHTML.match(/selectListing\\((\\d+)\\)/)[1])")
+
+    with step(f"{tag} top 5 filters", pg, pages):
+        wait_list(pg, base)
+        pg.evaluate("resetFilters()")
+        pg.wait_for_timeout(300)
+        base5 = top5()
+        check(f"{tag} Top 5 unfiltered: 5 entries, no filter note",
+              len(base5) == 5 and pg.locator("#best-list .best-filters").count() == 0, base5)
+        check(f"{tag} (seed) unfiltered Top 5 contains a befristet listing",
+              pg.evaluate(f"{json.dumps(base5)}.some(id => isFixedTerm(byId[id]))"))
+        pg.evaluate("closeBest(); $('hideTerm').checked = true; savePromo(); applyFilters()")
+        term5 = top5()
+        check(f"{tag} ticking 'Hide befristet' changes Top 5 and drops befristet",
+              term5 != base5 and len(term5) == 5 and pg.evaluate(f"{json.dumps(term5)}.every(id => !isFixedTerm(byId[id]))"),
+              f"{base5} -> {term5}")
+        pg.evaluate("closeBest(); $('hidePromo').checked = true; savePromo(); applyFilters()")
+        both5 = top5()
+        check(f"{tag} with 'Hide priority/premium' too: no active promo, note names both filters",
+              pg.evaluate(f"{json.dumps(both5)}.every(id => !promoActive(byId[id]) && !isFixedTerm(byId[id]))")
+              and "no priority/premium" in pg.text_content("#best-list .best-filters")
+              and "no befristet" in pg.text_content("#best-list .best-filters"))
+        pages.shot(pg, f"{tag}-13a-top5-filtered")
+        pg.evaluate("closeBest(); resetFilters()")
+        pg.wait_for_timeout(300)
+        check(f"{tag} reset brings the unfiltered Top 5 back", top5() == base5)
+        pg.evaluate("closeBest(); setArea(" + json.dumps([[47.37, 8.53], [47.37, 8.55], [47.39, 8.55], [47.39, 8.53]]) + ")")
+        pg.wait_for_timeout(300)
+        area5 = top5()
+        check(f"{tag} drawing an area limits Top 5 to listings inside it",
+              area5 and area5 != base5 and pg.evaluate(f"{json.dumps(area5)}.every(id => inArea(byId[id]))")
+              and "in drawn area" in pg.text_content("#best-list .best-filters"), f"{base5} -> {area5}")
+        pages.shot(pg, f"{tag}-13b-top5-area")
+        # the rent slider is a view filter and deliberately leaves Top 5 alone
+        pg.evaluate("closeBest(); clearArea(true)")
+        pg.evaluate("$('maxRent').value = $('maxRent').min; applyFilters()")
+        pg.wait_for_timeout(300)
+        check(f"{tag} rent slider does not change Top 5", top5() == base5)
+        pg.evaluate("closeBest(); resetFilters()")
+        pg.wait_for_timeout(600)
+    check(f"{tag} top 5 page: no console errors", not pg.errs, "; ".join(pg.errs[:3]))
+    pg.context.close()
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Opt-in browser smoke test of the WGPendler UI.")
     ap.add_argument("--out", help="screenshot folder (default: <system temp>/wgp-ui-smoke/<timestamp>)")
@@ -635,6 +688,7 @@ def main(argv=None) -> int:
             for w, h in SIZES:
                 run_size(pages, base, w, h, api)
                 run_area(pages, base, w, h)
+                run_top5(pages, base, w, h)
             browser.close()
         if pages.external:
             print(f"[ui] blocked external hosts (answered offline): {sorted(pages.external)}")
