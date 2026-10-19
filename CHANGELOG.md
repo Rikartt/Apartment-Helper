@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-19: smaller /listings over the wire, instant single-listing replies
+
+### Changed
+- Responses are gzipped when the browser accepts it (Starlette `GZipMiddleware`, level 6, replies under 1 kB and PNG icons left alone). At 4000 listings `/listings?kind=wg_room,studio` goes from 4.6 MB to about 0.3 MB on the wire, which is what matters on mobile data; the server spends roughly 40-90 ms more per call compressing. The service worker is unaffected (the browser decodes before it sees the body).
+- `/listings` and `/group/listings` leave out columns no page reads: `extract_attempts`, `extracted_at`, `missed_runs`, `notified_at`, `last_seen_at` (`db.LIST_OMIT`), and `/listings` also drops `fit_reasons`, a copy of `match_reasons` (the UI already reads either). About 15% less JSON. `GET /listings/{id}` and `/listings?include_raw=1` still return everything.
+- `GET /listings/{id}` and the status/sent POSTs no longer re-read and hash all listings to look up one trust score: a `trust_gen` token in the DB changes (SQLite triggers) whenever a column the trust score reads is inserted, changed or deleted, and while it matches the cached annotation the cached result is used. Detail view: about 110 ms to 9 ms at 4000 listings, with identical results (tests/test_payload.py).
+- `tools/bench.py` also times the detail and status endpoints and shows the on-the-wire size.
+
 ## 2026-10-19: Top 5 follows the priority, befristet and area filters
 
 ### Fixed

@@ -15,7 +15,8 @@ from . import llm
 from .drafting import (profile_for_draft, build_followup_prompt, language_choice, normalize_tone,
                        short_rule, text_language, LANG_NAMES, MOVE_IN_RULE)
 from . import trust
-from .db import get_all_listings, get_listing, get_sent_messages, strip_raw
+from .db import (get_all_listings, get_listing, get_sent_messages, strip_raw, trust_generation,
+                 LIST_OMIT)
 from .scoring import load_profile, _parse_date, price_implausible
 
 router = APIRouter()
@@ -272,11 +273,14 @@ def group_listings(listings: list[dict], group: dict, include_dealbreakers: bool
 def group_listings_endpoint(include_dealbreakers: bool = Query(False)):
     group = get_group()
     from .main import _sent_info   # lazy: main imports this module
-    rows = trust.annotate(get_all_listings(True))   # median + duplicates need the raw text
+    gen = trust_generation()   # read before the rows: tags the trust cache (see main._live_universe)
+    rows = trust.annotate(get_all_listings(True), gen=gen)   # median + duplicates need the raw text
     # score before stripping: the "no WG" / scam text checks read the ad body
     items = [strip_raw(l) for l in group_listings(rows, group, include_dealbreakers)]
     for l in items:   # sent_at / followup_due, as on /listings (Follow-ups filter, chip)
         l.update(_sent_info(l))
+        for k in LIST_OMIT:   # unread bookkeeping columns, as on /listings
+            l.pop(k, None)
     # `total` = every live listing in the DB (additive, for "595 of 3,325" in the header)
     return JSONResponse({"group": group, "listings": items, "total": len(rows)})
 

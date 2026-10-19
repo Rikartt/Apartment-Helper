@@ -399,7 +399,7 @@ def trust_detail(l: dict, ctx: TrustContext | None = None) -> dict:
     return {"score": score, "level": level_of(score), "reasons": [r for _, r in penalties]}
 
 
-_cache: dict = {"entry": None}   # (signature, {id: detail})
+_cache: dict = {"entry": None}   # (signature, {id: detail}, db trust_gen token or None)
 
 
 def _signature(rows: list[dict]) -> int:
@@ -412,22 +412,50 @@ def _signature(rows: list[dict]) -> int:
                       for l in rows))
 
 
-def annotate(listings: list[dict], universe: list[dict] | None = None) -> list[dict]:
+def _apply(l: dict, d: dict) -> None:
+    l["trust_score"], l["trust_level"], l["trust_reasons"] = d["score"], d["level"], list(d["reasons"])
+
+
+def annotate(listings: list[dict], universe: list[dict] | None = None,
+             gen: int | None = None) -> list[dict]:
     """Attach trust_score / trust_level / trust_reasons in place. `universe` (default: the
     listings themselves) is what the price median and duplicate check look at; its rows
     need raw_text. The last result set is cached while the universe is unchanged, so repeated
-    requests (each map refresh) cost one O(n) signature instead of a full recompute."""
+    requests (each map refresh) cost one O(n) signature instead of a full recompute.
+
+    `gen`: the db.trust_generation() token read BEFORE the universe was loaded, when the
+    universe is every live listing (db.get_all_listings(True)). It tags the cache entry so
+    annotate_cached() can serve single listings without reloading the universe."""
     universe = universe if universe is not None else listings
     sig = _signature(universe)
     cached = _cache["entry"]
     if cached is None or cached[0] != sig:
         ctx = TrustContext(universe)
-        cached = (sig, {l["id"]: trust_detail(l, ctx) for l in ctx.rows})
+        cached = (sig, {l["id"]: trust_detail(l, ctx) for l in ctx.rows}, gen)
         _cache["entry"] = cached   # one assignment, so other threads never see a mixed pair
+    elif gen is not None and cached[2] != gen:
+        # same content under a newer token: re-tag. A None gen never drops a tag: the tagged
+        # token still describes exactly this content.
+        cached = (sig, cached[1], gen)
+        _cache["entry"] = cached
     res = cached[1]
     for l in listings:
         d = res.get(l.get("id"))
         if d is None:   # row not in the universe (should not happen): score it alone
             d = trust_detail(l)
-        l["trust_score"], l["trust_level"], l["trust_reasons"] = d["score"], d["level"], list(d["reasons"])
+        _apply(l, d)
     return listings
+
+
+def annotate_cached(listings: list[dict], gen: int | None) -> bool:
+    """Fast path for single-listing endpoints: annotate from the cache when it was computed
+    over the live DB at token `gen` (the current db.trust_generation()), which is exactly what
+    annotate(listings, get_all_listings(True)) would return. False (nothing touched) on a miss;
+    the caller then does the full annotate()."""
+    cached = _cache["entry"]
+    if gen is None or cached is None or cached[2] != gen:
+        return False
+    for l in listings:
+        d = cached[1].get(l.get("id"))
+        _apply(l, d if d is not None else trust_detail(l))
+    return True

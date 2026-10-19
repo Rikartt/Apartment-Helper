@@ -32,6 +32,18 @@ NEW_COLUMNS = [
 
 VALID_STATUSES = ("sent", "replied", "rejected")
 
+# Columns the trust score (backend/trust.py) reads: a write to any of them, or an insert/delete,
+# gives trust_gen a new random token, so single-listing endpoints can reuse the cached trust
+# annotation without re-reading every listing (tests/test_payload.py keeps this list in step with
+# trust._signature).
+TRUST_COLUMNS = ("title", "address", "lat", "lng", "rent_chf", "raw_text", "extracted", "kind",
+                 "rooms", "living_area_m2", "photo_count", "gone_at")
+
+# Bookkeeping columns no page reads (checked against frontend/*.html, *.js): left out of the big
+# list payloads (/listings, /group/listings), about 8% of their size. The single-listing
+# endpoint (/listings/{id}) and /listings?include_raw=1 still return every column.
+LIST_OMIT = ("extract_attempts", "extracted_at", "missed_runs", "notified_at", "last_seen_at")
+
 INDEXES = [
     "CREATE INDEX IF NOT EXISTS idx_listings_status ON listings(status)",
     "CREATE INDEX IF NOT EXISTS idx_listings_created ON listings(created_at)",
@@ -172,7 +184,35 @@ def init_db():
         """)
         for stmt in INDEXES:
             conn.execute(stmt)
+        _init_trust_gen(conn)
         conn.commit()
+
+
+def _init_trust_gen(conn):
+    """One-row table whose token changes (random 64-bit, so a restored or swapped DB file never
+    reuses a token for different content) whenever trust-relevant listing data changes."""
+    conn.execute("CREATE TABLE IF NOT EXISTS trust_gen "
+                 "(id INTEGER PRIMARY KEY CHECK (id = 1), token INTEGER NOT NULL)")
+    conn.execute("INSERT OR IGNORE INTO trust_gen (id, token) VALUES (1, random())")
+    bump = "BEGIN UPDATE trust_gen SET token = random() WHERE id = 1; END"
+    # only real changes count (an ingest re-writing the same text must not invalidate)
+    changed = " OR ".join(f"OLD.{c} IS NOT NEW.{c}" for c in TRUST_COLUMNS)
+    # recreated on every start, so the trigger always matches TRUST_COLUMNS
+    for name, event, when in (("trust_gen_ins", "INSERT", ""), ("trust_gen_del", "DELETE", ""),
+                              ("trust_gen_upd", f"UPDATE OF {', '.join(TRUST_COLUMNS)}",
+                               f"WHEN {changed}")):
+        conn.execute(f"DROP TRIGGER IF EXISTS {name}")
+        conn.execute(f"CREATE TRIGGER {name} AFTER {event} ON listings {when} {bump}")
+
+
+def trust_generation() -> int | None:
+    """Current trust_gen token (None if the table is missing, e.g. a DB not yet initialised)."""
+    try:
+        with get_conn() as conn:
+            row = conn.execute("SELECT token FROM trust_gen WHERE id = 1").fetchone()
+    except sqlite3.Error:
+        return None
+    return row[0] if row else None
 
 
 def upsert_listing(ad: dict) -> bool:
