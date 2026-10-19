@@ -1,10 +1,20 @@
 /* WGPendler service worker: caches the app shell only. API data is never cached. */
-const SHELL = 'wgp-shell-v1';
+// Bump SHELL when the caching logic changes; the activate step deletes every other cache.
+const SHELL = 'wgp-shell-v2';
 const LIB = 'wgp-lib-v1';
-const SHELL_URLS = ['/', '/manifest.json', '/icons/icon-192.png', '/icons/icon-512.png'];
+// pwa.js and checklist.js are loaded by index.html: without them the offline page has no banner
+// and the draft checklist throws. They are fetched network-first like the page itself.
+const SHELL_URLS = ['/', '/manifest.json', '/pwa.js', '/checklist.js',
+                    '/icons/icon-192.png', '/icons/icon-512.png'];
+const SHELL_TIMEOUT_MS = 8000;   // flaky wifi: fall back to the cached shell instead of hanging
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_URLS)).then(() => self.skipWaiting()));
+  // one missing file (or a 401 from the access guard) must not abort the whole install
+  e.waitUntil(
+    caches.open(SHELL)
+      .then((c) => Promise.allSettled(SHELL_URLS.map((u) => c.add(u))))
+      .then(() => self.skipWaiting())
+  );
 });
 
 self.addEventListener('activate', (e) => {
@@ -41,19 +51,27 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;   // map tiles etc.: leave to the network
 
   // App shell: network-first (so updates arrive), cache only as offline fallback.
-  const isShell = req.mode === 'navigate' || SHELL_URLS.includes(url.pathname);
+  // Only the real page ('/') is stored under '/': navigating to /docs or /openapi.json must
+  // never overwrite the cached app shell.
+  const isPage = req.mode === 'navigate';
+  const isShell = SHELL_URLS.includes(url.pathname) || (isPage && url.pathname === '/');
   if (isShell) {
+    const key = isPage ? '/' : url.pathname;
     e.respondWith(
-      fetch(req).then((res) => {
-        if (res.ok) { const copy = res.clone(); caches.open(SHELL).then((c) => c.put(url.pathname === '/' || req.mode === 'navigate' ? '/' : req, copy)); }
+      new Promise((resolve, reject) => {
+        const t = setTimeout(() => reject(new Error('timeout')), SHELL_TIMEOUT_MS);
+        fetch(req).then((r) => { clearTimeout(t); resolve(r); }, (err) => { clearTimeout(t); reject(err); });
+      }).then((res) => {
+        if (res.ok && res.status === 200) { const copy = res.clone(); caches.open(SHELL).then((c) => c.put(key, copy)); }
         return res;
       }).catch(async () => {
         tell({ type: 'offline' });
-        return (await caches.match(req.mode === 'navigate' ? '/' : req)) || new Response('Offline', { status: 503 });
+        return (await caches.match(key)) || new Response('Offline', { status: 503 });
       })
     );
     return;
   }
+  if (isPage) return;   // any other page (/docs, ...): plain network, never cached
 
   // Everything else (/listings, /profile, ...): network only, never cached.
   e.respondWith(
