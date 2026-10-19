@@ -44,7 +44,8 @@ async def access_guard(request: Request, call_next):
             supplied = request.query_params.get("token", "")
             if supplied and _eq(supplied, token):
                 rest = [(k, v) for k, v in request.query_params.multi_items() if k != "token"]
-                target = request.url.path + ("?" + urlencode(rest) if rest else "")
+                # "//host" would be read as a protocol-relative URL: keep the redirect on this origin
+                target = "/" + request.url.path.lstrip("/") + ("?" + urlencode(rest) if rest else "")
                 response = RedirectResponse(target, status_code=303)
                 response.set_cookie(COOKIE, expected, max_age=365 * 86400, httponly=True, samesite="lax")
             else:

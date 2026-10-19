@@ -11,6 +11,7 @@ Env (all optional, see .env.example):
 """
 import os
 import threading
+from urllib.parse import quote
 from datetime import datetime, timedelta, timezone
 
 import httpx
@@ -153,8 +154,8 @@ def _send_ntfy(title: str, body: str, click: str = "") -> None:
     topic = os.environ["WGP_NTFY_TOPIC"].strip()
     headers = {"Title": title.encode("ascii", "replace").decode(), "Tags": "house",
                "Priority": "high"}
-    if click:
-        headers["Click"] = click
+    if click:   # header values must be ASCII: a raw umlaut in the URL would fail every send
+        headers["Click"] = quote(click, safe=":/?&=#%+@,;~!$'()*")
     r = httpx.post(f"{server}/{topic}", content=body.encode("utf-8"), headers=headers,
                    timeout=TIMEOUT)
     r.raise_for_status()
