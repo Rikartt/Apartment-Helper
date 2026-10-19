@@ -17,7 +17,7 @@ from .drafting import (profile_for_draft, build_followup_prompt, language_choice
 from . import trust
 from .db import (get_all_listings, get_listing, get_sent_messages, strip_raw, trust_generation,
                  LIST_OMIT)
-from .scoring import load_profile, _parse_date, price_implausible
+from .scoring import load_profile, _parse_date, price_implausible, rental_over, RENTAL_OVER_MSG
 
 router = APIRouter()
 
@@ -161,6 +161,9 @@ def group_detail(listing: dict, group: dict, today: date | None = None) -> dict:
     bad_price = price_implausible(listing)
     if bad_price:
         deal.append(bad_price)
+    over = rental_over(listing, today)
+    if over:
+        deal.append(f"{RENTAL_OVER_MSG} (ended {over.isoformat()})")
 
     # bedrooms
     if bedrooms is None:
