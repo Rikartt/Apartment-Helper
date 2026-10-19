@@ -22,6 +22,7 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family:'Courier New',Courier,monospace; background:var(--bg); color:var(--txt); display:flex; flex-direction:column; height:100vh; height:100dvh; }
+  body { padding-bottom:var(--ob,0px); }   /* --ob = height of the PWA offline banner (pwa.js), set by syncOffline() */
   button { font-family:inherit; }
   a { color:var(--transit); }
   :focus-visible { outline:2px solid var(--amber); outline-offset:1px; }
@@ -127,6 +128,9 @@
   .newbadge { font-size:.56rem; font-weight:700; letter-spacing:.1em; padding:1px 4px; border-radius:2px; background:var(--amber); color:#111; }
   #newnotice { display:none; background:#2a2208; border-bottom:1px solid #5a4a10; color:var(--amber); font-size:.72rem; letter-spacing:.04em; padding:5px 16px; flex-shrink:0; align-items:center; gap:10px; }
   #newnotice.on { display:flex; }
+  #newnotice button, #hint button { white-space:nowrap; flex-shrink:0; }
+  #newnotice-text, #hint-text { min-width:0; }
+  #newnotice #newnotice-x { margin-left:auto; border:none; font-size:.8rem; }
   #newnotice button { background:none; border:1px solid var(--amber); color:var(--amber); font:inherit; font-size:.68rem; padding:1px 8px; cursor:pointer; text-transform:uppercase; letter-spacing:.08em; }
   #newnotice button:hover { background:var(--amber); color:#111; }
   .stbadge { margin-left:auto; font-size:.58rem; text-transform:uppercase; letter-spacing:.08em; padding:1px 5px; border:1px solid; border-radius:2px; }
@@ -163,7 +167,7 @@
   @keyframes sk { to { background-position:-200% 0; } }
 
   /* profile */
-  #profile-panel, #group-panel { position:fixed; top:0; right:0; width:380px; max-width:100vw; height:100vh; height:100dvh; background:var(--panel); border-left:1px solid var(--line); z-index:1100; display:flex; flex-direction:column; transform:translateX(100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
+  #profile-panel, #group-panel { position:fixed; top:0; right:0; width:380px; max-width:100vw; height:calc(100vh - var(--ob,0px)); height:calc(100dvh - var(--ob,0px)); background:var(--panel); border-left:1px solid var(--line); z-index:1100; display:flex; flex-direction:column; transform:translateX(100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
   #profile-panel.open, #group-panel.open { transform:none; visibility:visible; }
   #profile-panel-header, #group-panel-header { padding:12px 16px; border-bottom:2px solid var(--red); display:flex; justify-content:space-between; align-items:center; }
   #profile-panel-header h2, #group-panel-header h2 { color:var(--red); font-size:.85rem; letter-spacing:.1em; text-transform:uppercase; }
@@ -207,6 +211,8 @@
   /* draft */
   .draft-btn { display:block; width:100%; margin-top:14px; background:none; color:var(--amber); border:1px solid var(--amber); font-size:.78rem; padding:8px; letter-spacing:.08em; cursor:pointer; }
   .draft-btn:hover { background:#2a2000; } .draft-btn:disabled { opacity:.5; cursor:wait; }
+  .draft-btn.has-draft { color:var(--dim); border-color:var(--line); font-size:.7rem; padding:6px; margin-top:12px; }
+  .draft-btn.has-draft:hover { color:var(--amber); border-color:var(--amber); background:none; }
   #draft-box { margin-top:8px; }
   .draft-head { display:flex; align-items:center; gap:8px; font-size:.62rem; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; margin-bottom:4px; }
   .lang-tag { background:#241a00; color:var(--amber); border:1px solid #5a4400; padding:0 5px; border-radius:2px; font-weight:bold; }
@@ -238,7 +244,7 @@
   .draft-error { font-size:.7rem; color:#e57373; margin-top:8px; line-height:1.4; border:1px solid #5a1010; background:#1a0a0a; padding:8px; }
 
   /* best */
-  #best-modal { display:none; position:fixed; inset:0; background:#000a; z-index:2000; align-items:center; justify-content:center; }
+  #best-modal { display:none; position:fixed; inset:0; bottom:var(--ob,0px); background:#000a; z-index:2000; align-items:center; justify-content:center; }
   #best-modal.open { display:flex; }
   #best-box { background:var(--panel); border:1px solid var(--line); width:min(700px,95vw); max-height:90vh; display:flex; flex-direction:column; border-top:2px solid var(--red); }
   #best-header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
@@ -260,7 +266,7 @@
   .best-open:hover { text-decoration:underline; }
   #best-loading { padding:32px; text-align:center; color:#959595; font-size:.8rem; letter-spacing:.06em; line-height:1.6; }
 
-  #help-modal { position:fixed; inset:0; background:#000a; z-index:2000; align-items:center; justify-content:center; display:flex; }
+  #help-modal { position:fixed; inset:0; bottom:var(--ob,0px); background:#000a; z-index:2000; align-items:center; justify-content:center; display:flex; }
   #help-modal[hidden] { display:none; }
   #help-box { background:var(--panel); border:1px solid var(--line); border-top:2px solid var(--red); width:min(420px,92vw); }
   #help-box #best-header { display:flex; }
@@ -270,7 +276,7 @@
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
 
   /* toast */
-  #toasts { position:fixed; left:50%; bottom:16px; transform:translateX(-50%); z-index:3000; display:flex; flex-direction:column; gap:6px; align-items:center; width:max-content; max-width:92vw; }
+  #toasts { position:fixed; left:50%; bottom:calc(16px + var(--ob,0px)); transform:translateX(-50%); z-index:3000; display:flex; flex-direction:column; gap:6px; align-items:center; width:max-content; max-width:92vw; }
   .toast { background:#222; border:1px solid #444; border-left:3px solid var(--amber); color:var(--txt); font-size:.74rem; padding:8px 12px; box-shadow:0 4px 14px #000a; display:flex; gap:12px; align-items:center; }
   .toast.err { border-left-color:#e53935; }
   .toast button { background:none; border:none; color:var(--amber); font-size:.74rem; cursor:pointer; text-decoration:underline; }
@@ -332,13 +338,16 @@
     .st { padding:6px 8px; font-size:.64rem; }
     .act, .card-link { padding:6px 8px; font-size:.7rem; }
     .draft-actions button { padding:9px 12px; }
-    #toasts { bottom:8px; }
+    #toasts { bottom:calc(8px + var(--ob,0px)); }
     #sidebar-header { position:static; }
     .sh-row .seg { overflow-x:auto; }
     .sh-row .seg button { flex:0 0 auto; height:30px; padding:0 9px; }
     #more-menu { right:0; }
     .leaflet-control-zoom { display:none; }
-    #hint, #newnotice { padding:5px 10px; }
+    #hint, #newnotice { padding:5px 10px; font-size:.68rem; gap:8px; }
+    .fu-btn, .sent-prompt button { padding:9px 12px; }
+    .toast button { padding:6px 8px; }
+    .sh-row .seg button { padding:0 6px; font-size:.62rem; }
   }
 .kind-badge { font-size: .55rem; letter-spacing: .08em; color: var(--amber); border: 1px solid var(--amber); padding: 0 4px; margin-right: 4px; vertical-align: 2px; }
 
@@ -430,7 +439,7 @@
   </div>
 </div>
 
-<div id="newnotice" role="status" aria-live="polite"><span id="newnotice-text"></span><button onclick="showNewArrivals()">Show</button><button id="newnotice-x" aria-label="Dismiss" onclick="$('newnotice').classList.remove('on')" style="margin-left:auto;border:none">✕</button></div>
+<div id="newnotice" role="status" aria-live="polite"><span id="newnotice-text"></span><button onclick="showNewArrivals()">Show</button><button id="newnotice-x" aria-label="Dismiss" onclick="$('newnotice').classList.remove('on')">✕</button></div>
 
 <div id="hint" role="note"><span id="hint-text"></span><button id="hint-act" type="button"></button><button id="hint-x" type="button" aria-label="Dismiss">✕</button></div>
 
@@ -1516,7 +1525,7 @@ async function draftMessage(id) {
     else toast(e.message, { err: true });
   } finally {
     const b = $('draft-btn');
-    if (b) { b.disabled = false; b.textContent = D()[id] ? '↻ Redraft' : (groupMode ? '✎ Draft Group Application' : '✎ Draft Message'); }
+    if (b) { b.disabled = false; b.classList.toggle('has-draft', !!D()[id]); b.textContent = D()[id] ? '↻ Redraft' : (groupMode ? '✎ Draft Group Application' : '✎ Draft Message'); }
   }
 }
 const FD = {}, viewMode = {};   // follow-up drafts, and which draft each listing is showing
@@ -1565,7 +1574,7 @@ function renderDraft(id, text, mode = 'first') {
   meta();
   if (!fu) renderChecklist(id);
   ta.addEventListener('input', () => { store()[id] = ta.value; meta(); if (!fu) renderChecklist(id); });
-  const b = $('draft-btn'); if (b && !fu) b.textContent = '↻ Redraft';
+  const b = $('draft-btn'); if (b && !fu) { b.textContent = '↻ Redraft'; b.classList.add('has-draft'); }
 }
 async function copyText(text) {
   try { if (navigator.clipboard) { await navigator.clipboard.writeText(text); return true; } } catch (_) {}
@@ -1683,19 +1692,29 @@ document.addEventListener('keydown', e => {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   const t = e.target, tag = t.tagName;
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable) return;
+  if (!$('help-modal').hidden || !$('more-menu').hidden) return;   // modal/menu open: no list shortcuts behind it
   if ($('profile-panel').classList.contains('open') || $('group-panel').classList.contains('open') || $('best-modal').classList.contains('open')) return;
   const k = e.key, detail = $('detail-view').classList.contains('open');
   const target = detail ? selectedId : cursorId;
   if (k === 'j' || k === 'ArrowDown' && t === document.body) { e.preventDefault(); step(1); }
   else if (k === 'k' || k === 'ArrowUp' && t === document.body) { e.preventDefault(); step(-1); }
   else if (k === '?') showHelp();
-  else if (k === 'Enter' && !detail && cursorId != null && (t === document.body || t.classList?.contains('card'))) { e.preventDefault(); selectListing(cursorId); }
+  else if (k === 'Enter' && !detail && cursorId != null && !t.closest?.('button, a, summary, select')) { e.preventDefault(); selectListing(cursorId); }   // body, card or the (focusable) map
   else if (k === 'Enter' && t.classList?.contains('card')) { e.preventDefault(); selectListing(+t.dataset.id); }
   else if (target != null && (k === 's' || k === 'x')) setStatus(target, k === 's' ? 'sent' : 'rejected');
   else if (target != null && k === 'o') { const u = byId[target]?.url; if (/^https?:\/\//i.test(u || '')) window.open(u, '_blank', 'noopener'); }
   else if (detail && k === 'd') draftMessage(selectedId);
 });
 $('cards').addEventListener('focusin', e => { const c = e.target.closest?.('.card'); if (c && +c.dataset.id !== cursorId) setCursor(+c.dataset.id, false); });
+
+// Keep fixed UI (toasts, panels, modals, page bottom) clear of the PWA offline banner that pwa.js appends.
+function syncOffline() {
+  const bar = [...document.body.children].find(el => el.getAttribute('role') === 'status' && getComputedStyle(el).position === 'fixed');
+  document.documentElement.style.setProperty('--ob', bar ? bar.offsetHeight + 'px' : '0px');
+  setTimeout(() => map.invalidateSize(), 50);
+}
+new MutationObserver(syncOffline).observe(document.body, { childList: true });
+window.addEventListener('resize', () => { if (document.documentElement.style.getPropertyValue('--ob') !== '0px') syncOffline(); });
 
 // ── Boot ─────────────────────────────────────────────────────────────────────
 applyModeUI();
