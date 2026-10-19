@@ -71,8 +71,9 @@ class _Conn(sqlite3.Connection):
             self.close()
 
 
-def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=30, factory=_Conn)
+def get_conn(path=None) -> sqlite3.Connection:
+    """A connection to `path`, or to DB_PATH (read at call time) when omitted."""
+    conn = sqlite3.connect(path or DB_PATH, timeout=30, factory=_Conn)
     conn.row_factory = sqlite3.Row
     return conn
 

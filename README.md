@@ -76,7 +76,7 @@ If the key is missing or the credit is exhausted the UI shows a clear error inst
 ### Tracking
 Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view hides what you've handled. Status survives re-ingests and is never changed by the app, even when a listing disappears.
 
-**Reply stats** (menu ⋯ > Reply stats, `/stats.html`): your reply rate by source, message length, rent, how soon you wrote, fit and commute, plus median reply time. An outcome is a listing marked Replied, or one still marked Sent 7 days after your first message. Once there are `WGP_LEARN_MIN_OUTCOMES` (20) outcomes, a small model fitted to them is blended into the reply score (more weight as outcomes grow, at most 70%); the page shows what it learned. It retrains when you change a status or log a sent message, and when the stats page finds new outcomes. Weights are stored in the `learned_weights` table.
+**Reply stats** (menu ⋯ > Reply stats, `/stats.html`): your reply rate by source, message length, rent, how soon you wrote, fit and commute, plus median reply time. An outcome is a listing marked Replied, or one still marked Sent 7 days after your first message. Once there are `WGP_LEARN_MIN_OUTCOMES` (20) outcomes, a small model fitted to them is blended into the reply score (more weight as outcomes grow, at most 70%); the page shows what it learned. It retrains when you change a status or log a sent message (in the background, about 1.5 s after your last tap, so the buttons answer at once), and when the stats page finds new outcomes (the page always shows current numbers). Weights are stored in the `learned_weights` table.
 
 ### Draft to reply loop
 - **Draft checklist**: under a draft, a checklist of what the ad asked for (and its hard requirements). A keyword/date/number heuristic (plus the extracted move-in and duration) ticks what your text already covers; the rest get an amber hint. It runs in the browser, costs nothing and never edits your text.
@@ -176,6 +176,7 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | `WGP_ENABLE_RONORP` | `0` | `1` adds Ronorp back to the default sources |
 | `WGP_INGEST_INTERVAL_MIN` | `45` | Minutes between background ingests; `0` = off |
 | `WGP_COMMUTE_BACKGROUND` | `1` | `0` stops the background timetable lookups after ingests (listings then keep estimates until you run `python -m backend.commute`) |
+| `WGP_LEARNING_BACKGROUND` | `1` | `0` retrains the reply model inside the Sent/Replied/Skipped and sent-message requests instead of on a background thread (tests set this) |
 | `WGPENDLER_INCLUDE_APARTMENTS` | `1` | `0` stops Flatfox/Homegate from collecting whole flats (needed for group mode) |
 | `WGP_FULL_REFRESH_HOURS` | `24` | Flatfox/Homegate re-fetch every ad's details at most this often; runs in between only fetch new ads (Homegate also ads whose price changed). `0` = every run is a full refresh |
 | `WGPENDLER_GEOCACHE` | `geocache.sqlite` in repo root | Path of the address-to-coordinates cache |

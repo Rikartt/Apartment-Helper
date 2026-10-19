@@ -354,7 +354,7 @@ def post_sent(listing_id: int, body: SentBody):
     if not text:
         return JSONResponse({"error": "message text is empty"}, status_code=422)
     msg = add_sent_message(listing_id, text, body.kind)
-    learning.refresh()
+    learning.schedule_refresh()   # retrain off the request path (instant buttons)
     if not msg:
         return JSONResponse({"error": "listing not found"}, status_code=404)
     l = _decorate(_with_trust([get_listing(listing_id, include_raw=False)])[0], _load_profile())
@@ -377,7 +377,7 @@ class StatusUpdate(BaseModel):
 def post_status(listing_id: int, body: StatusUpdate):
     if not set_status(listing_id, body.status):
         return JSONResponse({"error": "listing not found"}, status_code=404)
-    learning.refresh()
+    learning.schedule_refresh()   # retrain off the request path (instant buttons)
     return JSONResponse(_decorate(_with_trust([get_listing(listing_id, include_raw=False)])[0],
                                   _load_profile()))
 
