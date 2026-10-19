@@ -40,7 +40,7 @@ DUP_SIM = 0.8
 DUP_PRICE_GAP = 0.30
 MAX_BUCKET = 40          # shingle hashes shared by more ads than this are boilerplate
 TEXT_CAP = 75
-GRID = 0.03              # degrees; one cell is wider than RADIUS_KM, so 3x3 cells cover the radius
+GRID = 0.01              # degrees (~1 km); comparables() scans the cells that cover RADIUS_KM
 
 # --------------------------------------------------------------------------- text signals
 _NEG = re.compile(r"\b(kein|keine|keiner|keinen|nicht|nie|niemals|ohne|no|not|never|without|don'?t|"
@@ -108,6 +108,14 @@ def text_signals(text: str) -> list[tuple[int, str]]:
 # --------------------------------------------------------------------------- helpers
 def _num(v):
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else None
+
+
+def _coords(l: dict) -> tuple[float | None, float | None]:
+    try:
+        lat, lng = float(l["lat"]), float(l["lng"])
+    except (KeyError, TypeError, ValueError):
+        return None, None
+    return (lat, lng) if math.isfinite(lat) and math.isfinite(lng) else (None, None)
 
 
 def _haversine_km(a_lat, a_lng, b_lat, b_lng) -> float:
@@ -228,19 +236,21 @@ class TrustContext:
         return [self.by_id[i] for i in self._dups.get(l.get("id"), [])]
 
     def _build_index(self):
-        """Grid (0.03 deg, ~3 km) and PLZ buckets so comparables() does not scan every row."""
-        self._grid: dict[tuple[int, int], list[dict]] = defaultdict(list)
-        self._plz: dict[str, list[dict]] = defaultdict(list)
+        """Per-kind grid and PLZ buckets of pre-parsed rows, so comparables() neither scans
+        every row nor re-parses fields for each candidate."""
+        self._grid: dict[tuple, list[tuple]] = defaultdict(list)   # (kind, gx, gy) -> entries
+        self._plz: dict[tuple, list[tuple]] = defaultdict(list)    # (kind, plz) -> entries
         for o in self.rows:
             if (o.get("rent_chf") or 0) <= 0 or o.get("gone_at"):
                 continue
-            try:
-                self._grid[(int(o["lat"] / GRID), int(o["lng"] / GRID))].append(o)
-            except (KeyError, TypeError, ValueError):
-                pass
+            kind = o.get("kind") or "wg_room"
+            lat, lng = _coords(o)
             p = plz_of(o)
+            e = (o, lat, lng, _num(o.get("rooms")), _num(o.get("living_area_m2")), p)
+            if lat is not None:
+                self._grid[(kind, math.floor(lat / GRID), math.floor(lng / GRID))].append(e)
             if p:
-                self._plz[p].append(o)
+                self._plz[(kind, p)].append(e)
 
     def comparables(self, l: dict) -> list[dict]:
         if not hasattr(self, "_grid"):
@@ -248,32 +258,38 @@ class TrustContext:
         kind = l.get("kind") or "wg_room"
         rooms, area = _num(l.get("rooms")), _num(l.get("living_area_m2"))
         plz = plz_of(l)
-        cand: dict[int, dict] = {}
-        try:
-            gx, gy = int(l["lat"] / GRID), int(l["lng"] / GRID)
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    for o in self._grid.get((gx + dx, gy + dy), ()):
-                        cand[id(o)] = o
-        except (KeyError, TypeError, ValueError):
-            pass
-        for o in self._plz.get(plz, ()) if plz else ():
-            cand[id(o)] = o
+        lat, lng = _coords(l)
+        cand: dict[int, tuple] = {}
+        if lat is not None:
+            gx, gy = math.floor(lat / GRID), math.floor(lng / GRID)
+            nx = math.ceil(RADIUS_KM / (110.5 * GRID))
+            ny = math.ceil(RADIUS_KM / (111.3 * GRID * max(0.1, math.cos(math.radians(lat)))))
+            for dx in range(-nx, nx + 1):
+                for dy in range(-ny, ny + 1):
+                    for e in self._grid.get((kind, gx + dx, gy + dy), ()):
+                        cand[id(e[0])] = e
+        if plz:
+            for e in self._plz.get((kind, plz), ()):
+                cand[id(e[0])] = e
+        lid = l.get("id")
+        # equirectangular distance: within a few km it matches haversine to within metres
+        kx = 6371 * math.pi / 180          # km per degree on the sphere haversine uses
+        ky = kx * math.cos(math.radians(lat)) if lat is not None else 0.0
+        r2 = RADIUS_KM * RADIUS_KM
         out = []
-        for o in cand.values():
-            if o.get("id") == l.get("id") or (o.get("kind") or "wg_room") != kind:
+        for o, olat, olng, orooms, oarea, oplz in cand.values():
+            if rooms and orooms and abs(orooms - rooms) > 1:
                 continue
-            if rooms and _num(o.get("rooms")) and abs(_num(o["rooms"]) - rooms) > 1:
+            if area and oarea and not (0.7 <= oarea / area <= 1.3):
                 continue
-            oa = _num(o.get("living_area_m2"))
-            if area and oa and not (0.7 <= oa / area <= 1.3):
+            if lat is not None and olat is not None and \
+                    ((olat - lat) * kx) ** 2 + ((olng - lng) * ky) ** 2 <= r2:
+                pass
+            elif not (plz and oplz == plz):
                 continue
-            try:
-                near = _haversine_km(l["lat"], l["lng"], o["lat"], o["lng"]) <= RADIUS_KM
-            except (KeyError, TypeError):
-                near = False
-            if near or (plz and plz_of(o) == plz):
-                out.append(o)
+            if o.get("id") == lid:
+                continue
+            out.append(o)
         return out
 
     def median_rent(self, l: dict) -> tuple[float | None, int]:
@@ -365,7 +381,7 @@ def trust_detail(l: dict, ctx: TrustContext | None = None) -> dict:
     return {"score": score, "level": level_of(score), "reasons": [r for _, r in penalties]}
 
 
-_cache: dict = {"sig": None, "res": {}}
+_cache: dict = {"entry": None}   # (signature, {id: detail})
 
 
 def _signature(rows: list[dict]) -> int:
@@ -383,11 +399,12 @@ def annotate(listings: list[dict], universe: list[dict] | None = None) -> list[d
     requests (each map refresh) cost one O(n) signature instead of a full recompute."""
     universe = universe if universe is not None else listings
     sig = _signature(universe)
-    if _cache["sig"] != sig:
+    cached = _cache["entry"]
+    if cached is None or cached[0] != sig:
         ctx = TrustContext(universe)
-        _cache["sig"] = sig
-        _cache["res"] = {l["id"]: trust_detail(l, ctx) for l in ctx.rows}
-    res = _cache["res"]
+        cached = (sig, {l["id"]: trust_detail(l, ctx) for l in ctx.rows})
+        _cache["entry"] = cached   # one assignment, so other threads never see a mixed pair
+    res = cached[1]
     for l in listings:
         d = res.get(l.get("id"))
         if d is None:   # row not in the universe (should not happen): score it alone

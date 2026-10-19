@@ -136,6 +136,7 @@ def _tracked_ingest(sources: list[str], trigger: str = "manual",
             _ingest_state.update(running=False, gone=gone,
                                  last_finished_at=datetime.now().isoformat())
         notify.after_ingest()   # phone digest; never raises
+        _warm_trust()
         return {"total": total, "new": new}
     finally:
         _ingest_lock.release()
@@ -233,6 +234,15 @@ def _decorate(l: dict, profile: dict) -> dict:
     l["status_updated_at"] = l.get("status_updated_at")
     l.update(_sent_info(l))
     return l
+
+
+def _warm_trust():
+    """Score trust on the ingest thread, so the first /listings after an ingest is fast
+    (a cold run over ~3000 listings takes a few seconds; later calls hit the cache)."""
+    try:
+        trust.annotate(get_all_listings(True))
+    except Exception as e:
+        print(f"[ingest] trust warm-up failed: {e}")
 
 
 def _with_trust(rows: list[dict], universe: list[dict] | None = None) -> list[dict]:

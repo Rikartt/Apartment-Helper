@@ -256,3 +256,19 @@ def test_phone_alerts_skip_low_trust(db, monkeypatch):
     assert [c["url"] for c in cands] == ["https://ex.test/ok"]
     assert notify.notify_new()["sent"] == 1
     assert b"ex.test/bad" not in calls[0]["content"]
+
+
+def test_ingest_warms_trust_cache(db, monkeypatch):
+    """After an ingest the trust scores are already computed, so /listings hits the cache."""
+    import backend.main as m
+    db.upsert_listing(make_ad(external_id="w1"))
+    monkeypatch.setattr(m, "run_ingest", lambda names: {"total": 1, "new": 0, "gone": 0,
+                        "sources": {names[0]: {"ok": True, "fetched": 1, "new": 0}}})
+    monkeypatch.setattr(trust, "_cache", {"entry": None})
+    m._tracked_ingest(["mock"])
+    entry = trust._cache["entry"]
+    assert entry is not None and len(entry[1]) == 1
+    calls = []
+    monkeypatch.setattr(trust, "TrustContext", lambda *a: calls.append(a))
+    trust.annotate(db.get_all_listings(True))
+    assert calls == []   # cache hit, no recompute
