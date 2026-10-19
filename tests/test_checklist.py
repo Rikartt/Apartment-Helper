@@ -50,3 +50,40 @@ def test_items_from_extraction():
     out = json.loads(subprocess.run(["node", "-e", code, str(JS)], capture_output=True, text=True,
                                     check=True).stdout)
     assert out == [{"text": "a", "kind": "ask"}, {"text": "b", "kind": "req"}]
+
+
+def node(expr):
+    code = f"const c=require(process.argv[1]);console.log(JSON.stringify({expr}))"
+    return json.loads(subprocess.run(["node", "-e", code, str(JS)], capture_output=True, text=True,
+                                     check=True).stdout)
+
+
+def test_flat_conditions_are_not_checklist_items():
+    reqs = ["Lärmempfindliche Personen sind nicht geeignet", "noise-sensitive people unsuitable",
+            "No pets", "Keine Haustiere", "Wohnung im 4. Stock ohne Lift",
+            "Nichtraucher", "Nur Studierende", "Min. 6 Monate", "Referenzen erforderlich"]
+    out = node("c.items({hard_requirements:%s}).map(i=>i.text)" % json.dumps(reqs))
+    assert out == reqs[5:]
+
+
+def test_asks_are_never_dropped():
+    out = node("c.items({asks_applicant_to_include:['No pets please tell us about yourself']}).length")
+    assert out == 1
+
+
+def test_long_requirement_needs_only_a_third_of_keywords():
+    req = "Wir suchen eine ordentliche, zuverlässige Person die regelmässig kocht und Gemeinschaft schätzt"
+    d = "Ich bin ordentlich, zuverlässig und koche regelmässig."
+    assert run([[req, "req", d]]) == [True]
+    assert run([[req, "req", "Ich mag Velos."]]) == [False]
+
+
+def test_extracted_fields_tick_date_and_duration():
+    code = ("const c=require(process.argv[1]);const f=(t,d,e)=>c.check({text:t,kind:'ask'},d,e).ok;"
+            "console.log(JSON.stringify([f('Einzugsdatum','Ich komme am 1.11.',{move_in:'2026-11-01'}),"
+            "f('Einzugsdatum','Ich komme gern.',{move_in:'2026-11-01'}),"
+            "f('Mietdauer','Gern unbefristet.',{duration:'permanent'}),"
+            "f('Sprachkenntnisse','Ich spreche Deutsch (Muttersprache).',null)]))")
+    out = json.loads(subprocess.run(["node", "-e", code, str(JS)], capture_output=True, text=True,
+                                    check=True).stdout)
+    assert out == [True, False, True, True]
