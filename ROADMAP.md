@@ -23,11 +23,11 @@ Each block is sized for one working session with a few parallel agents.
 9. ~~**Smarter checklist.**~~ Done (see CHANGELOG). Fewer false ambers for long hard requirements, and use extracted fields instead of keyword matching.
 
 ## Block C: UI polish
-10. **Typography.** Consolidate the many font sizes (.56–.8rem) into 4 steps, and keep the departure-board look.
-11. **Focus and keyboard details.** Skip Leaflet controls in the tab order, keep Esc in the draft textarea from closing the detail view, and remove the pin of a listing hidden by filters after closing it.
-12. **Ingest progress.** A per-source progress bar in the sync indicator. `/group/listings` should return a total ("595 of 3,325").
-13. **Onboarding.** A short first-run walkthrough: profile, then group (optional), then alerts (optional).
-14. **Map.** Commute-time isochrone shading around the selected campus, and a "draw area" filter.
+10. ~~**Typography.**~~ Done (see CHANGELOG). Consolidate the many font sizes (.56–.8rem) into 4 steps, and keep the departure-board look.
+11. ~~**Focus and keyboard details.**~~ Done (see CHANGELOG). Skip Leaflet controls in the tab order, keep Esc in the draft textarea from closing the detail view, and remove the pin of a listing hidden by filters after closing it.
+12. ~~**Ingest progress.**~~ Done (see CHANGELOG). A per-source progress bar in the sync indicator. `/group/listings` should return a total ("595 of 3,325").
+13. ~~**Onboarding.**~~ Done (see CHANGELOG). A short first-run walkthrough: profile, then group (optional), then alerts (optional).
+14. **Map.** Partly done: the commute rings are in (see CHANGELOG); the "draw area" filter is still open. Commute-time isochrone shading around the selected campus, and a "draw area" filter.
 
 ## Block D: reach and robustness
 15. ~~**Phone access over HTTPS**~~ Done (see CHANGELOG). (e.g. `tailscale serve`), so the PWA installs fully and the access token isn't sent in plain text.

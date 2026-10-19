@@ -272,8 +272,9 @@ def group_listings_endpoint(include_dealbreakers: bool = Query(False)):
     group = get_group()
     rows = trust.annotate(get_all_listings(True))   # median + duplicates need the raw text
     rows = [strip_raw(l) for l in rows]
-    return JSONResponse({"group": group, "listings": group_listings(
-        rows, group, include_dealbreakers)})
+    items = group_listings(rows, group, include_dealbreakers)
+    # `total` = every live listing in the DB (additive, for "595 of 3,325" in the header)
+    return JSONResponse({"group": group, "listings": items, "total": len(rows)})
 
 
 # --------------------------------------------------------------------------- drafting
