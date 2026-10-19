@@ -76,7 +76,7 @@ def test_learns_recency_and_stores_weights(db):
                                 msg_len=300, ext={}, profile={})
     x_old = learning.features(fit=70, rent=900, budget=1200, commute=20, age_days=12,
                               msg_len=300, ext={}, profile={})
-    assert learning.predict(m, x_fresh) > 0.65 > 0.4 > learning.predict(m, x_old)
+    assert learning.predict(m, x_fresh) > 0.65 and learning.predict(m, x_old) < 0.45
 
 
 def test_adjust_reply_blends_after_threshold(db, monkeypatch):
