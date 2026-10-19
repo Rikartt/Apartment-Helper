@@ -2,7 +2,7 @@ import os
 import re
 import time
 import httpx
-from .base import BaseAdapter
+from .base import BaseAdapter, load_known, norm_dt
 from ..commute import estimate_commute, ETH_ZENTRUM, ETH_HOENGGERBERG
 
 SEARCH_PAGE = "https://flatfox.ch/en/search/"
@@ -45,9 +45,19 @@ def _keep_apartment(l: dict, ad: dict) -> bool:
     return t <= MAX_APARTMENT_TRANSIT_MIN
 
 
+SKIPPED = "#skip"   # known-marker suffix for pins whose details we fetched but did not keep
+
+
+def _marker(pin: dict) -> str:
+    """Change marker of a pin. The pin API exposes no updated-at, only the price."""
+    return "" if pin.get("price_display") is None else str(pin["price_display"])
+
+
 class FlatfoxAdapter(BaseAdapter):
     def fetch(self) -> list[dict]:
         self.truncated, self.truncated_reason = False, ""
+        self.seen_ids, self.known_updates, self.known_keep = set(), {}, None
+        self.requests = 0   # HTTP requests made this run
         session = httpx.Client(
             headers={
                 "User-Agent": "Mozilla/5.0 (X11; Linux x86_64; rv:120.0) Gecko/20100101 Firefox/120.0",
@@ -60,6 +70,7 @@ class FlatfoxAdapter(BaseAdapter):
 
         # grab CSRF token
         r0 = session.get(SEARCH_PAGE)
+        self.requests += 1
         csrf_m = re.search(r"csrftoken=([^;]+)", r0.headers.get("set-cookie", ""))
         csrf_token = csrf_m.group(1) if csrf_m else ""
         session.headers["X-CSRFToken"] = csrf_token
@@ -77,11 +88,32 @@ class FlatfoxAdapter(BaseAdapter):
             pins = [p for p in pins if not p.get("price_display") or p["price_display"] >= MIN_PIN_PRICE]
         print(f"[flatfox] {len(pins)} candidate pins after tiling + price prefilter")
 
+        # Incremental: the pin list (~15 requests) is the source of truth for "still online".
+        # Details (1 request per 50 ads) are only fetched for pins we have not seen or whose
+        # price changed, plus a full refresh at most every WGP_FULL_REFRESH_HOURS to catch
+        # edits that leave the price alone.
+        self.full_refresh, known = load_known("flatfox")
+        marker = {str(p["pk"]): _marker(p) for p in pins}
+        to_fetch = []
+        for p in pins:
+            pk = str(p["pk"])
+            k = known.get(pk)
+            if k == marker[pk]:
+                self.seen_ids.add(pk)
+            elif k != marker[pk] + SKIPPED:   # filtered out last time and unchanged: no row
+                to_fetch.append(p)
+        if not self.truncated:
+            self.known_keep = set(marker)   # forget pins that left the list
+        print(f"[flatfox] {'full refresh' if self.full_refresh else 'incremental'}: "
+              f"details for {len(to_fetch)} pins, {len(self.seen_ids)} unchanged")
+        pins = to_fetch
+
         ads = []
         for i in range(0, len(pins), BATCH):
             batch_pks = [p["pk"] for p in pins[i : i + BATCH]]
             params = [("pk", pk) for pk in batch_pks] + [("limit", "0")]
             r2 = session.get(DETAIL_URL, params=params)
+            self.requests += 1
             r2.raise_for_status()
             listings = r2.json()
             if not isinstance(listings, list):
@@ -89,13 +121,18 @@ class FlatfoxAdapter(BaseAdapter):
                 continue
 
             for l in listings:
-                if l.get("object_category") != "SHARED" and not INCLUDE_APARTMENTS:
-                    continue
-                ad = self._to_ad(l)
-                if ad and ad["kind"] == "apartment" and not _keep_apartment(l, ad):
-                    continue
+                ad = None
+                if l.get("object_category") == "SHARED" or INCLUDE_APARTMENTS:
+                    ad = self._to_ad(l)
+                    if ad and ad["kind"] == "apartment" and not _keep_apartment(l, ad):
+                        ad = None
                 if ad:
                     ads.append(ad)
+                pk = str(l.get("pk"))
+                if pk in marker:
+                    # Filtered-out pins are remembered too (so they are not re-fetched), but
+                    # marked: they have no DB row and must not count as "seen" next run.
+                    self.known_updates[pk] = marker[pk] + ("" if ad else SKIPPED)
 
             time.sleep(DELAY)
 
@@ -104,6 +141,7 @@ class FlatfoxAdapter(BaseAdapter):
 
     def _collect_pins(self, session, box: dict, depth: int = 0) -> list[dict]:
         r = session.get(PIN_URL, params={**box, "listing_type": "rent", "max_count": MAX_PINS})
+        self.requests += 1
         r.raise_for_status()
         pins = r.json()
         if not isinstance(pins, list):
@@ -168,7 +206,7 @@ class FlatfoxAdapter(BaseAdapter):
             "available_from": str(avail),
             "raw_text":     raw_text,
             "url":          url,
-            "listed_at":    l.get("published") or l.get("created") or None,
+            "listed_at":    norm_dt(l.get("published")) or norm_dt(l.get("created")),
             "kind":         "wg_room" if l.get("object_category") == "SHARED" else "apartment",
             "rooms":        _num(l.get("number_of_rooms")),
             "living_area_m2": _num(l.get("surface_living")),
