@@ -403,6 +403,7 @@
       <button class="topbar-btn" id="more-btn" onclick="toggleMenu()" aria-haspopup="true" aria-expanded="false" aria-label="More actions" title="More actions">⋯</button>
       <div id="more-menu" role="menu" hidden>
         <button role="menuitem" class="solo-only" onclick="closeMenu();runExtract()" id="extract-btn" title="Reads every unprocessed ad with Claude (uses API credits)">Extract ads <small>uses API credits</small></button>
+        <button role="menuitem" onclick="closeMenu();location.href='/stats.html'">Reply stats <small>what got answers</small></button>
         <button role="menuitem" onclick="closeMenu();showHelp()">Keyboard shortcuts <small>?</small></button>
         <button role="menuitem" onclick="closeMenu();phoneAlerts()" id="alerts-btn">Phone alerts <small id="alerts-state">…</small></button>
       </div>

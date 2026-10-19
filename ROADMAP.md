@@ -17,7 +17,7 @@ Each block is sized for one working session with a few parallel agents.
 5. ~~**Homegate speed.**~~ Done (see CHANGELOG). Geocoding takes about 1 s per ad. Look addresses up in parallel through swisstopo (no 1 req/s limit) and skip ads already in the cache.
 
 ## Block B: reply rate
-6. **Learn from outcomes (Phase 6b).** Once there are about 20 sent/replied marks, fit the scoring weights to what actually got replies, and show the reply rate by source, price band and message length on a small stats page.
+6. ~~**Learn from outcomes (Phase 6b).**~~ Done (see CHANGELOG). Once there are about 20 sent/replied marks, fit the scoring weights to what actually got replies, and show the reply rate by source, price band and message length on a small stats page.
 7. ~~**Draft variants.**~~ Done (see CHANGELOG). Offer 2 tones (short and warm). Show a German/English toggle when the ad's language differs from your strongest language.
 8. ~~**Ad summary.**~~ Done (see CHANGELOG). A one-line English summary for German ads in the detail view, using cached Haiku.
 9. ~~**Smarter checklist.**~~ Done (see CHANGELOG). Fewer false ambers for long hard requirements, and use extracted fields instead of keyword matching.
