@@ -65,7 +65,12 @@ def flatfox(db, monkeypatch):
 
 
 def _run(source="flatfox"):
-    return ingest.run_ingest([source])
+    """run_ingest + the run-log row that main._tracked_ingest writes (gone detection needs it)."""
+    from backend import db as dbm
+    r = ingest.run_ingest([source])
+    rid = dbm.start_run("manual")
+    dbm.finish_run(rid, True, r["total"], r["new"], r["gone"], r["sources"], [])
+    return r
 
 
 def test_flatfox_first_run_fetches_everything_then_only_changes(flatfox, db):

@@ -163,6 +163,7 @@ def test_homegate_fetch_stops_on_http_error(monkeypatch):
 def test_homegate_fetch_paginates_and_dedupes(monkeypatch):
     page = html("homegate_results.html")
     monkeypatch.setattr(homegate_adapter, "_geocode", lambda a: (47.37, 8.52))
+    monkeypatch.setattr(homegate_adapter, "_geocode_many", lambda addrs: {x: (47.37, 8.52) for x in addrs})
     monkeypatch.setattr(homegate_adapter.time, "sleep", lambda s: None)
     class C:
         def __init__(self, *a, **k): pass
