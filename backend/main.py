@@ -26,6 +26,7 @@ from .db import (  # noqa: E402
 from .drafting import draft, DraftError  # noqa: E402
 from .extraction import extract_batch  # noqa: E402
 from .group import router as group_router, validate_group  # noqa: E402
+from . import backup  # noqa: E402
 from .ingest import run_ingest, ADAPTERS  # noqa: E402
 from .scoring import score_detail, load_profile, PROFILE_PATH  # noqa: E402
 
@@ -188,7 +189,16 @@ def _periodic_loop(stop: threading.Event):
             print(f"[periodic] ingest failed: {e}")
 
 
+def _backup_loop(stop: threading.Event):
+    """Daily DB backup: on startup if today's is missing, then re-check hourly."""
+    while not stop.is_set():
+        backup.ensure_today()
+        if stop.wait(3600):
+            return
+
+
 def _scheduler(stop: threading.Event):
+    threading.Thread(target=_backup_loop, args=(stop,), name="backup", daemon=True).start()
     _startup_ingest()
     _periodic_loop(stop)
 
@@ -210,6 +220,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="WGPendler", lifespan=lifespan)
 app.middleware("http")(access_guard)
+app.include_router(backup.router)
 app.include_router(group_router)  # Phase 7: /group/listings, /group/draft/{id}
 
 
