@@ -193,6 +193,8 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | WGZimmer | Not usable: search is behind reCAPTCHA, which we don't bypass. The adapter is present but returns nothing, and logs "no listings returned" |
 | students.ch and others | Not implemented: no permitted automated access (login/captcha walls or terms of service). The app only reads what robots.txt and the site allow, at about 1 request per second |
 
+Robots.txt and terms-of-use review of other candidate sources (ETH/UZH portal, students.ch, JUWO, Comparis, …): [docs/sources-review.md](docs/sources-review.md).
+
 ### Incremental ingest and listing dates
 
 Flatfox and Homegate keep a per-source record of ads whose details were already fetched, with their price (tables `source_known`, `source_state`). A periodic run fetches the cheap list (Flatfox pin tiles, Homegate result pages) every time, but only fetches/geocodes new ads (Homegate also re-reads ads whose price changed; Flatfox's pin prices are not reliable enough for that, since the same ad comes back at different prices per session). Ads present in the list but not re-fetched still count as seen, so gone detection works as before. A full refresh happens at most every `WGP_FULL_REFRESH_HOURS`, and that is when other edits (including Flatfox price changes) show up.
