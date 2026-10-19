@@ -484,7 +484,7 @@ def best_listings(hide_promo: bool = Query(False), hide_fixed_term: bool = Query
         blocks.append(
             f"LISTING {i+1} (id={l['id']}):\n"
             f"Title: {l.get('title','')}\n"
-            f"Rent: {l.get('rent_chf','')} CHF  Available: {l.get('available_from','')}\n"
+            f"Rent: {l.get('rent_chf','')} CHF  Available: {l.get('move_in_stated') or l.get('available_from','')}\n"
             f"Fit score: {l.get('fit_score','?')}  Reply likelihood: {l.get('reply_score','?')}%\n"
             f"Why it fits: {', '.join(l.get('match_reasons') or []) or 'unknown'}\n"
             f"Vibe: {', '.join(ext.get('vibe') or []) or 'unknown'}\n"

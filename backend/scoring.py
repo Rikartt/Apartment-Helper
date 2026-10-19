@@ -14,7 +14,7 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 
-from .term_dates import stated_end
+from .term_dates import effective_move_in, stated_end
 
 PROFILE_PATH = Path(__file__).parent.parent / "profile.json"
 
@@ -200,6 +200,19 @@ def term_end(listing: dict) -> date | None:
     return _parse_date(stated_end(listing.get("title"), listing.get("raw_text")))
 
 
+def move_in_date(listing: dict) -> date | None:
+    """Move-in date for scoring: the text's date when the structured one is implausible (stored
+    `move_in_stated`, set at ingest), else `available_from`. Rows without the column (adapter
+    dicts) parse the text like term_end()."""
+    if "move_in_stated" in listing:
+        stated = listing.get("move_in_stated")
+    else:
+        stated = effective_move_in(listing.get("available_from"),
+                                   listing.get("listed_at") or listing.get("created_at"),
+                                   listing.get("title"), listing.get("raw_text"))
+    return _parse_date(stated) or _parse_date(listing.get("available_from"))
+
+
 def rental_over(listing: dict, today: date | None = None) -> date | None:
     """The stated end date if this befristet ad's rental period is already over, else None.
     Flatfox has no end field (only moving_date + is_temporary), so the end comes from the
@@ -211,7 +224,7 @@ def rental_over(listing: dict, today: date | None = None) -> date | None:
     end = term_end(listing)
     if not end or end >= today:
         return None
-    start = _parse_date(listing.get("available_from"))
+    start = move_in_date(listing)
     if start and start >= today:
         return None
     # published after its own end: the date is a typo/stale (live: "maximum until 15.08.2026"
@@ -235,7 +248,7 @@ def dealbreakers(listing: dict, profile: dict, today: date | None = None) -> lis
 
     ref = _ref_move_in(profile, today)
     ext = _extracted(listing)
-    avail = _parse_date(listing.get("available_from"))
+    avail = move_in_date(listing)
     if ext and _parse_date(ext.get("move_in")):
         avail = _parse_date(ext.get("move_in"))
     if avail and (avail - ref).days > 120:
@@ -457,7 +470,7 @@ def score_detail(listing: dict, profile: dict | None = None,
             s += 3
             reasons.append("Long-term")
 
-    avail = _parse_date(listing.get("available_from"))
+    avail = move_in_date(listing)
     ref = _ref_move_in(profile, today)
     # a befristet ad's start long gone is no move-in evidence: either the period is over
     # (dealbreaker) or the poster picked the wrong year (live: "2025-12-18" on an ad

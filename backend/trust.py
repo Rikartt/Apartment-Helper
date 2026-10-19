@@ -188,7 +188,8 @@ def has_house_number(l: dict) -> bool:
 def _addr_key(l: dict) -> str:
     a = (l.get("address") or "").lower().split(",")[0]
     a = a.replace("strasse", "str.").replace("straße", "str.")
-    return re.sub(r"\s+", " ", a).strip()
+    # street-less "8004 Zürich" compares like "Zürich" did (a postcode is no house number)
+    return re.sub(r"^[1-9]\d{3} ", "", re.sub(r"\s+", " ", a).strip())
 
 
 def _same_place(a: dict, b: dict) -> bool:

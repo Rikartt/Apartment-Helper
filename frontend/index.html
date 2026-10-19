@@ -286,6 +286,8 @@
   .best-strength { font-size:var(--fs-sm); color:#66bb6a; margin:1px 0; } .best-strength::before { content:"✓ "; }
   .best-weakness { font-size:var(--fs-sm); color:#e57373; margin:1px 0; } .best-weakness::before { content:"✗ "; }
   .best-tip { margin-top:6px; font-size:var(--fs-sm); color:var(--amber); } .best-tip::before { content:"TIP  "; color:#b08d1a; font-size:var(--fs-xs); letter-spacing:.1em; }
+  .movein-text { text-decoration:underline dotted; cursor:help; }
+  .movein-note { font-size:var(--fs-xs); color:var(--dim); margin-top:2px; }
   .best-foot { margin-top:8px; display:flex; justify-content:space-between; align-items:center; gap:8px; }
   .best-open { font-size:var(--fs-sm); color:var(--transit); text-decoration:none; background:none; border:none; cursor:pointer; }
   .best-open:hover { text-decoration:underline; }
@@ -638,6 +640,17 @@ function esc(s) {
   return String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
 function safeUrl(u) { return /^https?:\/\//i.test(u || '') ? esc(u) : ''; }
+// Move-in date to show: the ad text's date when the date field is implausible (server sets
+// move_in_stated, e.g. field 2004-11-01 vs "from 17 November"), else the field itself.
+function availDate(l) { return l.move_in_stated || l.available_from; }
+function moveInNote(l) {
+  return l.move_in_stated && l.move_in_stated !== l.available_from
+    ? `Date from the ad's text; the ad's date field says ${l.available_from}` : '';
+}
+function moveInHtml(l) {
+  const note = moveInNote(l);
+  return note ? `<span class="movein-text" title="${esc(note)}">${esc(availDate(l))}*</span>` : esc(availDate(l));
+}
 
 // ── Map ──────────────────────────────────────────────────────────────────────
 const map = L.map('map', { preferCanvas: true }).setView([47.388, 8.527], 13);
@@ -875,7 +888,7 @@ function fitReasons(l) {
   const t = l.transit_zentrum_min, th = l.transit_hoenggerberg_min;
   const best = Math.min(t ?? 999, th ?? 999);
   if (best <= 25) r.push(`${tMin(l, best)} min to ETH`);
-  const av = (l.available_from || '').slice(0, 10);
+  const av = (availDate(l) || '').slice(0, 10);
   if (!av || av === 'flexible' || /^\D/.test(av)) r.push('flexible start');
   else if (av <= moveIn) r.push('available on time');
   const d = daysAgo(l);
@@ -1229,7 +1242,7 @@ function cardHtml(l) {
   if (l.id === selectedId) cls.push('selected');
   if (deal.length) cls.push('dim');
   if (l.status) cls.push('st-' + l.status);
-  const avail = l.available_from && /^\d/.test(l.available_from) ? `from ${esc(l.available_from)}` : `start: ${esc(l.available_from || 'unknown')}`;
+  const avail = availDate(l) && /^\d/.test(availDate(l)) ? `from ${moveInHtml(l)}` : `start: ${esc(l.available_from || 'unknown')}`;
   return `<div class="${cls.join(' ')}" id="card-${l.id}" data-id="${l.id}" role="listitem" tabindex="0" aria-label="${esc(cleanTitle(l))}, ${esc(String(headPriceText(l)))}">
     <div class="card-body">
       <div class="card-top">
@@ -1494,7 +1507,7 @@ function showDetail(l) {
     <div class="detail-section"><div class="detail-section-label">Track</div><div class="card-actions" id="detail-status" style="margin-top:0">${statusBar(l)}</div></div>
     <div id="sent-slot"></div>
     <div class="detail-section"><div class="detail-section-label">Available</div>
-      <div style="font-size:var(--fs-sm);color:#ccc">${esc(l.available_from || 'unknown')}${dur ? ' · ' + dur : ''}</div></div>
+      <div style="font-size:var(--fs-sm);color:#ccc">${availDate(l) ? esc(availDate(l)) : 'unknown'}${dur ? ' · ' + dur : ''}</div>${moveInNote(l) ? `<div class="movein-note">${esc(moveInNote(l))}</div>` : ''}</div>
     ${vibe || household || lang ? `<div class="detail-section"><div class="detail-section-label">Vibe</div>
       ${household ? `<span class="pill green">${household}</span>` : ''}${lang ? `<span class="pill green">${lang}</span>` : ''}
       ${e.poster_type === 'private' ? '<span class="pill green">private person</span>' : e.poster_type === 'agency' ? '<span class="pill red">agency/company</span>' : ''}${vibe}</div>` : ''}
@@ -1829,7 +1842,7 @@ async function showBest() {
         ${commuteGrid(l)}
         ${s || w ? `<div class="best-sw">${s ? `<div class="best-col"><div class="best-col-label">Strengths</div>${s}</div>` : ''}${w ? `<div class="best-col"><div class="best-col-label">Weaknesses</div>${w}</div>` : ''}</div>` : ''}
         ${a.tip ? `<div class="best-tip">${esc(a.tip)}</div>` : ''}
-        <div class="best-foot"><span style="font-size:var(--fs-xs);color:var(--dim)">from ${esc(l.available_from)}</span>
+        <div class="best-foot"><span style="font-size:var(--fs-xs);color:var(--dim)">from ${moveInHtml(l)}</span>
           <span><button class="best-open" onclick="closeBest();selectListing(${l.id})">show on map</button>${url ? ` &nbsp; <a class="best-open" href="${url}" target="_blank" rel="noopener">↗ open listing</a>` : ''}</span></div>
       </div>`;
     }).join('');

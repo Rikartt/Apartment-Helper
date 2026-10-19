@@ -364,7 +364,7 @@ THE AD (raw):
 <<<
 {listing.get("title", "")}
 {listing.get("address", "")}
-Rent: {listing.get("rent_chf")} CHF/month · {listing.get("rooms") or "?"} rooms · available from {listing.get("available_from")}
+Rent: {listing.get("rent_chf")} CHF/month · {listing.get("rooms") or "?"} rooms · available from {listing.get("move_in_stated") or listing.get("available_from")}
 That is about CHF {detail["per_person_chf"]} per person for a group of {group["size"]}.
 
 {listing.get("raw_text", "")}

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-19: implausible move-in dates, Flatfox postcodes
+
+### Fixed
+- An ad whose structured move-in date lies more than 60 days before its own publication (Flatfox live: 2004-11-01, 1972-11-01, or last year's date from the date picker) now scores on the move-in date its text states, if it states one: "ab 1. November", "from 17 November", "Per 01.11.2026", "verfügbar ab Mitte November", "dès le 1er novembre", "per sofort" / "available immediately" (= the publication date). A date without a year is taken as its next occurrence after publication (up to a month before publication still counts as this year). Before, such an ad counted as "available now" and got "Move-in fits" (live #1816: field 2004-11-01, text "available from 17 November"). Without a date in the text, an old date still means "available now". `available_from` is never overwritten: the text's date goes into a new `move_in_stated` column at ingest (existing rows are filled from their stored text on startup, no refetch), the parser lives next to `term_end`'s in `backend/term_dates.py`. Cards, the detail and Top 5 show that date with a `*`/note naming the ad's date field; drafts and the Top 5 analysis get it too. On the 4,213-listing live DB: 22 ads have such a date, 18 state a date in the text, 5 change "Move-in fits", 1 fit score changes (53 to 44), Top 5 unchanged.
+- Flatfox ads without a street stored only the city ("Zürich"), losing the postcode. The address is now "Street 12, 8004 Zürich" or "8004 Zürich" (postcode from `zipcode`, else the slug, which has it on 4212 of 4213 live ads), and a "Hohlstrasse, 36" street keeps its number. The cross-source duplicate check and trust's same-address check ignore a bare "8004 Zürich" exactly like they ignored "Zürich", so street-less ads in one postcode are not merged. Trust's price comparison now finds these ads by postcode too (live simulation: 40 trust scores move, 3 from medium to high). Existing rows get the new address at their next refresh.
+
 ## 2026-10-19: befristet ads whose rental period is over
 
 ### Fixed

@@ -25,6 +25,7 @@ def dedupe_key(ad: dict) -> tuple | None:
     """Cross-source identity: same street+number and same rent. Needs a house
     number, otherwise too many false merges."""
     addr = re.sub(r"\s+", " ", (ad.get("address") or "").lower()).split(",")[0].strip()
+    addr = re.sub(r"^[1-9]\d{3} ", "", addr)   # street-less "8004 Zürich": a postcode is no house number
     addr = addr.replace("strasse", "str.").replace("straße", "str.")
     if not re.search(r"\d", addr) or not ad.get("rent_chf"):
         return None
