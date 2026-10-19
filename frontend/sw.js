@@ -1,6 +1,9 @@
 /* WGPendler service worker: caches the app shell only. API data is never cached. */
-// Bump SHELL when the caching logic changes; the activate step deletes every other cache.
-const SHELL = 'wgp-shell-v2';
+// The server replaces __WGP_BUILD__ with a hash of frontend/ (backend/frontend.py), so every code
+// update changes this file: the browser installs the new worker, which precaches the new shell and
+// the activate step deletes every other cache. pwa.js then offers a reload to open pages.
+const BUILD = '__WGP_BUILD__';
+const SHELL = 'wgp-shell-' + BUILD;
 const LIB = 'wgp-lib-v1';
 // pwa.js, checklist.js and geo.js are loaded by index.html: without them the offline page has no banner
 // and the draft checklist throws. They are fetched network-first like the page itself.
@@ -12,7 +15,8 @@ self.addEventListener('install', (e) => {
   // one missing file (or a 401 from the access guard) must not abort the whole install
   e.waitUntil(
     caches.open(SHELL)
-      .then((c) => Promise.allSettled(SHELL_URLS.map((u) => c.add(u))))
+      // cache:'reload' skips the HTTP cache, so the precache never stores an older copy
+      .then((c) => Promise.allSettled(SHELL_URLS.map((u) => c.add(new Request(u, { cache: 'reload' })))))
       .then(() => self.skipWaiting())
   );
 });
@@ -60,7 +64,9 @@ self.addEventListener('fetch', (e) => {
     e.respondWith(
       new Promise((resolve, reject) => {
         const t = setTimeout(() => reject(new Error('timeout')), SHELL_TIMEOUT_MS);
-        fetch(req).then((r) => { clearTimeout(t); resolve(r); }, (err) => { clearTimeout(t); reject(err); });
+        // cache:'no-cache': always ask the server (a cheap 304 when unchanged), never trust a
+        // heuristically "fresh" HTTP-cache copy from before an update
+        fetch(req, { cache: 'no-cache' }).then((r) => { clearTimeout(t); resolve(r); }, (err) => { clearTimeout(t); reject(err); });
       }).then((res) => {
         if (res.ok && res.status === 200) { const copy = res.clone(); caches.open(SHELL).then((c) => c.put(key, copy)); }
         return res;
