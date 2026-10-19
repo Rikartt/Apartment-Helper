@@ -30,7 +30,7 @@ Each block is sized for one working session with a few parallel agents.
 14. **Map.** Partly done: the commute rings are in (see CHANGELOG); the "draw area" filter is still open. Commute-time isochrone shading around the selected campus, and a "draw area" filter.
 
 ## Block D: reach and robustness
-15. ~~**Phone access over HTTPS**~~ Done (see CHANGELOG). (e.g. `tailscale serve`), so the PWA installs fully and the access token isn't sent in plain text.
+15. ~~**Phone access over HTTPS.**~~ Done (see CHANGELOG). (e.g. `tailscale serve`), so the PWA installs fully and the access token isn't sent in plain text.
 16. **New sources.** Review the ToS and robots.txt of ETH/UZH housing offers and other student boards. Only add sources that permit automated access; never bypass a captcha.
 17. ~~**Database backups.**~~ Done (see CHANGELOG). A daily copy of `wgpendler.db` (keep 7), because statuses and sent messages are personal history.
 18. ~~**Group mode extras.**~~ Done (see CHANGELOG). Follow-up drafts for flats, and members' own budgets (not just an even split).

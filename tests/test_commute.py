@@ -237,3 +237,27 @@ def test_commute_reason_and_alert_mark_estimates():
     assert "~18 min to ETH" in line
     line = notify._line(notify._candidate({**base, "commute_source": "timetable"}, 80, 18, "solo"))
     assert "| 18 min to ETH" in line
+
+
+def test_area_without_timetable_is_not_retried_every_run(db, monkeypatch):
+    """No stop within walking range: remembered for a while instead of costing the same
+    API calls on every ingest. The listing keeps its estimate."""
+    db.upsert_listing(make_ad(external_id="far", lat=47.6, lng=8.2, **commute.commute_times(47.6, 8.2)))
+    calls = []
+
+    def remote(path, params):
+        calls.append(path)
+        return {"stations": [{"id": "9", "name": "Remote", "distance": 3000}]}
+    monkeypatch.setattr(commute, "_get_json", remote)
+    stats = commute.refresh_pending(log=lambda *_: None)
+    assert stats["failed_cells"] == 1 and calls == ["/locations"]
+    calls.clear()
+    stats = commute.refresh_pending(log=lambda *_: None)
+    assert calls == [] and stats["cells"] == 0                  # not asked again
+    row = db.get_all_listings(include_raw=False)[0]
+    assert row["commute_source"] == "estimate"
+    assert commute.commute_times(47.6, 8.2)["commute_source"] == "estimate"
+    with db.get_conn() as c:                                    # after the retry period it is tried again
+        c.execute("UPDATE commute_cache SET fetched_at = datetime('now', '-8 days')")
+    commute.refresh_pending(log=lambda *_: None)
+    assert calls == ["/locations"]

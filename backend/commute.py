@@ -45,6 +45,8 @@ MAX_WALK_MIN = 25              # nearest stops further than this => not a sensib
 STATIONS_TRIED = 2             # nearest N stops with an id (a tiny bus stop may have poor service)
 CONNECTIONS = 4                # connections requested; we take the median duration
 CACHE_TTL_DAYS = 90
+NO_RESULT_RETRY_DAYS = 7       # an area with no usable stop/connection is asked again after this
+NO_RESULT = -1                 # transit_min stored for "looked up, no sensible timetable commute"
 MIN_INTERVAL_S = 0.5           # polite throttle between API calls
 MAX_RETRIES = 3
 USER_AGENT = "WGPendler/1.0 (personal apartment search; polite client)"
@@ -98,18 +100,41 @@ def cell_center(key: str) -> tuple[float, float]:
     return int(a) * CELL_LAT, int(b) * CELL_LNG
 
 
+def _cutoff(days: float) -> str:
+    return (datetime.now(UTC) - timedelta(days=days)).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def cache_get(cell: str) -> dict[str, int]:
-    """{campus: transit_min} for fresh cache rows of this cell."""
+    """{campus: transit_min} for fresh cache rows of this cell (real results only)."""
     from .db import get_conn
-    cutoff = (datetime.now(UTC) - timedelta(days=CACHE_TTL_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
     try:
         with get_conn() as conn:
             rows = conn.execute(
-                "SELECT campus, transit_min FROM commute_cache WHERE cell = ? AND fetched_at >= ?",
-                (cell, cutoff)).fetchall()
+                "SELECT campus, transit_min FROM commute_cache WHERE cell = ? AND fetched_at >= ? "
+                "AND transit_min >= 0", (cell, _cutoff(CACHE_TTL_DAYS))).fetchall()
     except Exception:
         return {}
     return {r["campus"]: r["transit_min"] for r in rows}
+
+
+def recently_without_result(cell: str) -> set[str]:
+    """Campuses for which this cell was looked up within NO_RESULT_RETRY_DAYS and had no
+    sensible timetable commute (no stop within walking range, or no connection)."""
+    from .db import get_conn
+    try:
+        with get_conn() as conn:
+            rows = conn.execute(
+                "SELECT campus FROM commute_cache WHERE cell = ? AND transit_min < 0 "
+                "AND fetched_at >= ?", (cell, _cutoff(NO_RESULT_RETRY_DAYS))).fetchall()
+    except Exception:
+        return set()
+    return {r["campus"] for r in rows}
+
+
+def _nothing_to_ask(cell: str) -> bool:
+    """Every campus is either cached or recently known to have no result."""
+    have, none = cache_get(cell), recently_without_result(cell)
+    return all(c in have or c in none for c in CAMPUSES)
 
 
 def cache_put(cell: str, campus: str, transit_min: int, station: str, walk_min: int):
@@ -227,12 +252,17 @@ def fetch_cell(cell: str, day: date | None = None) -> bool:
     todo = [c for c in CAMPUSES if c not in have]
     if not todo:
         return True
+    none = recently_without_result(cell)
+    todo = [c for c in todo if c not in none]
+    if not todo:
+        return False
     stations = nearest_stations(lat, lng)
     ok = True
     for campus in todo:
         res = timetable_commute(campus, day, stations)
         if res is None:
             ok = False
+            cache_put(cell, campus, NO_RESULT, "", 0)   # don't ask again for a while
             continue
         cache_put(cell, campus, res["transit_min"], res["station"], res["walk_min"])
     return ok
@@ -284,6 +314,8 @@ def refresh_pending(max_cells: int | None = None, budget_s: float | None = None,
             if deadline and time.monotonic() > deadline:
                 stats["aborted"] = "time budget"
                 break
+            if _nothing_to_ask(cell):   # looked up recently, no timetable result: skip
+                continue
             try:
                 ok = fetch_cell(cell)
             except CommuteUnavailable as e:
