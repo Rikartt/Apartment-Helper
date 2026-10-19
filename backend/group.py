@@ -12,7 +12,8 @@ from fastapi import APIRouter, Query
 from fastapi.responses import JSONResponse
 
 from . import llm
-from .drafting import profile_for_draft, build_followup_prompt
+from .drafting import (profile_for_draft, build_followup_prompt, language_choice, normalize_tone,
+                       short_rule, LANG_NAMES, MOVE_IN_RULE)
 from . import trust
 from .db import get_all_listings, get_listing, get_sent_messages, strip_raw
 from .scoring import load_profile, _parse_date, price_implausible
@@ -284,7 +285,7 @@ def group_listings_endpoint(include_dealbreakers: bool = Query(False)):
 GROUP_SYSTEM_PROMPT = """You draft a short first message from a small group of students who want to rent a \
 WHOLE apartment together (starting a new WG) to the landlord or agent. The message is reviewed and sent by a \
 human; you only write the text. Rules:
-- Write in the ad's language ({language}). Keep the register natural and polite, not florid.
+- Write in {language}. Keep the register natural and polite, not florid.
 - Reference 1-2 concrete details from the actual ad (location, size, features).
 - Introduce the group using ONLY facts from GROUP PROFILE and APPLICANT PROFILE below: the group size, \
 that they are ETH students if the profile says so, and anything in the notes. Never invent members' \
@@ -298,9 +299,22 @@ say plainly that it is a group of {size} people who want to live together, and o
 arrangement (for example that all tenants sign the lease) and to provide proof of funds or references on request. \
 Do not mention any other document (for example a debt-collection extract / Betreibungsauszug) unless it is in the profile. If the ad gives its own start date, say they are available immediately and can take over from that date, in one clear clause. Only state that proof or references EXIST if the profile's "has" list says so; otherwise phrase it as a \
 willingness to discuss, never as a claim.
-- 4-7 sentences. State when they can move in using the applicant profile's "move_in" field: if it says available immediately, write "available immediately" / "from now" and never quote a past calendar date. Include a clear ask to view the apartment.
+{tone_rules}
 - Include anything the ad explicitly asks applicants to state.
 - Output only the message text, no subject line, no notes, no quotes."""
+
+# Length/tone line of GROUP_SYSTEM_PROMPT. "warm" is the original text, unchanged; "short"
+# uses the solo drafts' short rule, but must still carry the honest flat-share point.
+GROUP_TONE_RULES = {
+    "warm": """- 4-7 sentences. State when they can move in using the applicant profile's "move_in" field: \
+if it says available immediately, write "available immediately" / "from now" and never quote a past calendar date. \
+Include a clear ask to view the apartment.""",
+    "short": short_rule(
+        "the group in one clause (only facts given in the profiles), one concrete detail from the ad, the "
+        "flat-share point above in one plain, honest sentence, when they can move in "
+        f"{MOVE_IN_RULE.replace('in the profile', 'in the applicant profile')}, and a clear ask to view the apartment",
+        sentences="3-4", words="50-80"),
+}
 
 _DE_MARKERS = re.compile(r"\b(wohnung|zimmer|miete|mieter|per sofort|nach vereinbarung|frei ab|"
                          r"balkon|küche|bad|mit|und|der|die|das|ist|im|ab)\b", re.I)
@@ -323,12 +337,16 @@ class GroupDraftError(llm.LLMError):
     pass
 
 
-def build_group_prompt(listing: dict, profile: dict, group: dict) -> tuple[str, str, str]:
-    """Returns (language, system, user)."""
-    language = detect_language(listing)
+def build_group_prompt(listing: dict, profile: dict, group: dict,
+                       tone: str = "warm", lang: str = "auto") -> tuple[str, str, str]:
+    """Returns (language, system, user). `tone` is warm (default) or short; `lang` de|en
+    overrides the ad's language, "auto" writes in it. Defaults give the original prompt."""
+    detected = detect_language(listing)
+    language = LANG_NAMES[lang] if lang in LANG_NAMES else detected
     applicant = {k: v for k, v in profile_for_draft(profile).items() if k != "group"}
     detail = group_detail(listing, group)
-    system = GROUP_SYSTEM_PROMPT.format(language=language, size=group["size"])
+    system = GROUP_SYSTEM_PROMPT.format(language=language_choice(lang, f"the ad's language ({detected})"),
+                                        size=group["size"], tone_rules=GROUP_TONE_RULES[normalize_tone(tone)])
     user = f"""GROUP PROFILE:
 {json.dumps(group, ensure_ascii=False, indent=2)}
 
@@ -347,13 +365,15 @@ That is about CHF {detail["per_person_chf"]} per person for a group of {group["s
     return language, system, user
 
 
-def group_draft(listing: dict, profile: dict, group: dict, followup_of: str | None = None) -> str:
+def group_draft(listing: dict, profile: dict, group: dict, followup_of: str | None = None,
+                tone: str = "warm", lang: str = "auto") -> str:
     """Group opener, or (with followup_of=<the message already sent>) a short follow-up that
-    reuses the solo follow-up prompt: no profile or group facts, so nothing can be invented."""
+    reuses the solo follow-up prompt: no profile or group facts, so nothing can be invented.
+    tone/lang apply to the opener only (as for solo drafts)."""
     if followup_of:
         system, user = build_followup_prompt(listing, followup_of, detect_language(listing))
     else:
-        _, system, user = build_group_prompt(listing, profile, group)
+        _, system, user = build_group_prompt(listing, profile, group, tone, lang)
     try:
         msg = llm.get_client().messages.create(
             model=llm.DRAFT_MODEL,
@@ -373,9 +393,12 @@ def group_draft(listing: dict, profile: dict, group: dict, followup_of: str | No
 
 
 @router.post("/group/draft/{listing_id}")
-def group_draft_endpoint(listing_id: int, followup: bool = Query(False)):
+def group_draft_endpoint(listing_id: int, followup: bool = Query(False),
+                         tone: str = Query("warm", pattern="^(short|warm)$"),
+                         lang: str = Query("auto", pattern="^(auto|de|en)$")):
     """Draft a group-application opener (or, with ?followup=1, a short follow-up to the stored
-    first message). Never sends anything."""
+    first message). ?tone=short|warm and ?lang=auto|de|en work as on /draft/{id} and are
+    ignored for follow-ups. Never sends anything."""
     if not llm.has_key():
         return JSONResponse({"error": "ANTHROPIC_API_KEY is not set"}, status_code=503)
     listing = get_listing(listing_id)
@@ -395,9 +418,11 @@ def group_draft_endpoint(listing_id: int, followup: bool = Query(False)):
         first = sent[-1]["text"]
         listing["last_sent_at"] = sent[-1]["sent_at"]
     try:
-        text = group_draft(listing, profile, get_group(profile), followup_of=first)
+        text = (group_draft(listing, profile, get_group(profile), followup_of=first) if followup
+                else group_draft(listing, profile, get_group(profile), tone=tone, lang=lang))
     except GroupDraftError as e:
         print(f"[group-draft] failed for {listing_id}: {e}")
         return JSONResponse({"error": str(e)}, status_code=e.status)
-    return JSONResponse({"id": listing_id, "draft": text, "language": detect_language(listing),
-                         "followup": followup})
+    language = detect_language(listing) if followup or lang not in LANG_NAMES else LANG_NAMES[lang]
+    return JSONResponse({"id": listing_id, "draft": text, "language": language,
+                         "followup": followup, "tone": tone})

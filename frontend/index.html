@@ -1657,7 +1657,8 @@ function guessLang(text) {
   return de === en ? null : de > en ? 'de' : 'en';
 }
 const LANG_NAME = { de: 'German', en: 'English' };
-const draftOpts = {}, GEN = {}, SUM = {};   // per-listing tone/lang choice, last generated text, ad summaries
+const draftOpts = {}, gdraftOpts = {}, GEN = {}, GGEN = {}, SUM = {};   // per-listing tone/lang choice and last generated text (solo / group), ad summaries
+function G() { return groupMode ? GGEN : GEN; }
 const LEVEL_RANK = ['native', 'near-native', 'fluent', 'advanced', 'c2', 'c1', 'b2', 'intermediate', 'b1', 'a2', 'basic', 'a1'];
 function strongestLang() {   // 'de' | 'en' | null, from the profile's languages
   let best = null, bi = 99;
@@ -1668,18 +1669,18 @@ function strongestLang() {   // 'de' | 'en' | null, from the profile's languages
   }
   return best;
 }
-function draftOptsFor(id) { return draftOpts[id] || (draftOpts[id] = { tone: 'warm', lang: 'auto' }); }
+function draftOptsFor(id) { const o = groupMode ? gdraftOpts : draftOpts; return o[id] || (o[id] = { tone: 'warm', lang: 'auto' }); }
 function setDraftOpt(id, key, val) {
   const o = draftOptsFor(id), old = o[key]; if (old === val) return;
   o[key] = val;
   const ta = $('draft-text');
-  if (ta && ta.value.trim() && ta.value !== GEN[id]) {   // edited: only regenerate on confirm
+  if (ta && ta.value.trim() && ta.value !== G()[id]) {   // edited: only regenerate on confirm
     if (!confirm('Regenerate with this option? Your edits in the box will be replaced (and this uses API credits).')) { o[key] = old; renderDraft(id, ta.value); return; }
   }
   draftMessage(id, true);
 }
 function draftOptsHtml(id, l) {
-  const o = draftOptsFor(id), adLang = ext(l).language, mine = strongestLang();
+  const o = draftOptsFor(id), adLang = ext(l).language || guessLang(l.raw_text), mine = strongestLang();   // flats are not extracted: guess from the text
   const seg = (key, items) => `<span class="dseg" role="group">` + items.map(([v, t]) =>
     `<button type="button" aria-pressed="${o[key] === v}" onclick="setDraftOpt(${id},'${key}','${v}')">${t}</button>`).join('') + `</span>`;
   const showLang = (adLang === 'de' || adLang === 'en') && mine && adLang !== mine;
@@ -1703,8 +1704,9 @@ async function draftMessage(id, fromOpt = false) {
   btn.disabled = true; btn.textContent = 'Drafting…';
   area.innerHTML = `<div class="note-inline">Claude is writing ${groupMode ? 'a group application' : 'a message'} in the ad's language…</div>`;
   try {
-    const body = await api(groupMode ? `/group/draft/${id}` : `/draft/${id}?tone=${draftOptsFor(id).tone}&lang=${draftOptsFor(id).lang}`, { method: 'POST' });
-    D()[id] = body.draft; if (!groupMode) GEN[id] = body.draft;
+    const o = draftOptsFor(id);
+    const body = await api(`${groupMode ? '/group/draft' : '/draft'}/${id}?tone=${o.tone}&lang=${o.lang}`, { method: 'POST' });
+    D()[id] = body.draft; G()[id] = body.draft;
     if (selectedId === id) renderDraft(id, body.draft);
   } catch (e) {
     if (selectedId === id) { area.innerHTML = '<div class="draft-error"></div>'; area.firstChild.textContent = '✗ ' + e.message; }
@@ -1740,7 +1742,7 @@ function renderDraft(id, text, mode = 'first') {
   $('draft-area').innerHTML = `
     <div id="draft-box">
       <div class="draft-head"><span>${fu ? 'Follow-up draft' : 'Draft'}</span><span class="lang-tag" id="draft-lang"></span><span class="lang-warn" id="draft-warn"></span><span style="margin-left:auto" id="draft-count"></span></div>
-      ${!fu && !groupMode ? draftOptsHtml(id, l) : ''}
+      ${!fu ? draftOptsHtml(id, l) : ''}
       <textarea id="draft-text" spellcheck="true" aria-label="Draft message — editable" style="${fu ? 'min-height:120px' : ''}"></textarea>
       <div id="draft-check"></div>
       <div class="draft-actions">

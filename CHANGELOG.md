@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-19: tone and language for group drafts
+
+### New
+- Group drafts get the same Warm/Short and language toggles as solo drafts. `POST /group/draft/{id}` takes `?tone=warm|short&lang=auto|de|en` (anything else: 422, as on `/draft/{id}`). Short is 3-4 sentences and still makes the honest flat-share point; every group rule stays (only facts from the group profile, nothing invented about members, "available immediately" handling). Defaults produce exactly the old prompt; follow-ups (`?followup=1`) ignore both options.
+- The language toggle also shows for listings without Extract data (all flats), using the same text guess as the draft's language tag.
+
+### Changed
+- Solo and group drafts share one tone/language helper in `drafting.py` (`language_choice`, `short_rule`, `normalize_tone`, `MOVE_IN_RULE`); the solo prompts are unchanged, word for word.
+
 ## 2026-10-19: befristet counts as a dealbreaker
 
 ### New
