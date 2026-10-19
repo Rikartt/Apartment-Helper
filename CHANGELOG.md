@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-19: night review 2 (term dates)
+
+### Fixed
+- "mid-November 2026" / "early-December 2026" was read as the END of a befristet rental (the hyphen counted as a range dash), so such ads became "Rental period already over" once that month passed, e.g. a live Wipkingen ad whose lease runs to October 2027. 4 of 4,213 live ads were affected; ends written "until end-March 2027" still work.
+- A yearless move-in date just before New Year ("frei ab 20. Dezember" in an ad published 5 January) was read as next December, so the ad got "Available too late". It now counts as last December (same 31-day slack as within a year).
+
+### Notes
+- Stored `term_end` / `move_in_stated` values correct themselves on the next upsert of the ad (the regular full refresh, default within 24 h).
+- New `tests/test_night_review2.py` also round-trips every column through `upsert_listing` (insert and update): the hand-merged column list, placeholders and values line up.
+
 ## 2026-10-19: photos in the detail view
 
 ### Added
