@@ -40,6 +40,7 @@ DUP_SIM = 0.8
 DUP_PRICE_GAP = 0.30
 MAX_BUCKET = 40          # shingle hashes shared by more ads than this are boilerplate
 TEXT_CAP = 75
+GRID = 0.03              # degrees; one cell is wider than RADIUS_KM, so 3x3 cells cover the radius
 
 # --------------------------------------------------------------------------- text signals
 _NEG = re.compile(r"\b(kein|keine|keiner|keinen|nicht|nie|niemals|ohne|no|not|never|without|don'?t|"
@@ -197,6 +198,7 @@ class TrustContext:
         self.rows = [l for l in listings if l.get("id") is not None]
         self.by_id = {l["id"]: l for l in self.rows}
         self._dups: dict[int, list[int]] = {}
+        self._med_cache: dict = {}
         self._build_dups()
 
     def _build_dups(self):
@@ -225,15 +227,41 @@ class TrustContext:
     def duplicates_of(self, l: dict) -> list[dict]:
         return [self.by_id[i] for i in self._dups.get(l.get("id"), [])]
 
+    def _build_index(self):
+        """Grid (0.03 deg, ~3 km) and PLZ buckets so comparables() does not scan every row."""
+        self._grid: dict[tuple[int, int], list[dict]] = defaultdict(list)
+        self._plz: dict[str, list[dict]] = defaultdict(list)
+        for o in self.rows:
+            if (o.get("rent_chf") or 0) <= 0 or o.get("gone_at"):
+                continue
+            try:
+                self._grid[(int(o["lat"] / GRID), int(o["lng"] / GRID))].append(o)
+            except (KeyError, TypeError, ValueError):
+                pass
+            p = plz_of(o)
+            if p:
+                self._plz[p].append(o)
+
     def comparables(self, l: dict) -> list[dict]:
+        if not hasattr(self, "_grid"):
+            self._build_index()
         kind = l.get("kind") or "wg_room"
         rooms, area = _num(l.get("rooms")), _num(l.get("living_area_m2"))
         plz = plz_of(l)
+        cand: dict[int, dict] = {}
+        try:
+            gx, gy = int(l["lat"] / GRID), int(l["lng"] / GRID)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    for o in self._grid.get((gx + dx, gy + dy), ()):
+                        cand[id(o)] = o
+        except (KeyError, TypeError, ValueError):
+            pass
+        for o in self._plz.get(plz, ()) if plz else ():
+            cand[id(o)] = o
         out = []
-        for o in self.rows:
-            if o.get("id") == l.get("id"):
-                continue
-            if (o.get("kind") or "wg_room") != kind or (o.get("rent_chf") or 0) <= 0 or o.get("gone_at"):
+        for o in cand.values():
+            if o.get("id") == l.get("id") or (o.get("kind") or "wg_room") != kind:
                 continue
             if rooms and _num(o.get("rooms")) and abs(_num(o["rooms"]) - rooms) > 1:
                 continue
@@ -249,10 +277,22 @@ class TrustContext:
         return out
 
     def median_rent(self, l: dict) -> tuple[float | None, int]:
+        """Median rent of the comparables. With many comparables (>= 30) the answer is shared
+        by listings of the same kind/size/PLZ in the same ~1 km cell (self-inclusion is then
+        immaterial), which keeps a 3000-listing request fast."""
+        try:
+            key = (l.get("kind") or "wg_room", round(_num(l.get("rooms")) or 0), int((_num(l.get("living_area_m2")) or 0) // 4),
+                   plz_of(l), round(l["lat"] / 0.01), round(l["lng"] / 0.01))
+        except (KeyError, TypeError):
+            key = None
+        if key is not None and key in self._med_cache:
+            return self._med_cache[key]
         comps = self.comparables(l)
-        if len(comps) < MIN_COMPARABLES:
-            return None, len(comps)
-        return statistics.median(o["rent_chf"] for o in comps), len(comps)
+        res = (None, len(comps)) if len(comps) < MIN_COMPARABLES else (
+            statistics.median(o["rent_chf"] for o in comps), len(comps))
+        if key is not None and len(comps) >= 30:
+            self._med_cache[key] = res
+        return res
 
 
 # --------------------------------------------------------------------------- scoring
@@ -325,12 +365,32 @@ def trust_detail(l: dict, ctx: TrustContext | None = None) -> dict:
     return {"score": score, "level": level_of(score), "reasons": [r for _, r in penalties]}
 
 
+_cache: dict = {"sig": None, "res": {}}
+
+
+def _signature(rows: list[dict]) -> int:
+    return hash(tuple((l.get("id"), l.get("rent_chf"), l.get("address"), l.get("kind"), l.get("rooms"),
+                       l.get("living_area_m2"), l.get("photo_count"), bool(l.get("gone_at")),
+                       len(l.get("raw_text") or ""), len(l.get("title") or ""),
+                       str(l.get("extracted"))[:400] if l.get("extracted") else None)
+                      for l in rows))
+
+
 def annotate(listings: list[dict], universe: list[dict] | None = None) -> list[dict]:
     """Attach trust_score / trust_level / trust_reasons in place. `universe` (default: the
     listings themselves) is what the price median and duplicate check look at; its rows
-    need raw_text."""
-    ctx = TrustContext(universe if universe is not None else listings)
+    need raw_text. The last result set is cached while the universe is unchanged, so repeated
+    requests (each map refresh) cost one O(n) signature instead of a full recompute."""
+    universe = universe if universe is not None else listings
+    sig = _signature(universe)
+    if _cache["sig"] != sig:
+        ctx = TrustContext(universe)
+        _cache["sig"] = sig
+        _cache["res"] = {l["id"]: trust_detail(l, ctx) for l in ctx.rows}
+    res = _cache["res"]
     for l in listings:
-        d = trust_detail(ctx.by_id.get(l.get("id"), l), ctx)
-        l["trust_score"], l["trust_level"], l["trust_reasons"] = d["score"], d["level"], d["reasons"]
+        d = res.get(l.get("id"))
+        if d is None:   # row not in the universe (should not happen): score it alone
+            d = trust_detail(l)
+        l["trust_score"], l["trust_level"], l["trust_reasons"] = d["score"], d["level"], list(d["reasons"])
     return listings

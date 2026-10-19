@@ -1,5 +1,11 @@
 # Changelog
 
+## Trust score (scam check)
+
+### New
+- 0-100 `trust_score`, `trust_level` (high / medium / low) and `trust_reasons` on `/listings`, `/listings/{id}` and `/group/listings`, computed in `backend/trust.py` (no LLM): price far below the local median, scam phrases (DE/EN/FR/IT), duplicate descriptions at other addresses or prices, missing house number / photos, agency poster, extracted red flags.
+- Low-trust listings are hidden by default ("Show low-trust" in More filters), show a warning in the detail view above the draft button, and are left out of phone alerts and the Message-today strip. Shield chip on cards and in the detail view.
+
 ## Follow-up loop
 
 ### New

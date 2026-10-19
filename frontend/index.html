@@ -146,6 +146,13 @@
   .chips { margin-top:5px; display:flex; flex-wrap:wrap; gap:3px; }
   .chip { font-size:.6rem; padding:1px 5px; border-radius:2px; background:#10261a; color:#66bb6a; border:1px solid #1a4a20; white-space:nowrap; }
   .chip.bad { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .trust-chip { font-size:.6rem; padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid; }
+  .trust-chip.high { background:#10261a; color:#66bb6a; border-color:#1a4a20; }
+  .trust-chip.medium { background:#2a2000; color:var(--amber); border-color:#5a4a10; }
+  .trust-chip.low { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .trust-warn { margin-top:14px; border:1px solid #5a1010; background:#1a0a0a; color:#e57373; padding:8px; font-size:.7rem; line-height:1.45; }
+  .trust-warn b { letter-spacing:.06em; text-transform:uppercase; font-size:.62rem; }
+  .trust-warn ul { margin:4px 0 0 16px; padding:0; color:#ccc; }
   .chip.dealbreaker { text-decoration:none; }
   .card-meta { font-size:.6rem; color:#8c8c8c; margin-top:5px; display:flex; justify-content:space-between; align-items:center; gap:6px; }
   .card-actions { display:flex; gap:4px; margin-top:6px; align-items:center; flex-wrap:wrap; }
@@ -495,6 +502,7 @@
       <div class="seg plain" role="group" aria-labelledby="lbl-new"><button id="btn-new-only" onclick="setNewOnly(!newOnly)" title="Only listings first seen since your last visit">New only</button></div>
     </div>
     <label class="chk"><input type="checkbox" id="hideDeal" onchange="applyFilters()"> Hide dealbreakers</label>
+    <label class="chk" title="Listings with a trust score under 50 (possible scams) are hidden by default"><input type="checkbox" id="showLow" onchange="applyFilters()"> Show low-trust</label>
   </div>
 </div>
 
@@ -732,6 +740,15 @@ function scoreChip(s) {
   const cls = s >= 72 ? 'score-high' : s >= 55 ? 'score-mid' : 'score-low';   // fit now spans ~30-95
   return `<span class="badge ${cls}" title="Fit score: how well this matches your profile (0–100)"><i>FIT</i>${s}</span>`;
 }
+function trustChip(l) {
+  if (!l.trust_level) return '';
+  const tip = `Trust ${l.trust_score}/100 (${l.trust_level})` + ((l.trust_reasons || []).length ? ': ' + l.trust_reasons.join('; ') : ': no warning signs found');
+  return `<span class="trust-chip ${esc(l.trust_level)}" title="${esc(tip)}">⛨ ${l.trust_score}</span>`;
+}
+function trustWarn(l) {
+  if (l.trust_level !== 'low') return '';
+  return `<div class="trust-warn" role="alert"><b>⛨ Low trust (${l.trust_score}/100): possible scam</b><ul>${(l.trust_reasons || []).map(r => `<li>${esc(r)}</li>`).join('')}</ul>Check the ad carefully before you reply. Never pay or send documents before a viewing.</div>`;
+}
 function replyChip(s) {
   if (s == null) return '';
   const cls = s >= 60 ? 'reply-high' : s >= 35 ? 'reply-mid' : 'reply-low';
@@ -815,7 +832,7 @@ function setNewOnly(v) { newOnly = !!v; $('btn-new-only').classList.toggle('acti
 function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
 function resetFilters() {
   $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
-  $('maxCommute').value = 60; $('hideDeal').checked = false;
+  $('maxCommute').value = 60; $('hideDeal').checked = false; $('showLow').checked = false;
   setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance'); setNewOnly(false);
   applyModeUI();
 }
@@ -854,6 +871,7 @@ function syncFilterCollapse() { $('filters').classList.toggle('collapsed', mq.ma
 mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
 
 function passes(l, f) {
+  if (l.trust_level === 'low' && !f.showLow) return false;
   if (priceOf(l) > f.maxRent) return false;
   if (f.filterCommute && commuteMin(l) > f.maxCommute) return false;
   const kind = l.kind || 'wg_room';
@@ -897,14 +915,14 @@ function applyFilters() {
   const maxRent = parseInt($('maxRent').value), maxCommute = parseInt($('maxCommute').value);
   $('rentLabel').textContent = `${maxRent} CHF`;
   $('commuteLabel').textContent = maxCommute >= 60 ? 'any' : `≤ ${maxCommute} min`;
-  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0);
+  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0) + ($('showLow').checked ? 1 : 0);
   $('more-count').textContent = nMore ? `(${nMore}) ` : '';
   syncPressed();
   const nFu = allListings.filter(l => l.followup_due).length, fb = $('btn-show-followup');
   if (fb) fb.textContent = nFu ? `Follow-ups (${nFu})` : 'Follow-ups';
   cancelAnimationFrame(_raf);
   _raf = requestAnimationFrame(() => {
-    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked };
+    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked, showLow: $('showLow').checked };
     renderAll(allListings.filter(l => passes(l, f)).sort(sortFn));
   });
 }
@@ -983,7 +1001,7 @@ function cardHtml(l) {
       <div class="card-top">
         <span class="card-dot" style="background:${deal.length ? '#777' : tier.color}" title="${tier.label}"></span>
         <span class="card-rent">${headPrice(l)}</span>
-        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
+        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${trustChip(l)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
         ${l.followup_due ? `<span class="fu-chip" title="Sent ${l.days_since_sent != null ? Math.floor(l.days_since_sent) + ' days ago' : 'a while ago'} with no reply">Follow up?</span>` : ''}
         ${l.status ? `<span class="stbadge ${l.status}">${STATUS_LABEL[l.status]}</span>` : ''}
       </div>
@@ -1017,7 +1035,7 @@ let curList = [], renderedN = 0, cursorId = null;
 function todayPicks(list) {
   const pick = [];
   for (const l of list) {
-    if (l._deal.length || l.status) continue;
+    if (l._deal.length || l.status || l.trust_level === 'low') continue;
     const d = daysAgo(l);
     const boost = (isNew(l) ? 6 : 0) + (d == null ? 0 : d <= 1 ? 10 : d <= 3 ? 6 : d <= 7 ? 2 : 0);
     pick.push([relevanceScore(l) + boost, l]);
@@ -1217,7 +1235,7 @@ function showDetail(l) {
     <div class="detail-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
     <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
     ${commuteGrid(l)}
-    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)}</div>
+    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)}</div>
     ${deal.length ? `<div class="chips">${deal.map(d => `<span class="chip bad">✗ ${esc(d)}</span>`).join('')}</div>`
       : reasons.length ? `<div class="chips">${reasons.map(r => `<span class="chip">✓ ${esc(r)}</span>`).join('')}</div>` : ''}
     <div class="detail-section"><div class="detail-section-label">Track</div><div class="card-actions" id="detail-status" style="margin-top:0">${statusBar(l)}</div></div>
@@ -1232,6 +1250,7 @@ function showDetail(l) {
     ${incl ? `<div class="detail-section"><div class="detail-section-label">Include in Your Message</div>${incl}</div>` : ''}
     ${flags ? `<div class="detail-section"><div class="detail-section-label">Red Flags</div>${flags}</div>` : ''}
     ${!hasExt && !groupMode ? '<div class="note-inline">Ad not analysed yet — run Extract for requirements, vibe and red flags.</div>' : ''}
+    ${trustWarn(l)}
     <button class="draft-btn" id="draft-btn" onclick="draftMessage(${l.id})">${groupMode ? '✎ Draft Group Application' : '✎ Draft Message'}</button>
     <div id="draft-area"></div>
     <div id="rawtext-slot">${l.raw_text ? `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>` : ''}</div>
