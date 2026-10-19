@@ -75,7 +75,10 @@ def _fake_reply(kw: dict) -> str:
                            for i in ids])
     if "summar" in low:
         return f"{FAKE_TAG} Bright room in a 3-person WG, long-term, non-smokers wanted."
-    if "follow-up" in low:
+    if "follow-up" in low:   # in the language the prompt names (the first message's, else the ad's)
+        if "- Write in English" in system or "- Write in the ad's language (English)" in system:
+            return (f"Hello again,\n\nI just wanted to check whether the room is still available. "
+                    f"I am still very interested.\n\nBest regards\n{FAKE_TAG}")
         return (f"Hallo nochmal,\n\nich wollte kurz nachfragen, ob das Zimmer noch frei ist. "
                 f"Ich hätte weiterhin grosses Interesse.\n\nViele Grüsse\n{FAKE_TAG}")
     german = "German" in system and "English (the applicant chose" not in system
