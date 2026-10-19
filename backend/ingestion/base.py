@@ -56,6 +56,46 @@ def utc_text(value, allow_future: bool = True) -> str | None:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+MAX_PHOTOS = 12   # image URLs kept per ad (the detail view's strip); photo_count keeps the full count
+
+
+def photo_list(items, base: str = "") -> list[dict] | None:
+    """[{"t": thumbnail URL, "f": full-size URL}, ...] (at most MAX_PHOTOS, https only) from a
+    source's image entries: dicts with url-like keys or plain URL strings. Relative URLs are joined
+    to `base`. None when the source gave no list (unknown), [] when it gave an empty one.
+    Entries without a usable URL (bare IDs, http://) are skipped."""
+    if not isinstance(items, list):
+        return None
+    out = []
+
+    def _abs(u):
+        if not isinstance(u, str) or not u.strip():
+            return None
+        u = u.strip()
+        if u.startswith("//"):
+            u = "https:" + u
+        elif u.startswith("/") and base:
+            u = base.rstrip("/") + u
+        return u if u.startswith("https://") else None
+
+    for it in items:
+        if isinstance(it, str):
+            full = thumb = _abs(it)
+        elif isinstance(it, dict):
+            full = _abs(it.get("url"))
+            thumb = _abs(it.get("url_thumb_m")) or _abs(it.get("url_listing_search")) or full
+            full = full or thumb
+        else:
+            continue
+        if full:
+            out.append({"t": thumb, "f": full})
+        if len(out) >= MAX_PHOTOS:
+            break
+    # a non-empty list without usable URLs (e.g. Flatfox image IDs when the images were not
+    # expanded) says nothing about the photos: unknown, not "none"
+    return out if out or not items else None
+
+
 def norm_dt(value) -> str | None:
     """Posting dates: like utc_text, but a date in the future is bogus (None)."""
     return utc_text(value, allow_future=False)

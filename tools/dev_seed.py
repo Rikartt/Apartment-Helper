@@ -179,6 +179,9 @@ def _ts(dt: datetime) -> str:
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 
+DEV_PHOTO_BASE = "https://photos.example.invalid/dev/"
+
+
 def _make_ads(n: int, rnd: random.Random, now: datetime) -> list[dict]:
     months = [(now.replace(day=1) + timedelta(days=32 * k)).replace(day=1).strftime("%Y-%m-%d") for k in (1, 2, 3)]
     scam_at = {n // 15, n // 2 + 3} if n >= 20 else set()
@@ -235,6 +238,12 @@ def _make_ads(n: int, rnd: random.Random, now: datetime) -> list[dict]:
             # (no extra random draws, so the rest of the seed is unchanged)
             ad["promo"] = "Flatfox Priority"
             ad["promo_until"] = _ts(now + timedelta(days=(i % 13) + 1) if i % 2 == 0 else now - timedelta(days=2))
+        if ad["source"] in ("flatfox", "homegate") and i % 5 != 3:
+            # photo URLs on a reserved, never-resolving host (no random draws: the rest of the seed
+            # is unchanged); tests/ui_smoke.py and screenshot scripts answer them with local images
+            n = 2 + i % 9
+            ad["photos"] = [{"t": f"{DEV_PHOTO_BASE}{i}/{k}-thumb.svg", "f": f"{DEV_PHOTO_BASE}{i}/{k}.svg"}
+                            for k in range(1, n + 1)]
         if i % 7 == 2 and i not in scam_at:
             ad["fixed_term"] = True                # befristet / temporary let
             ad["raw_text"] = "Befristet bis Ende März. " + ad["raw_text"]

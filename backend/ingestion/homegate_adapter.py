@@ -32,7 +32,7 @@ import os
 import httpx
 from bs4 import BeautifulSoup
 
-from .base import BaseAdapter, load_known, norm_dt, promo_label, fixed_term_from_text
+from .base import BaseAdapter, load_known, norm_dt, promo_label, fixed_term_from_text, photo_list
 from .geocode import geocode as _geocode, geocode_many as _geocode_many
 
 SEARCH_BASE  = (
@@ -68,6 +68,23 @@ _WG_KEYWORDS = re.compile(
 
 # Maximum rooms for a listing to be considered WG-candidate
 _MAX_ROOMS = 2.5
+
+
+def _photos(lst: dict) -> list[dict] | None:
+    """Image URLs from the embedded listing JSON: localization.<primary language>.attachments,
+    entries of type IMAGE (absolute media2.homegate.ch URLs; there is no thumbnail URL, so the
+    strip loads the same file lazily)."""
+    loc = lst.get("localization") or {}
+    if not isinstance(loc, dict):
+        return None
+    lang = loc.get("primary")
+    block = loc.get(lang) if isinstance(lang, str) else None
+    if not isinstance(block, dict):
+        block = next((v for v in loc.values() if isinstance(v, dict) and "attachments" in v), None)
+    att = (block or {}).get("attachments")
+    if not isinstance(att, list):
+        return None
+    return photo_list([a.get("url") for a in att if isinstance(a, dict) and a.get("type") == "IMAGE"])
 
 
 class HomegateAdapter(BaseAdapter):
@@ -267,6 +284,7 @@ class HomegateAdapter(BaseAdapter):
             return
         card["listed_at"] = norm_dt((lst.get("meta") or {}).get("createdAt"))
         card["promo"] = promo_label("homegate", lst)
+        card["photos"] = _photos(lst)
         a = lst.get("address") or {}
         g = a.get("geoCoordinates") or {}
         if g.get("accuracy") in ("HIGH", "MEDIUM") and g.get("latitude") and g.get("longitude"):
@@ -357,4 +375,5 @@ class HomegateAdapter(BaseAdapter):
             "living_area_m2": float(card["space_m2"]) if card.get("space_m2") else None,
             "promo":          card.get("promo"),
             "fixed_term":     fixed_term_from_text(raw_text),
+            "photos":         card.get("photos"),
         }
