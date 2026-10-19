@@ -265,12 +265,13 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         pg.evaluate("document.querySelector('.trust-warn').scrollIntoView({block:'center'})")
         pages.shot(pg, f"{tag}-03-trust-warning")
         pg.keyboard.press("Escape")
-        # give closeDetail's deferred setCursor/zoomToShowLayer time to finish (a real user is
-        # slower than this anyway): hiding the pin within ~50 ms leaves markercluster with a
-        # dangling moveend listener that breaks every later selectListing
-        pg.wait_for_timeout(500)
+        # hide the pin right away, while zoomToShowLayer may still be moving to it: this used
+        # to leave markercluster with a dangling moveend listener that broke every later
+        # selectListing (the next step opens a detail, so it would fail)
         pg.evaluate("$('showLow').checked = false; applyFilters()")
-        pg.wait_for_timeout(300)
+        pg.wait_for_timeout(1200)
+        check(f"{tag} hidden low-trust pin leaves the map after a fast filter change",
+              pg.evaluate(f"!shown.has({low}) && !cluster.hasLayer(markers[{low}])"))
 
     with step(f"{tag} priority filter and Message today", pg, pages):
         check(f"{tag} seed has running and expired priority listings",

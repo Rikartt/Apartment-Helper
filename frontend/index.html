@@ -270,8 +270,8 @@
   #best-modal { display:none; position:fixed; inset:0; bottom:var(--ob,0px); background:#000a; z-index:2000; align-items:center; justify-content:center; }
   #best-modal.open { display:flex; }
   #best-box { background:var(--panel); border:1px solid var(--line); width:min(700px,95vw); max-height:90vh; display:flex; flex-direction:column; border-top:2px solid var(--red); }
-  #best-header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
-  #best-header h2 { color:var(--red); font-size:var(--fs-md); letter-spacing:.1em; text-transform:uppercase; }
+  .best-header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
+  .best-header h2 { color:var(--red); font-size:var(--fs-md); letter-spacing:.1em; text-transform:uppercase; }
   #best-list { overflow-y:auto; flex:1; }
   .best-entry { padding:12px 16px; border-bottom:1px solid var(--line2); }
   .best-entry-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
@@ -292,7 +292,7 @@
   #help-modal { position:fixed; inset:0; bottom:var(--ob,0px); background:#000a; z-index:2000; align-items:center; justify-content:center; display:flex; }
   #help-modal[hidden] { display:none; }
   #help-box { background:var(--panel); border:1px solid var(--line); border-top:2px solid var(--red); width:min(420px,92vw); }
-  #help-box #best-header { display:flex; }
+  #help-box .best-header { display:flex; }
   #help-list { display:grid; grid-template-columns:70px 1fr; gap:8px 12px; padding:14px 16px; font-size:var(--fs-sm); }
   #help-list dt { color:var(--amber); } #help-list dd { color:#bbb; }
   kbd { border:1px solid #555; border-bottom-width:2px; padding:0 4px; font:inherit; font-size:.7em; }
@@ -570,7 +570,7 @@
 
 <div id="best-modal" role="dialog" aria-modal="true" aria-label="Top 5 picks">
   <div id="best-box">
-    <div id="best-header">
+    <div class="best-header">
       <h2>Top 5 Picks</h2>
       <button class="cancel-btn" onclick="closeBest()" aria-label="Close">✕</button>
     </div>
@@ -579,7 +579,7 @@
 </div>
 <div id="help-modal" role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" hidden>
   <div id="help-box">
-    <div id="best-header"><h2>Keyboard shortcuts</h2><button class="cancel-btn" onclick="closeHelp()" aria-label="Close">✕</button></div>
+    <div class="best-header"><h2>Keyboard shortcuts</h2><button class="cancel-btn" onclick="closeHelp()" aria-label="Close">✕</button></div>
     <dl id="help-list">
       <dt>j / k</dt><dd>next / previous listing</dd>
       <dt>Enter</dt><dd>open the highlighted listing</dd>
@@ -696,6 +696,7 @@ let markers = {};          // id -> L.Marker (cached)
 let shown = new Set();     // ids currently in the cluster
 let selectedId = null;
 let _todayF = null;   // current list filters, reused by the Message today strip
+let _zoomingId = null;   // marker zoomToShowLayer is moving to; must not leave the cluster mid-zoom
 let campus = 'zentrum', mode = 'transit', sortMode = 'relevance', posterFilter = 'all', showFilter = 'todo', kindFilter = 'wg';
 let loadState = 'loading'; // loading | ok | error
 let _profile = {};
@@ -1164,6 +1165,8 @@ function renderAll(listings) {
   const want = new Map(listings.map(l => [l.id, l]));
   // keep the open listing's marker (markercluster leaks a moveend listener if a marker is removed mid zoomToShowLayer)
   if (selectedId != null && $('detail-view').classList.contains('open') && byId[selectedId] && !want.has(selectedId)) want.set(selectedId, byId[selectedId]);
+  // ...and the one still being zoomed to, even if its detail was closed in the meantime
+  if (_zoomingId != null && byId[_zoomingId] && !want.has(_zoomingId)) want.set(_zoomingId, byId[_zoomingId]);
   const toRemove = [], toAdd = [];
   shown.forEach(id => { if (!want.has(id)) { toRemove.push(markers[id]); shown.delete(id); } });
   want.forEach((l, id) => {
@@ -1243,7 +1246,14 @@ function selectListing(id) {
   map.setView([l.lat, l.lng], Math.max(map.getZoom(), 15), { animate: false });
   if (m && shown.has(id)) {
     m.setZIndexOffset(1000);
-    cluster.zoomToShowLayer(m, () => { if (selectedId !== id || !shown.has(id)) return; markerEl(id)?.classList.add('selected'); if (!mq.matches) { try { m.openPopup(); } catch (_) {} } });
+    _zoomingId = id;
+    cluster.zoomToShowLayer(m, () => {
+      if (_zoomingId === id) {   // zoom done: a pin that filters now hide can go
+        _zoomingId = null;
+        if (!$('detail-view').classList.contains('open') && !curList.some(x => x.id === id)) applyFilters();
+      }
+      if (selectedId !== id || !shown.has(id)) return; markerEl(id)?.classList.add('selected'); if (!mq.matches) { try { m.openPopup(); } catch (_) {} }
+    });
   }
   showDetail(l);
 }
@@ -1353,7 +1363,7 @@ function closeDetail() {
   document.body.classList.remove('has-detail');
   // the pin was kept alive only for the open detail: drop it if filters now hide this listing
   const id = selectedId;
-  if (id != null && shown.has(id) && !curList.some(l => l.id === id)) {
+  if (id != null && id !== _zoomingId && shown.has(id) && !curList.some(l => l.id === id)) {
     const m = markers[id];
     if (map._popup && map._popup._source === m) map.closePopup();
     cluster.removeLayer(m); shown.delete(id);
