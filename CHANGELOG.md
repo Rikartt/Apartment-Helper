@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-10-19: after the merges (PRs #13, #14)
+
+### New
+- Opt-in browser smoke test (`RUN_UI_SMOKE=1 python tests/ui_smoke.py`) and dev tools: `tools/dev_seed.py` (synthetic DB) and `tools/dev_server.py` (app on that DB, optional fake LLM, no ingest).
+
+### Fixed
+- Listing age ("2 days ago", fresh-ad chip, Message-today boost) read the normalised UTC `listed_at` as local time, and Safari could not parse it at all.
+- `/group/listings`: the "no WG / students" and scam text checks never saw the ad body (it was stripped before scoring); flats now carry `followup_due` / `days_since_sent` / `sent_at`, so the Follow-ups filter and "Follow up?" chip work in group mode.
+- Top 5 no longer suggests low-trust (likely scam) listings.
+
 ## 2026-10-19: polish blocks A-D (PRs #5-#10)
 
 Newest merge first.

@@ -396,9 +396,13 @@ def best_listings():
     """Top 5 listings by relevance with Claude-generated strengths/weaknesses.
     The Claude call is cached per set of top-5 ids so page reloads cost nothing."""
     profile = _load_profile()
-    # whole flats belong to group mode: never suggest them as a WG room
-    eligible = [l for l in (_decorate(l, profile) for l in get_all_listings(False)
-                            if (l.get("kind") or "wg_room") != "apartment")
+    # whole flats belong to group mode: never suggest them as a WG room; likely scams
+    # (low trust, hidden by default in the list) are never suggested either
+    rows = get_all_listings(True)
+    rows = [strip_raw(l) for l in _with_trust(rows, rows)]
+    eligible = [l for l in (_decorate(l, profile) for l in rows
+                            if (l.get("kind") or "wg_room") != "apartment"
+                            and l.get("trust_level") != "low")
                 if not l["is_dealbreaker"] and l["rent_chf"] > 0]
     eligible.sort(key=lambda r: (r["fit_score"] + r["reply_score"]) / 2, reverse=True)
     top5 = eligible[:5]
