@@ -343,7 +343,7 @@ def get_stats() -> dict:
     counts = {k: by_status.get(k, 0) for k in ("sent", "replied", "rejected")}
     counts["none"] = by_status.get("none", 0)
     contacted = counts["sent"] + counts["replied"] + counts["rejected"]
-    return {
+    out = {
         "total": total,
         "counts": counts,
         "contacted": contacted,
@@ -351,6 +351,12 @@ def get_stats() -> dict:
         "reply_rate": round(counts["replied"] / contacted, 3) if contacted else None,
         "by_source": by_source,
     }
+    try:  # outcome analysis for the stats page (additive keys)
+        from . import learning
+        out.update(learning.outcome_stats())
+    except Exception:
+        pass
+    return out
 
 
 # ── freshness: gone listings + ingest run log ───────────────────────────────

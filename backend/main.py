@@ -27,6 +27,7 @@ from .drafting import draft, DraftError  # noqa: E402
 from .extraction import extract_batch  # noqa: E402
 from .group import router as group_router, validate_group  # noqa: E402
 from .ingest import run_ingest, ADAPTERS  # noqa: E402
+from . import learning  # noqa: E402
 from .scoring import score_detail, load_profile, PROFILE_PATH  # noqa: E402
 
 BASE_DIR     = Path(__file__).parent.parent
@@ -273,6 +274,7 @@ def post_sent(listing_id: int, body: SentBody):
     if not text:
         return JSONResponse({"error": "message text is empty"}, status_code=422)
     msg = add_sent_message(listing_id, text, body.kind)
+    learning.refresh()
     if not msg:
         return JSONResponse({"error": "listing not found"}, status_code=404)
     l = _decorate(get_listing(listing_id, include_raw=False), _load_profile())
@@ -295,6 +297,7 @@ class StatusUpdate(BaseModel):
 def post_status(listing_id: int, body: StatusUpdate):
     if not set_status(listing_id, body.status):
         return JSONResponse({"error": "listing not found"}, status_code=404)
+    learning.refresh()
     return JSONResponse(_decorate(get_listing(listing_id, include_raw=False), _load_profile()))
 
 
