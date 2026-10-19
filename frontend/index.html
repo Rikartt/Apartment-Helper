@@ -720,7 +720,10 @@ function dealbreakers(l) {
 }
 
 function daysAgo(l) {
-  const t = Date.parse(l.listed_at || '');
+  // listed_at is UTC 'YYYY-MM-DD HH:MM:SS' (ingest normalises it): read it as UTC, not local
+  // time (Safari cannot parse the space form at all); older ISO values with Z/offset still work
+  const s = String(l.listed_at || '').replace(' ', 'T');
+  const t = Date.parse(/T\d\d:\d\d(:\d\d(\.\d+)?)?$/.test(s) ? s + 'Z' : s);
   if (isNaN(t)) return null;
   return Math.max(0, Math.floor((Date.now() - t) / 86400000));
 }
