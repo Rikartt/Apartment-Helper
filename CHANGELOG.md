@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-19: follow-ups in the language of your first message
+
+### Changed
+- Follow-up drafts (`?followup=1` on `/draft/{id}` and `/group/draft/{id}`) are now written in the language of the first message you actually sent, not the ad's language. Example: a German ad you answered in English (lang=en) gets an English follow-up. The language is read from the stored first message with the same German/English word heuristic the app already uses for the draft's language tag (`text_language` / `followup_language` in `drafting.py`, shared by solo and group). If it can't be told (very short text), the follow-up stays in the ad's language with exactly the old prompt; with no stored first message there is still nothing to follow up on (409). The response's `language` field follows the same rule. Draft-and-review only, nothing is sent.
+- The follow-up draft's language note compares with your first message ("matches your first message") instead of the ad.
+
 ## 2026-10-19: phone alerts follow the priority and befristet filters
 
 ### New
