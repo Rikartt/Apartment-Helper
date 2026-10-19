@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-19: phone alerts follow the priority and befristet filters
+
+### New
+- Phone alerts now skip what "Hide priority/premium" and "Hide befristet" hide on the map. Before, the switches were saved only in the browser, so the digest after an ingest could still announce a Flatfox Priority or befristet listing you had hidden. The app now also saves them on the server (`PUT /notify/filters`, stored in the database, shown in `GET /notify/status`); a browser with its own saved choice pushes it on load, a browser without one takes the server's. Priority is skipped only while its period runs (no end date, or an end in the future), as on the map. Befristet uses the same rule as the map (Flatfox flag, else ad wording, else Extract's duration). If your profile wants a long-term room, befristet listings were already left out as dealbreakers; the switch now also covers profiles without that wish and Extract-only sublet/fixed-term durations. Hidden listings are not marked as alerted, so unticking a switch can still bring them up in a later digest within the 24 h window. Group-mode apartments follow the switches too.
+
 ## 2026-10-19: tone and language for group drafts
 
 ### New

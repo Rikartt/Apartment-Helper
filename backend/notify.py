@@ -8,7 +8,12 @@ Env (all optional, see .env.example):
   WGP_NTFY_TOPIC, WGP_NTFY_SERVER (default https://ntfy.sh)
   WGP_TELEGRAM_TOKEN + WGP_TELEGRAM_CHAT_ID
   WGP_NOTIFY_MIN_FIT (default 75), WGP_NOTIFY_QUIET (e.g. "23-07", local time)
+
+The UI's "Hide priority/premium" and "Hide befristet" checkboxes are mirrored here via
+PUT /notify/filters (stored in source_state under source 'notify'), so the digest skips
+what the owner hides on the map.
 """
+import json
 import os
 import threading
 from urllib.parse import quote
@@ -17,7 +22,7 @@ from datetime import datetime, timedelta, timezone
 import httpx
 
 from . import trust
-from .db import get_conn, get_all_listings, utc_now
+from .db import get_conn, get_all_listings, utc_now, get_state, set_state
 from .scoring import score_detail, load_profile, _best_transit
 from .group import get_group, group_detail, validate_group
 
@@ -71,6 +76,54 @@ def in_quiet_hours(now: datetime | None = None) -> bool:
     return (a <= h < b) if a < b else (h >= a or h < b)
 
 
+# ------------------------------------------------------------------ UI filters
+FILTER_KEYS = ("hide_promo", "hide_fixed_term")
+_STATE_SOURCE = "notify"
+
+
+def get_filters() -> dict:
+    """The owner's alert filters (mirrors of the UI checkboxes). Default: both off."""
+    return {k: get_state(_STATE_SOURCE, k) == "1" for k in FILTER_KEYS}
+
+
+def set_filters(**kw: bool | None) -> dict:
+    """Update any of FILTER_KEYS (None = leave as is). Returns the new filters."""
+    for k in FILTER_KEYS:
+        if kw.get(k) is not None:
+            set_state(_STATE_SOURCE, k, "1" if kw[k] else "0")
+    return get_filters()
+
+
+def _parse_utc(s) -> datetime | None:
+    try:
+        t = datetime.fromisoformat(str(s).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return t if t.tzinfo else t.replace(tzinfo=timezone.utc)
+
+
+def promo_active(l: dict, now: datetime | None = None) -> bool:
+    """Paid placement still in force (frontend promoActive): open-ended or ends in the future."""
+    if not l.get("promo"):
+        return False
+    until = _parse_utc(l["promo_until"]) if l.get("promo_until") else None
+    return until is None or until > (now or datetime.now(timezone.utc))
+
+
+def is_fixed_term(l: dict) -> bool:
+    """Befristet (frontend isFixedTerm): the source flag wins, else the extracted duration."""
+    v = l.get("fixed_term")
+    if v is not None and not isinstance(v, str):
+        return bool(v)
+    ext = l.get("extracted")
+    if isinstance(ext, str):
+        try:
+            ext = json.loads(ext)
+        except ValueError:
+            ext = None
+    return isinstance(ext, dict) and ext.get("duration") in ("fixed_term", "sublet")
+
+
 # ------------------------------------------------------------------ log table
 def _ensure_log():
     with get_conn() as c:
@@ -111,9 +164,16 @@ def pending_candidates(profile: dict | None = None, now: datetime | None = None)
     if g:
         group = g
     out = []
+    filters = get_filters()
+    utc = now or datetime.now(timezone.utc)
     rows = trust.annotate(get_all_listings(include_raw=True))
     for l in rows:
         if l.get("trust_level") == "low":   # likely scam: never worth a phone buzz
+            continue
+        # hidden on the map -> no buzz either; left un-notified so unticking can still surface it
+        if filters["hide_promo"] and promo_active(l, utc):
+            continue
+        if filters["hide_fixed_term"] and is_fixed_term(l):
             continue
         if l.get("notified_at") or l.get("status") or (l.get("created_at") or "") < cutoff:
             continue
@@ -245,7 +305,7 @@ def status() -> dict:
             "quiet_hours": os.environ.get("WGP_NOTIFY_QUIET", "23-07") or None,
             "quiet_now": in_quiet_hours(), "last_sent_at": last["sent_at"] if last else None,
             "last_sent_count": last["listings"] if last else None,
-            "pending": pend, "last_error": _last_error}
+            "pending": pend, "last_error": _last_error, "filters": get_filters()}
 
 
 def send_test() -> dict:

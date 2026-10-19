@@ -148,7 +148,9 @@ ntfy (easiest):
 
 Telegram (optional): create a bot with @BotFather, get your chat id from @userinfobot, set `WGP_TELEGRAM_TOKEN` and `WGP_TELEGRAM_CHAT_ID`.
 
-Endpoints: `GET /notify/status` (configured channels, threshold, quiet hours, last error) and `POST /notify/test` (sends a test message).
+Alerts follow the "Hide priority/premium" and "Hide befristet" switches in More filters: while one is ticked, matching listings are left out of the digest (a Priority listing only until its Priority period ends). The app saves the switches on the server when you toggle them; a hidden listing is not marked as alerted, so it can still come in a later digest within 24 h of first being seen if you untick the switch.
+
+Endpoints: `GET /notify/status` (configured channels, threshold, quiet hours, alert filters, last error), `PUT /notify/filters` (body e.g. `{"hide_promo": true, "hide_fixed_term": false}`, either key alone is fine; the UI calls it) and `POST /notify/test` (sends a test message).
 
 ## Environment variables
 

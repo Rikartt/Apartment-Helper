@@ -537,6 +537,21 @@ def notify_status():
     return JSONResponse(notify.status())
 
 
+@app.put("/notify/filters")
+async def put_notify_filters(request: Request):
+    """Mirror of the UI's hide-priority / hide-befristet checkboxes, so alerts skip them too."""
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "body must be valid JSON"}, status_code=400)
+    keys = notify.FILTER_KEYS
+    if not isinstance(body, dict) or not body or set(body) - set(keys) \
+            or any(not isinstance(v, bool) for v in body.values()):
+        return JSONResponse({"error": f"body must map some of {', '.join(keys)} to true/false"},
+                            status_code=422)
+    return JSONResponse(notify.set_filters(**body))
+
+
 @app.post("/notify/test")
 def notify_test():
     if not notify.channels():

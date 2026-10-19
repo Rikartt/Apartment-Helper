@@ -296,8 +296,12 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         pg.wait_for_timeout(400)
         check(f"{tag} 'Hide befristet' removes them from the list",
               pg.evaluate("curList.length > 0 && !curList.some(l => isFixedTerm(l))"))
+        check(f"{tag} ...and phone alerts learn it (server-side filter)",
+              get_json(base, "/notify/status").get("filters") == {"hide_promo": False, "hide_fixed_term": True})
         pg.evaluate("$('hideTerm').checked = false; savePromo(); applyFilters()")
         pg.wait_for_timeout(300)
+        check(f"{tag} ...and unticking clears it for alerts",
+              get_json(base, "/notify/status").get("filters") == {"hide_promo": False, "hide_fixed_term": False})
 
     with step(f"{tag} detail", pg, pages):
         first = pg.locator(".card").first
