@@ -191,7 +191,10 @@ class FlatfoxAdapter(BaseAdapter):
             title_parts.append(f"in {city}")
         if rent:
             title_parts.append(f"– {rent} CHF")
-        title = " ".join(title_parts)
+        # The ad's own headline when it has one (live, nearly all do); the generated
+        # "1.0-Zimmer WG-Zimmer in Zürich – 1150 CHF" made every room look the same.
+        headline = " ".join(str(l.get("description_title") or "").split())
+        title = headline or " ".join(title_parts)
 
         desc_title = l.get("description_title") or l.get("short_title") or ""
         description = l.get("description") or ""

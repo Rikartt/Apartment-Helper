@@ -17,7 +17,7 @@
 <style>
   :root {
     --bg:#1a1a1a; --panel:#111; --line:#333; --line2:#1e1e1e; --txt:#e0e0e0; --dim:#888; --faint:#555;
-    --red:#c00; --transit:#2196f3; --bike:#4caf50; --amber:#ffc107;
+    --red:#c00; --red-txt:#f44336; --transit:#2196f3; --bike:#4caf50; --amber:#ffc107;
     /* type scale: 4 steps (hero rent .detail-rent and map-pin px sizes are the only exceptions) */
     --fs-xs:.62rem; --fs-sm:.72rem; --fs-md:.8rem; --fs-lg:1.1rem;
     --tier-low:#66bb6a; --tier-mid:#42a5f5; --tier-high:#ffa726;
@@ -30,7 +30,7 @@
   :focus-visible { outline:2px solid var(--amber); outline-offset:1px; }
 
   #topbar { background:var(--panel); border-bottom:2px solid var(--red); padding:8px 16px; display:flex; align-items:center; gap:12px; flex-shrink:0; }
-  #topbar h1 { color:var(--red); font-size:var(--fs-lg); letter-spacing:.15em; text-transform:uppercase; }
+  #topbar h1 { color:var(--red-txt); font-size:var(--fs-lg); letter-spacing:.15em; text-transform:uppercase; }
   #count { color:var(--dim); font-size:var(--fs-sm); margin-left:auto; font-variant-numeric:tabular-nums; white-space:nowrap; }
   #sync { color:var(--amber); font-size:var(--fs-xs); letter-spacing:.06em; text-transform:uppercase; display:none; white-space:nowrap; }
   #sync.on { display:inline-block; padding-bottom:3px;   /* thin progress bar under the text: sources done / total */
@@ -77,8 +77,8 @@
   .seg button:first-child { border-radius:2px 0 0 2px; } .seg button:last-child { border-radius:0 2px 2px 0; }
   .seg button:hover { color:var(--txt); }
   .seg.campus button.active { background:var(--red); color:#fff; border-color:var(--red); }
-  .seg.mode button.active { background:var(--transit); color:#fff; border-color:var(--transit); }
-  .seg.mode button#btn-bike.active { background:var(--bike); border-color:var(--bike); }
+  .seg.mode button.active { background:#1565c0; color:#fff; border-color:#1565c0; }   /* white on --transit/--bike is under 3.2:1 */
+  .seg.mode button#btn-bike.active { background:#2e7d32; border-color:#2e7d32; }
   .seg.poster button.active { background:#00695c; color:#fff; border-color:#00695c; }
   .seg.sort button.active { background:#7b1fa2; color:#fff; border-color:#7b1fa2; }
   .seg.kind button.active, .seg.plain button.active { background:#37474f; color:#fff; border-color:#546e7a; }
@@ -105,7 +105,7 @@
   .today-row { display:grid; grid-template-columns:16px 52px 1fr auto; gap:0 8px; align-items:baseline; width:100%; background:none; border:none; border-top:1px solid var(--line2); color:var(--txt); font:inherit; font-size:var(--fs-sm); text-align:left; padding:5px 12px; cursor:pointer; }
   .today-row:hover { background:#181818; }
   .today-row .rk { color:var(--amber); font-size:var(--fs-xs); }
-  .today-row .pr { color:var(--red); font-variant-numeric:tabular-nums; font-size:var(--fs-md); }
+  .today-row .pr { color:var(--red-txt); font-variant-numeric:tabular-nums; font-size:var(--fs-md); }
   .today-row .tt { color:#bbb; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .today-row .mn { color:var(--transit); font-variant-numeric:tabular-nums; font-size:var(--fs-xs); }
   .today-row .mn.bike { color:var(--bike); }
@@ -124,11 +124,11 @@
   .card.dim:hover .card-body { opacity:.8; }
   .card.st-sent { border-left-color:#1565c0; } .card.st-replied { border-left-color:#2e7d32; } .card.st-rejected .card-body { opacity:.35; }
   .card-top { display:flex; align-items:baseline; gap:6px; flex-wrap:wrap; }
-  .card-rent { font-size:var(--fs-lg); color:var(--red); font-variant-numeric:tabular-nums; }
-  .card-rent small { font-size:var(--fs-xs); color:#b05555; margin-left:2px; }
+  .card-rent { font-size:var(--fs-lg); color:var(--red-txt); font-variant-numeric:tabular-nums; }
+  .card-rent small { font-size:var(--fs-xs); color:#c46c6c; margin-left:2px; }
   .card-dot { width:8px; height:8px; border-radius:50%; align-self:center; }
   .badge { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; font-variant-numeric:tabular-nums; white-space:nowrap; cursor:help; }
-  .badge i { font-style:normal; font-size:var(--fs-xs); opacity:.7; margin-right:3px; letter-spacing:.05em; }
+  .badge i { font-style:normal; font-size:var(--fs-xs); margin-right:3px; letter-spacing:.05em; }
   .score-high { background:#1a3a1a; color:#4caf50; } .score-mid { background:#1a2a3a; color:#2196f3; } .score-low { background:#2a2a1a; color:#999; }
   .reply-high { background:#241a00; color:var(--amber); } .reply-mid { background:#1e1400; color:#a07820; } .reply-low { background:#1e1a1a; color:#8c8c8c; }
   .newbadge { font-size:var(--fs-xs); font-weight:700; letter-spacing:.1em; padding:1px 4px; border-radius:2px; background:var(--amber); color:#111; }
@@ -146,12 +146,13 @@
   .commute { display:grid; grid-template-columns:auto auto auto 1fr; gap:1px 8px; align-items:center; margin-top:5px; font-size:var(--fs-sm); font-variant-numeric:tabular-nums; }
   .commute .cn { color:#8c8c8c; text-transform:uppercase; letter-spacing:.05em; font-size:var(--fs-xs); }
   .commute .cn.on { color:#e0e0e0; }
-  .commute .t { color:#3a7fc0; } .commute .b { color:#3a8a4a; }
+  .commute .t { color:#4589cc; } .commute .b { color:#449656; }
   .commute .t.on { color:#64b5f6; font-weight:bold; } .commute .b.on { color:#81c784; font-weight:bold; }
   .commute .t::before, .commute .b::before { content:""; display:inline-block; width:10px; height:3px; margin-right:4px; vertical-align:middle; background:currentColor; border-radius:1px; }
   .chips { margin-top:5px; display:flex; flex-wrap:wrap; gap:3px; }
   .chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; background:#10261a; color:#66bb6a; border:1px solid #1a4a20; white-space:nowrap; }
   .chip.bad { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .chip.warn { background:#2a2010; color:#e0b050; border-color:#5a4410; }
   .promo-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid #6a4a8a; color:#c39be6; background:#1c1226; letter-spacing:.06em; text-transform:uppercase; }
   .term-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid #555; color:#bbb; background:#1c1c1c; letter-spacing:.06em; text-transform:uppercase; }
   .chk-note { font-size:var(--fs-xs); color:var(--dim); flex-basis:100%; margin-top:-4px; }
@@ -186,7 +187,7 @@
   #profile-panel, #group-panel { position:fixed; top:0; right:0; width:380px; max-width:100vw; height:calc(100vh - var(--ob,0px)); height:calc(100dvh - var(--ob,0px)); background:var(--panel); border-left:1px solid var(--line); z-index:1100; display:flex; flex-direction:column; transform:translateX(100%); visibility:hidden; transition:transform .2s ease, visibility .2s; }
   #profile-panel.open, #group-panel.open { transform:none; visibility:visible; }
   #profile-panel-header, #group-panel-header { padding:12px 16px; border-bottom:2px solid var(--red); display:flex; justify-content:space-between; align-items:center; }
-  #profile-panel-header h2, #group-panel-header h2 { color:var(--red); font-size:var(--fs-md); letter-spacing:.1em; text-transform:uppercase; }
+  #profile-panel-header h2, #group-panel-header h2 { color:var(--red-txt); font-size:var(--fs-md); letter-spacing:.1em; text-transform:uppercase; }
   #profile-panel-body, #group-panel-body { flex:1; overflow-y:auto; padding:12px 16px; }
   #profile-panel-footer, #group-panel-footer { padding:12px 16px; border-top:1px solid var(--line); display:flex; gap:8px; }
   .pfield { margin-bottom:12px; }
@@ -207,7 +208,7 @@
   .detail-back { background:none; border:none; color:#aaa; font-size:var(--fs-sm); cursor:pointer; padding:4px 0; letter-spacing:.05em; }
   .detail-back:hover { color:#fff; }
   #detail-body { padding:12px; }
-  .detail-rent { font-size:1.5rem; color:var(--red); font-variant-numeric:tabular-nums; }
+  .detail-rent { font-size:1.5rem; color:var(--red-txt); font-variant-numeric:tabular-nums; }
   .detail-title { font-size:var(--fs-md); color:#ccc; margin:2px 0; line-height:1.35; }
   .detail-addr { font-size:var(--fs-sm); color:#959595; }
   .detail-section { margin-top:10px; }
@@ -272,13 +273,13 @@
   #best-modal.open { display:flex; }
   #best-box { background:var(--panel); border:1px solid var(--line); width:min(700px,95vw); max-height:90vh; display:flex; flex-direction:column; border-top:2px solid var(--red); }
   .best-header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; justify-content:space-between; align-items:center; flex-shrink:0; }
-  .best-header h2 { color:var(--red); font-size:var(--fs-md); letter-spacing:.1em; text-transform:uppercase; }
+  .best-header h2 { color:var(--red-txt); font-size:var(--fs-md); letter-spacing:.1em; text-transform:uppercase; }
   #best-list { overflow-y:auto; flex:1; }
   .best-entry { padding:12px 16px; border-bottom:1px solid var(--line2); }
   .best-entry-top { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
   .best-rank { color:var(--amber); margin-right:8px; font-size:var(--fs-md); }
   .best-entry-title { font-size:var(--fs-md); color:#ccc; }
-  .best-entry-rent { font-size:var(--fs-lg); color:var(--red); font-variant-numeric:tabular-nums; }
+  .best-entry-rent { font-size:var(--fs-lg); color:var(--red-txt); font-variant-numeric:tabular-nums; }
   .best-sw { display:flex; gap:16px; margin-top:6px; flex-wrap:wrap; }
   .best-col-label { font-size:var(--fs-xs); color:#8c8c8c; letter-spacing:.08em; text-transform:uppercase; margin-bottom:3px; }
   .best-col { min-width:140px; flex:1; }
@@ -310,18 +311,19 @@
   .leaflet-popup-content-wrapper { background:var(--panel); border:1px solid var(--line); border-radius:2px; }
   .leaflet-popup-content { color:var(--txt); font-family:'Courier New',monospace; font-size:12px; margin:8px 10px; }
   .leaflet-popup-tip { background:var(--panel); }
-  .popup-rent { color:var(--red); font-size:var(--fs-lg); font-variant-numeric:tabular-nums; }
+  .popup-rent { color:var(--red-txt); font-size:var(--fs-lg); font-variant-numeric:tabular-nums; }
   .popup-commute { font-size:var(--fs-sm); margin-top:4px; }
+  .leaflet-popup-content a { color:var(--transit); } .leaflet-container .leaflet-control-attribution a { color:#005a80; }
   .popup-commute .t { color:#64b5f6; } .popup-commute .b { color:#81c784; }
 
   /* markers */
   .price-marker-wrap { background:none; border:none; }
   .price-marker { position:absolute; left:0; top:0; transform:translate(-50%,calc(-100% - 6px)); background:var(--tier); color:#111; font:bold 12px/1 'Courier New',Courier,monospace; padding:4px 7px; border-radius:999px; white-space:nowrap; border:1.5px solid #111; box-shadow:0 2px 6px #000a; font-variant-numeric:tabular-nums; cursor:pointer; transition:transform .12s ease, box-shadow .12s ease; }
   .price-marker::after { content:''; position:absolute; left:50%; bottom:-6px; margin-left:-5px; border:5px solid transparent; border-top-color:var(--tier); border-bottom:0; filter:drop-shadow(0 1.5px 0 #111); }
-  .price-marker .cur { font-weight:normal; font-size:9px; opacity:.7; margin-left:2px; }
+  .price-marker .cur { font-weight:normal; font-size:9px; opacity:.8; margin-left:2px; }
   .z-far .price-marker .cur, .z-far .price-marker .fit { display:none; }
   .z-far .price-marker { padding:3px 6px; font-size:11px; }
-  .price-marker .fit { font-weight:normal; font-size:9px; opacity:.75; margin-left:4px; padding-left:4px; border-left:1px solid #0004; }
+  .price-marker .fit { font-weight:normal; font-size:9px; opacity:.8; margin-left:4px; padding-left:4px; border-left:1px solid #0004; }
   .price-marker.tier-low { --tier:var(--tier-low); } .price-marker.tier-mid { --tier:var(--tier-mid); } .price-marker.tier-high { --tier:var(--tier-high); }
   .price-marker.dim { --tier:#777; opacity:.65; }
   .price-marker.mk-sent { box-shadow:0 0 0 2px #1565c0, 0 2px 6px #000a; }
@@ -336,7 +338,7 @@
   .map-legend .row { display:flex; align-items:center; gap:7px; white-space:nowrap; }
   .map-legend .swatch { width:18px; height:10px; border-radius:999px; border:1px solid #111; }
   .map-legend .eth-marker { width:10px; height:10px; box-shadow:none; margin:0 4px; }
-  .ring-label span { font-size:var(--fs-xs); background:#111c; padding:0 3px; opacity:.8; white-space:nowrap; letter-spacing:.04em; }
+  .ring-label span { font-size:var(--fs-xs); background:#111c; padding:0 3px; opacity:.9; white-space:nowrap; letter-spacing:.04em; }
   .map-legend hr { border:none; border-top:1px solid #2a2a2a; margin:4px 0; }
   /* draw-area control: console-style buttons on the map (top right) */
   .area-ctl { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
@@ -393,6 +395,16 @@
     .fu-btn, .sent-prompt button { padding:9px 12px; }
     .toast button { padding:6px 8px; }
     .sh-row .seg button { padding:0 6px; font-size:var(--fs-xs); }
+    .sh-row .seg button:focus-visible { outline-offset:-2px; }   /* the row scrolls (overflow-x), which clips an outer ring */
+    /* tap targets: primary actions at least 40px tall */
+    .topbar-btn, .seg button, .detail-back, .cancel-btn, .save-btn, .draft-btn, .draft-btn.has-draft, .draft-actions button,
+    .detail-link-btn, .today-head, .fu-btn, .sent-prompt button, .more-cards { min-height:40px; }
+    .detail-link-btn { display:flex; align-items:center; justify-content:center; }
+    #detail-ext-link { padding:12px 8px; }
+    .pfield input { min-height:40px; }
+    /* card actions keep their look; an invisible strip makes the hit area 40px */
+    .card-actions .st, .card-actions .act, .card-actions .card-link { position:relative; }
+    .card-actions .st::after, .card-actions .act::after, .card-actions .card-link::after { content:""; position:absolute; left:0; right:0; top:-7px; bottom:-7px; }
   }
 .kind-badge { font-size: var(--fs-xs); letter-spacing: .08em; color: var(--amber); border: 1px solid var(--amber); padding: 0 4px; margin-right: 4px; vertical-align: 2px; }
 
@@ -411,19 +423,19 @@
   .member-row button { background:none; border:1px solid var(--line); color:#888; cursor:pointer; padding:0 8px; }
   .member-row button:hover { border-color:var(--red); color:var(--txt); }
   .g-hint { font-size:var(--fs-xs); color:#959595; margin-top:4px; }
-  @media (max-width:760px) { #mode-seg button { height:30px; padding:0 10px; font-size:var(--fs-sm); } }
+  @media (max-width:760px) { #mode-seg button { height:40px; padding:0 10px; font-size:var(--fs-sm); } }
 </style>
 </head>
 <body>
 
-<div id="topbar">
+<header id="topbar">
   <h1>WGPendler</h1>
   <div class="seg gmode" id="mode-seg" role="group" aria-label="Search mode">
     <button data-m="solo" class="active" onclick="setGroupMode(false)" title="Find a room in a shared flat for yourself">Solo</button>
     <button data-m="group" onclick="setGroupMode(true)" title="Find a whole apartment to start a new WG with your cohort">Group</button>
   </div>
   <span id="sync" title="The server is fetching new listings in the background">syncing</span>
-  <span id="count" aria-live="polite">— listings</span>
+  <span id="count">— listings</span><span id="count-live" class="sr-only" aria-live="polite"></span>
   <div class="tb-actions">
     <button class="topbar-btn" id="filters-toggle" onclick="toggleFilters()" aria-expanded="false" aria-controls="filters">Filters ▾</button>
     <button class="topbar-btn" id="group-edit-btn" onclick="openGroup()" title="Group size, per-person budget and members">Group ✎</button>
@@ -439,9 +451,9 @@
       </div>
     </div>
   </div>
-</div>
+</header>
 
-<div id="group-panel" role="dialog" aria-label="Group profile">
+<div id="group-panel" role="dialog" aria-modal="true" aria-label="Group profile">
   <div id="group-panel-header">
     <h2>Group Profile</h2>
     <button class="cancel-btn" onclick="closeGroup()" aria-label="Close">✕</button>
@@ -461,7 +473,7 @@
   </div>
 </div>
 
-<div id="profile-panel" role="dialog" aria-label="My profile">
+<div id="profile-panel" role="dialog" aria-modal="true" aria-label="My profile">
   <div id="profile-panel-header">
     <h2>My Profile</h2>
     <button class="cancel-btn" onclick="closeProfile()" aria-label="Close">✕</button>
@@ -489,7 +501,7 @@
 
 <div id="hint" role="note" aria-label="Getting started"><b id="hint-step"></b><span id="hint-text"></span><button id="hint-act" type="button"></button><button id="hint-next" type="button"></button><button id="hint-x" type="button" aria-label="Skip walkthrough" title="Skip walkthrough">✕</button></div>
 
-<div id="filters">
+<div id="filters" role="region" aria-label="Filters">
   <div class="frow">
     <div class="filter-group">
       <label for="maxRent" id="rent-label-name">Max Rent</label>
@@ -548,8 +560,8 @@
   </div>
 </div>
 
-<div id="main">
-  <div id="map"></div>
+<main id="main">
+  <div id="map" role="region" aria-label="Map of listings"></div>
   <div id="sidebar">
     <div id="cards-view">
       <div id="sidebar-header">
@@ -583,7 +595,7 @@
       <div id="detail-body"></div>
     </div>
   </div>
-</div>
+</main>
 
 <div id="best-modal" role="dialog" aria-modal="true" aria-label="Top 5 picks">
   <div id="best-box">
@@ -635,7 +647,7 @@ L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_D
 
 function ethMarker(pos, label) {
   const icon = L.divIcon({ className: 'price-marker-wrap', html: '<div class="eth-marker"></div>', iconSize: [14, 14], iconAnchor: [7, 7] });
-  L.marker(pos, { icon, zIndexOffset: -500 }).addTo(map).bindTooltip(label, { direction: 'top', offset: [0, -8] });
+  L.marker(pos, { icon, zIndexOffset: -500, keyboard: false }).addTo(map).bindTooltip(label, { direction: 'top', offset: [0, -8] });
 }
 // Leaflet's zoom buttons and attribution links stay out of the tab order (the filters and cards come first)
 const skipLeafletTabs = () => document.querySelectorAll('#map .leaflet-control a').forEach(a => a.setAttribute('tabindex', '-1'));
@@ -848,6 +860,13 @@ function ageLabel(l) {
   return d === 0 ? 'today' : d === 1 ? '1 day ago' : `${d} days ago`;
 }
 
+// Group reasons also carry minuses ("CHF 1350 pp over budget", "room count unknown", "2 red
+// flags"); those get an amber "!" chip instead of a green tick.
+const MINUS_REASON = /over budget|unknown|red flag/i;
+function reasonChip(r) {
+  return MINUS_REASON.test(r) ? `<span class="chip warn" title="Counts against this listing">! ${esc(r)}</span>`
+    : `<span class="chip" title="Why this fits">✓ ${esc(r)}</span>`;
+}
 function fitReasons(l) {
   const srv = l.fit_reasons || l.match_reasons;
   if (Array.isArray(srv) && srv.length) return srv.map(String).slice(0, 4);  // server-computed
@@ -1051,7 +1070,15 @@ function toggleMoreFilters(force) {
   setTimeout(() => map.invalidateSize(), 50);
 }
 function toggleMenu() { const m = $('more-menu'); m.hidden = !m.hidden; $('more-btn').setAttribute('aria-expanded', String(!m.hidden)); if (!m.hidden) m.querySelector('button:not([style*=none])')?.focus(); }
-function closeMenu() { $('more-menu').hidden = true; $('more-btn').setAttribute('aria-expanded', 'false'); }
+function closeMenu() { const m = $('more-menu'), inside = m.contains(document.activeElement); m.hidden = true; $('more-btn').setAttribute('aria-expanded', 'false'); if (inside) $('more-btn').focus(); }
+$('more-menu').addEventListener('focusout', e => { if (!$('more-menu').hidden && !e.relatedTarget?.closest?.('.menu-wrap')) closeMenu(); });
+$('more-menu').addEventListener('keydown', e => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp' && e.key !== 'Home' && e.key !== 'End') return;
+  const items = [...$('more-menu').querySelectorAll('button')].filter(b => b.getClientRects().length);
+  const i = items.indexOf(document.activeElement), n = items.length;
+  const j = e.key === 'Home' ? 0 : e.key === 'End' ? n - 1 : (i + (e.key === 'ArrowDown' ? 1 : -1) + n) % n;
+  e.preventDefault(); items[j]?.focus();
+});
 document.addEventListener('click', e => { if (!e.target.closest('.menu-wrap')) closeMenu(); });
 // Phone alerts (backend/notify.py): show status; send a test when configured.
 async function refreshAlertsState() {
@@ -1067,8 +1094,8 @@ async function phoneAlerts() {
   catch (e) { toast(e.message || 'Test alert failed'); }
 }
 refreshAlertsState();
-function showHelp() { $('help-modal').hidden = false; $('help-modal').querySelector('.cancel-btn').focus(); }
-function closeHelp() { $('help-modal').hidden = true; }
+function showHelp() { _lastFocus = document.activeElement; $('help-modal').hidden = false; $('help-modal').querySelector('.cancel-btn').focus(); }
+function closeHelp() { $('help-modal').hidden = true; restoreFocus(); }
 const mq = window.matchMedia('(max-width: 760px)');
 function syncFilterCollapse() { $('filters').classList.toggle('collapsed', mq.matches); $('filters-toggle').textContent = 'Filters ▾'; setTimeout(() => map.invalidateSize(), 50); }
 mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
@@ -1154,7 +1181,7 @@ function popupHtml(l) {
   const link = safeUrl(l.url);
   return `<div class="popup-rent">${groupMode ? fmtChf(priceOf(l)) + ' pp' : l.rent_chf + ' CHF'}</div><div>${esc(cleanTitle(l))}</div>
     ${groupMode ? `<div style="font-size:var(--fs-sm)">${groupLine(l)}</div>` : ''}
-    <div style="color:#777;font-size:var(--fs-sm)">${esc(l.address)}</div>
+    <div style="color:var(--dim);font-size:var(--fs-sm)">${esc(l.address)}</div>
     <div class="popup-commute">${commuteInline(l)}</div>
     ${link ? `<a href="${link}" target="_blank" rel="noopener" style="font-size:var(--fs-sm)">↗ view listing</a>` : ''}`;
 }
@@ -1196,7 +1223,7 @@ function cardHtml(l) {
   const reasons = deal.length ? [] : fitReasons(l);
   const chips = deal.length
     ? deal.slice(0, 3).map(d => `<span class="chip bad" title="Dealbreaker">✗ ${esc(d)}</span>`).join('')
-    : reasons.map(r => `<span class="chip" title="Why this fits">✓ ${esc(r)}</span>`).join('');
+    : reasons.map(reasonChip).join('');
   const link = safeUrl(l.url);
   const cls = ['card'];
   if (l.id === selectedId) cls.push('selected');
@@ -1222,7 +1249,7 @@ function cardHtml(l) {
     <div class="card-actions">
       ${statusBar(l)}
       <button class="act" data-act="draft" title="${groupMode ? 'Draft a group application with Claude (uses API credits)' : 'Draft a message with Claude (uses API credits)'}">✎ draft</button>
-      ${link ? `<a class="card-link" href="${link}" target="_blank" rel="noopener">↗</a>` : ''}
+      ${link ? `<a class="card-link" href="${link}" target="_blank" rel="noopener" aria-label="Open the ad in a new tab" title="Open the ad in a new tab">↗</a>` : ''}
     </div>
   </div>`;
 }
@@ -1274,7 +1301,7 @@ $('today').addEventListener('click', e => { const r = e.target.closest('.today-r
 
 function moreBtnHtml() {
   const left = curList.length - renderedN;
-  return left > 0 ? `<button class="more-cards" id="more-cards" onclick="renderMoreCards()">Show ${Math.min(CHUNK, left)} more <span style="color:#777">(${left} not shown)</span></button>` : '';
+  return left > 0 ? `<button class="more-cards" id="more-cards" onclick="renderMoreCards()">Show ${Math.min(CHUNK, left)} more <span style="color:var(--dim)">(${left} not shown)</span></button>` : '';
 }
 function renderMoreCards(upto) {
   $('more-cards')?.remove();
@@ -1295,9 +1322,13 @@ $('sidebar').addEventListener('scroll', () => {
   if ($('more-cards') && sb.scrollTop + sb.clientHeight > sb.scrollHeight - 400) renderMoreCards();
 }, { passive: true });
 
+// Screen readers hear the count once filtering settles (a slider drag fires dozens of renders), and only when it changed.
+let _countT = null;
+function announceCount(text) { clearTimeout(_countT); _countT = setTimeout(() => { const el = $('count-live'); if (el.textContent !== text) el.textContent = text; }, 1000); }
 function renderAll(listings) {
   const total = groupMode ? Math.max(groupInfo?.total ?? 0, allListings.length) : allListings.filter(l => l.kind !== 'apartment').length;
   $('count').textContent = loadState === 'ok' ? `${listings.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')}` : '— listings';
+  if (loadState === 'ok') announceCount(`${listings.length.toLocaleString('en-US')} of ${total.toLocaleString('en-US')} ${groupMode ? 'apartments' : 'listings'} shown`);
   curList = listings;
 
   // map: diff against what is already in the cluster
@@ -1451,7 +1482,7 @@ function showDetail(l) {
   const hasExt = !!(e.vibe || e.hard_requirements);
 
   $('detail-body').innerHTML = `
-    <div class="detail-rent">${groupMode ? fmtChf(priceOf(l)) + ' CHF <span style="font-size:var(--fs-xs);color:#777">/ person / month</span>' : l.rent_chf + ' CHF <span style="font-size:var(--fs-xs);color:#777">/ month</span>'}</div>
+    <div class="detail-rent">${groupMode ? fmtChf(priceOf(l)) + ' CHF <span style="font-size:var(--fs-xs);color:var(--dim)">/ person / month</span>' : l.rent_chf + ' CHF <span style="font-size:var(--fs-xs);color:var(--dim)">/ month</span>'}</div>
     ${groupMode ? `<div class="group-line">${groupLine(l)}</div>` : ''}
     <div class="detail-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
     <div id="ad-summary" class="ad-summary" hidden></div>
@@ -1459,7 +1490,7 @@ function showDetail(l) {
     ${commuteGrid(l)}
     <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)} ${promoChip(l)} ${termChip(l)}</div>
     ${deal.length ? `<div class="chips">${deal.map(d => `<span class="chip bad">✗ ${esc(d)}</span>`).join('')}</div>`
-      : reasons.length ? `<div class="chips">${reasons.map(r => `<span class="chip">✓ ${esc(r)}</span>`).join('')}</div>` : ''}
+      : reasons.length ? `<div class="chips">${reasons.map(reasonChip).join('')}</div>` : ''}
     <div class="detail-section"><div class="detail-section-label">Track</div><div class="card-actions" id="detail-status" style="margin-top:0">${statusBar(l)}</div></div>
     <div id="sent-slot"></div>
     <div class="detail-section"><div class="detail-section-label">Available</div>
@@ -1490,15 +1521,19 @@ function showDetail(l) {
       if (slot && selectedId === l.id) slot.innerHTML = `<details class="rawtext"><summary>Original ad text</summary><pre>${esc(l.raw_text)}</pre></details>`;
     }).catch(() => {});
   }
+  const a = document.activeElement, lost = !a || a === document.body || !!a.closest?.('#cards-view');   // focus would vanish with the list
   $('cards-view').style.display = 'none';
   $('detail-view').classList.add('open');
+  if (lost) $('detail-view').querySelector('.detail-back').focus({ preventScroll: true });
   document.body.classList.add('has-detail');
   $('sidebar').scrollTop = 0;
   setTimeout(() => map.invalidateSize(), 50);
 }
 function closeDetail() {
+  const a = document.activeElement, lost = !a || a === document.body || !!a.closest?.('#detail-view');
   $('detail-view').classList.remove('open');
   $('cards-view').style.display = '';
+  if (lost && selectedId != null) { ensureRendered(selectedId); ($(`card-${selectedId}`) || $('cards').querySelector('.card'))?.focus({ preventScroll: true }); }
   document.body.classList.remove('has-detail');
   // the pin was kept alive only for the open detail: drop it if filters now hide this listing
   const id = selectedId;
@@ -1642,6 +1677,24 @@ function closeProfile() { $('profile-panel').classList.remove('open'); restoreFo
 let _lastFocus = null;
 function focusPanel(id) { _lastFocus = document.activeElement; setTimeout(() => $(id)?.focus(), 220); }
 function restoreFocus() { try { _lastFocus?.focus(); } catch (_) {} _lastFocus = null; }
+// Tab stays inside the open modal or side panel (topmost first).
+function openLayer() {
+  if (!$('help-modal').hidden) return $('help-box');
+  if ($('best-modal').classList.contains('open')) return $('best-box');
+  if ($('group-panel').classList.contains('open')) return $('group-panel');
+  if ($('profile-panel').classList.contains('open')) return $('profile-panel');
+  return null;
+}
+function trapTab(e) {
+  const box = openLayer(); if (!box) return;
+  const f = [...box.querySelectorAll('button, a[href], input, select, textarea, summary, [tabindex]:not([tabindex="-1"])')]
+    .filter(el => !el.disabled && el.getClientRects().length);
+  if (!f.length) return;
+  const first = f[0], last = f[f.length - 1], a = document.activeElement;
+  if (!box.contains(a)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+  else if (e.shiftKey && a === first) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && a === last) { e.preventDefault(); first.focus(); }
+}
 async function saveProfile() {
   const lines = id => $(id).value.trim().split('\n').map(s => s.trim()).filter(Boolean);
   const languages = lines('p-languages').map(line => { const parts = line.split(/\s+/); const level = parts.pop(); return { lang: parts.join(' '), level }; });
@@ -1772,11 +1825,11 @@ async function showBest() {
       return `<div class="best-entry">
         <div class="best-entry-top"><span><span class="best-rank">#${i + 1}</span><span class="best-entry-rent">${l.rent_chf} CHF</span></span><span>${scoreChip(l.fit_score)} ${replyChip(l.reply_score)}</span></div>
         <div class="best-entry-title">${esc(cleanTitle(l))}</div>
-        <div style="font-size:var(--fs-xs);color:#777;margin:1px 0">${esc(l.address)}</div>
+        <div style="font-size:var(--fs-xs);color:var(--dim);margin:1px 0">${esc(l.address)}</div>
         ${commuteGrid(l)}
         ${s || w ? `<div class="best-sw">${s ? `<div class="best-col"><div class="best-col-label">Strengths</div>${s}</div>` : ''}${w ? `<div class="best-col"><div class="best-col-label">Weaknesses</div>${w}</div>` : ''}</div>` : ''}
         ${a.tip ? `<div class="best-tip">${esc(a.tip)}</div>` : ''}
-        <div class="best-foot"><span style="font-size:var(--fs-xs);color:#666">from ${esc(l.available_from)}</span>
+        <div class="best-foot"><span style="font-size:var(--fs-xs);color:var(--dim)">from ${esc(l.available_from)}</span>
           <span><button class="best-open" onclick="closeBest();selectListing(${l.id})">show on map</button>${url ? ` &nbsp; <a class="best-open" href="${url}" target="_blank" rel="noopener">↗ open listing</a>` : ''}</span></div>
       </div>`;
     }).join('');
@@ -1820,7 +1873,7 @@ function setDraftOpt(id, key, val) {
 }
 function draftOptsHtml(id, l) {
   const o = draftOptsFor(id), adLang = ext(l).language || guessLang(l.raw_text), mine = strongestLang();   // flats are not extracted: guess from the text
-  const seg = (key, items) => `<span class="dseg" role="group">` + items.map(([v, t]) =>
+  const seg = (key, items) => `<span class="dseg" role="group" aria-label="${key === 'tone' ? 'Tone' : 'Language'}">` + items.map(([v, t]) =>
     `<button type="button" aria-pressed="${o[key] === v}" onclick="setDraftOpt(${id},'${key}','${v}')">${t}</button>`).join('') + `</span>`;
   const showLang = (adLang === 'de' || adLang === 'en') && mine && adLang !== mine;
   return `<div class="draft-opts"><span class="seg-label">Tone</span>${seg('tone', [['warm', 'Warm'], ['short', 'Short']])}` +
@@ -2011,6 +2064,7 @@ function step(delta) {
   if ($('detail-view').classList.contains('open')) selectListing(id); else setCursor(id, true);
 }
 document.addEventListener('keydown', e => {
+  if (e.key === 'Tab') { trapTab(e); return; }
   if (e.key === 'Escape') {
     if (drawPts) { e.preventDefault(); cancelDraw(); return; }   // cancel the area being drawn; the detail stays open
     if (e.target.id === 'draft-text') { e.target.blur(); return; }   // leave the textarea first; a second Esc closes the detail
@@ -2033,7 +2087,7 @@ document.addEventListener('keydown', e => {
   else if (k === 'k' || k === 'ArrowUp' && t === document.body) { e.preventDefault(); step(-1); }
   else if (k === '?') showHelp();
   else if (k === 'Enter' && !detail && cursorId != null && !t.closest?.('button, a, summary, select')) { e.preventDefault(); selectListing(cursorId); }   // body, card or the (focusable) map
-  else if (k === 'Enter' && t.classList?.contains('card')) { e.preventDefault(); selectListing(+t.dataset.id); }
+  else if ((k === 'Enter' || k === ' ') && t.classList?.contains('card')) { e.preventDefault(); selectListing(+t.dataset.id); }
   else if (target != null && (k === 's' || k === 'x')) setStatus(target, k === 's' ? 'sent' : 'rejected');
   else if (target != null && k === 'o') { const u = byId[target]?.url; if (/^https?:\/\//i.test(u || '')) window.open(u, '_blank', 'noopener'); }
   else if (detail && k === 'd') draftMessage(selectedId);

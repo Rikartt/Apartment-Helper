@@ -8,6 +8,22 @@
 - `GET /listings/{id}` and the status/sent POSTs no longer re-read and hash all listings to look up one trust score: a `trust_gen` token in the DB changes (SQLite triggers) whenever a column the trust score reads is inserted, changed or deleted, and while it matches the cached annotation the cached result is used. Detail view: about 110 ms to 9 ms at 4000 listings, with identical results (tests/test_payload.py).
 - `tools/bench.py` also times the detail and status endpoints and shows the on-the-wire size.
 
+## 2026-10-19: accessibility and keyboard pass
+
+### Fixed
+- Keyboard: Esc now returns focus to whatever opened the thing it closes (⋯ menu, Keyboard shortcuts, Top 5, Profile/Group panels; closing the detail puts focus back on the card). Tab stays inside an open modal or side panel. Space opens a focused card like Enter, and focus moves into the detail ("← Listings") instead of getting lost when the list hides. ↑/↓/Home/End move through the ⋯ menu, and tabbing out of it closes it.
+- Contrast (WCAG AA on the dark theme): red text (rents, headings) uses a new `--red-txt` (#f44336); `#c00` stays for borders and buttons. Active Transit/Bike buttons use darker blue/green under the white text. The FIT/REPLY labels inside badges are no longer faded. Commute times, "CHF" after rents, greys in the detail/Top 5/popup, map ring labels, popup links and the stats page's outcome counts were nudged until they pass.
+- Screen readers: the ↗ link on cards, the Tone/Language toggles and the map now have names; the ETH campus pins are no longer unnamed tab stops; the page has header/main/filters landmarks. The listing count is announced once when filtering settles (a debounced hidden live region), not on every slider step.
+- At phone width the main actions (top bar, filter and sort toggles, detail back, Draft, draft actions, panel buttons) are at least 40px tall; the card's Sent/Replied/Skipped/draft/↗ buttons keep their look but get an invisible 40px hit area.
+- `tests/ui_smoke.py` checks all of the above at 1440 and 390 (`run_a11y`).
+
+## 2026-10-19: fixes from a live Flatfox end-to-end run
+
+### Fixed
+- Flatfox listings now use the ad's own headline as their title (`description_title`, whitespace collapsed, max 200 chars). Before, every room was titled "1.0-Zimmer WG-Zimmer in Zürich – N CHF" (shown as "WG-Zimmer in Zürich"), so the list, Message today and Top 5 showed five identical names. The generated title stays as the fallback for ads without a headline. Existing rows pick up the new title at the next full refresh (`WGP_FULL_REFRESH_HOURS`, default 24).
+- Trust scoring was slow on real data: with ~4200 real Flatfox ads (6.4 MB of text) a cold `/listings` took about 13-20 s, nearly all of it the scam-phrase regexes. Each phrase rule now has a keyword gate (`_TEXT_KEYS` in `trust.py`): its regex only runs when one of the words any match must contain is in the ad. Same results on all 4213 live ads, regex time 9.9 s to 1.8 s, a cold trust pass 20 s to 4.5 s. The gate sits inside `_text_signals`, under the per-text memo cache; cache warming is the one mechanism already on main (startup skip, after extraction, after ingest), not doubled.
+- Group cards and the detail view showed minus reasons ("CHF 1350 pp over budget", "room count unknown", "2 red flags") as green ✓ chips. They are now amber "!" chips.
+
 ## 2026-10-19: Top 5 follows the priority, befristet and area filters
 
 ### Fixed
