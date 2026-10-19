@@ -20,12 +20,13 @@ def _no_api_key(monkeypatch):
 def _forbid_live_anthropic(monkeypatch):
     """Hard guard: any attempt to build a real Anthropic client fails the test."""
     import anthropic
+    # import first: llm.py uses anthropic.Anthropic in a module-level annotation
+    import backend.extraction as e, backend.drafting as d
+    from backend import llm
 
     def boom(*a, **k):
         raise AssertionError("live Anthropic client constructed in a test (zero live API calls allowed)")
     monkeypatch.setattr(anthropic, "Anthropic", boom)
-    import backend.extraction as e, backend.drafting as d
-    from backend import llm
     monkeypatch.setattr(llm, "_client", None)
 
 
