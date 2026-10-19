@@ -30,6 +30,20 @@ def _forbid_live_anthropic(monkeypatch):
     monkeypatch.setattr(llm, "_client", None)
 
 
+@pytest.fixture(autouse=True)
+def _offline_geocode_and_scratch_state(tmp_path, monkeypatch):
+    """No test may reach swisstopo/Nominatim, write the real geocache, or read the real DB."""
+    from backend.ingestion import geocode as g
+    from backend import db as dbm
+
+    def no_net(*a, **k):
+        raise RuntimeError("network geocoding is disabled in tests")
+    monkeypatch.setattr(g, "_swisstopo", no_net)
+    monkeypatch.setattr(g, "_nominatim", no_net)
+    monkeypatch.setattr(g, "CACHE_PATH", tmp_path / "geocache.sqlite")
+    monkeypatch.setattr(dbm, "DB_PATH", tmp_path / "scratch.db")
+
+
 @pytest.fixture
 def db(tmp_path, monkeypatch):
     from backend import db as dbm

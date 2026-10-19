@@ -126,6 +126,25 @@ def init_db():
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_sent_listing ON sent_messages(listing_id)")
+        # incremental ingest: per-source record of external IDs whose details we already
+        # fetched, with the marker (e.g. price) they had then
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS source_known (
+                source      TEXT NOT NULL,
+                external_id TEXT NOT NULL,
+                marker      TEXT NOT NULL DEFAULT '',
+                checked_at  TEXT NOT NULL,
+                PRIMARY KEY (source, external_id)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS source_state (
+                source TEXT NOT NULL,
+                key    TEXT NOT NULL,
+                value  TEXT NOT NULL,
+                PRIMARY KEY (source, key)
+            )
+        """)
         for stmt in INDEXES:
             conn.execute(stmt)
         conn.commit()
@@ -245,6 +264,13 @@ def _row_to_dict(row, include_raw: bool = True) -> dict:
     d["seen"] = bool(d.get("seen"))
     d["sent"] = bool(d.get("sent"))
     d["replied"] = bool(d.get("replied"))
+    return d
+
+
+def strip_raw(d: dict) -> dict:
+    """Same shape _row_to_dict(include_raw=False) gives: raw_text dropped, has_raw_text set."""
+    d["has_raw_text"] = bool(d.get("raw_text"))
+    d.pop("raw_text", None)
     return d
 
 
@@ -439,3 +465,74 @@ def last_source_count(source: str) -> int | None:
         if info and info.get("ok") and info.get("fetched"):
             return int(info["fetched"])
     return None
+
+
+# ── incremental ingest bookkeeping ──────────────────────────────────────────
+
+def get_known(source: str) -> dict[str, str]:
+    """{external_id: marker} for ads whose details were fetched in an earlier run."""
+    with get_conn() as conn:
+        return {r[0]: r[1] for r in conn.execute(
+            "SELECT external_id, marker FROM source_known WHERE source = ?", (source,))}
+
+
+def save_known(source: str, updates: dict[str, str], keep_ids: set[str] | None = None):
+    """Upsert markers; if keep_ids is given, forget known IDs that are not in it
+    (they left the source's list)."""
+    now = utc_now()
+    with get_conn() as conn:
+        conn.executemany(
+            "INSERT INTO source_known (source, external_id, marker, checked_at) VALUES (?,?,?,?) "
+            "ON CONFLICT(source, external_id) DO UPDATE SET marker = excluded.marker, "
+            "checked_at = excluded.checked_at",
+            [(source, k, v, now) for k, v in updates.items()])
+        if keep_ids is not None:
+            have = {r[0] for r in conn.execute(
+                "SELECT external_id FROM source_known WHERE source = ?", (source,))}
+            conn.executemany("DELETE FROM source_known WHERE source = ? AND external_id = ?",
+                             [(source, i) for i in have - set(keep_ids)])
+
+
+def touch_seen(source: str, external_ids) -> int:
+    """Count ads that were in the source's list but not re-fetched as 'seen this run',
+    so gone detection (missed_runs) treats them exactly like re-fetched ads."""
+    ids = list(external_ids)
+    n = 0
+    with get_conn() as conn:
+        for i in range(0, len(ids), 500):
+            chunk = ids[i:i + 500]
+            n += conn.execute(
+                "UPDATE listings SET last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'), "
+                "missed_runs = 0, gone_at = NULL WHERE source = ? AND external_id IN ("
+                + ",".join("?" * len(chunk)) + ")", [source, *chunk]).rowcount
+    return n
+
+
+def get_state(source: str, key: str) -> str | None:
+    with get_conn() as conn:
+        row = conn.execute("SELECT value FROM source_state WHERE source = ? AND key = ?",
+                           (source, key)).fetchone()
+    return row[0] if row else None
+
+
+def set_state(source: str, key: str, value: str):
+    with get_conn() as conn:
+        conn.execute("INSERT INTO source_state (source, key, value) VALUES (?,?,?) "
+                     "ON CONFLICT(source, key) DO UPDATE SET value = excluded.value",
+                     (source, key, value))
+
+
+def full_refresh_due(source: str, max_age_hours: float) -> bool:
+    """True when the last full refresh of `source` is older than max_age_hours (or never).
+    max_age_hours <= 0 means every run is a full refresh."""
+    if max_age_hours <= 0:
+        return True
+    last = get_state(source, "last_full_refresh")
+    if not last:
+        return True
+    from datetime import datetime, timezone
+    try:
+        dt = datetime.strptime(last, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=timezone.utc)
+    except ValueError:
+        return True
+    return (datetime.now(timezone.utc) - dt).total_seconds() >= max_age_hours * 3600

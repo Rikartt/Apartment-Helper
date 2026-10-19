@@ -133,6 +133,7 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | `WGP_ENABLE_RONORP` | `0` | `1` adds Ronorp back to the default sources |
 | `WGP_INGEST_INTERVAL_MIN` | `45` | Minutes between background ingests; `0` = off |
 | `WGPENDLER_INCLUDE_APARTMENTS` | `1` | `0` stops Flatfox/Homegate from collecting whole flats (needed for group mode) |
+| `WGP_FULL_REFRESH_HOURS` | `24` | Flatfox/Homegate re-fetch every ad's details at most this often; runs in between only fetch new ads and ads whose price changed. `0` = every run is a full refresh |
 | `WGPENDLER_GEOCACHE` | `geocache.sqlite` in repo root | Path of the address-to-coordinates cache |
 | `WGP_NTFY_TOPIC` | none | ntfy topic for phone alerts |
 | `WGP_NTFY_SERVER` | `https://ntfy.sh` | ntfy server |
@@ -151,6 +152,21 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | Ronorp | Off by default: as of 2026-10-18 its Zürich WG-room category is genuinely empty ("Es sind noch keine Inhalte vorhanden", its API reports 0 posts), so there is nothing to fetch. The adapter detects this and returns nothing in a few seconds. Set `WGP_ENABLE_RONORP=1` to try it again later. First results page only (robots.txt disallows paging) |
 | WGZimmer | Not usable: search is behind reCAPTCHA, which we don't bypass. The adapter is present but returns nothing, and logs "no listings returned" |
 | students.ch and others | Not implemented: no permitted automated access (login/captcha walls or terms of service). The app only reads what robots.txt and the site allow, at about 1 request per second |
+
+### Incremental ingest and listing dates
+
+Flatfox and Homegate keep a per-source record of ads whose details were already fetched, with their price (tables `source_known`, `source_state`). A periodic run fetches the cheap list (Flatfox pin tiles, Homegate result pages) every time, but only fetches/geocodes new ads and ads whose price changed. Ads present in the list but not re-fetched still count as seen, so gone detection works as before. A full refresh happens at most every `WGP_FULL_REFRESH_HOURS` (edits that leave the price unchanged show up then).
+
+`listed_at` (stored as UTC `YYYY-MM-DD HH:MM:SS`, used for recency) per source:
+
+| Source | Date available | Field |
+|---|---|---|
+| Flatfox | Yes, publication time | `published` (fallback `created`) of the public-listing API |
+| Homegate | Ad creation time (not a re-publication date, so an old ad that is still live looks old) | `meta.createdAt` in the results page's embedded `window.__INITIAL_STATE__` JSON |
+| WOKO | No per-object date (the only timestamps on the pages are page-level CMS times) | none, falls back to first-seen |
+| WGZimmer, Ronorp | Not usable / empty source | none |
+
+Homegate's embedded JSON also carries coordinates (accuracy HIGH/MEDIUM), which are used instead of geocoding. Other addresses go through the cache, then swisstopo with 4 parallel workers (paced), then Nominatim at most 1 request per second.
 
 Ingest errors for one source never stop the others; see `GET /ingest/status` for the last 5 runs. To re-run manually:
 
