@@ -219,6 +219,14 @@
   .lang-warn { color:#ff9800; text-transform:none; letter-spacing:0; }
   #draft-text { width:100%; min-height:240px; background:#0a0a0a; color:var(--txt); border:1px solid var(--line); font-family:inherit; font-size:.76rem; line-height:1.5; padding:8px; resize:vertical; }
   #draft-text:focus { outline:none; border-color:var(--amber); }
+  .draft-opts { display:flex; gap:12px; flex-wrap:wrap; align-items:center; margin:2px 0 6px; }
+  .seg { display:inline-flex; border:1px solid var(--line); }
+  .seg button { background:none; border:0; color:var(--dim); font-size:.62rem; padding:3px 8px; cursor:pointer; letter-spacing:.06em; text-transform:uppercase; font-family:inherit; }
+  .seg button + button { border-left:1px solid var(--line); }
+  .seg button[aria-pressed="true"] { color:var(--amber); background:#241a00; }
+  .seg-label { font-size:.6rem; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; }
+  .ad-summary { font-size:.7rem; color:#b5b5b5; line-height:1.4; margin:3px 0 2px; }
+  .ad-summary .lbl { font-size:.56rem; color:var(--amber); letter-spacing:.08em; text-transform:uppercase; border:1px solid #5a4400; padding:0 4px; margin-right:6px; }
   .draft-actions { display:flex; gap:6px; margin-top:6px; align-items:center; flex-wrap:wrap; }
   .draft-actions button { background:none; border:1px solid #555; color:#bbb; font-size:.68rem; padding:5px 10px; cursor:pointer; letter-spacing:.05em; }
   .draft-actions button:hover { border-color:var(--amber); color:var(--amber); }
@@ -1215,6 +1223,7 @@ function showDetail(l) {
     <div class="detail-rent">${groupMode ? fmtChf(priceOf(l)) + ' CHF <span style="font-size:.6rem;color:#777">/ person / month</span>' : l.rent_chf + ' CHF <span style="font-size:.6rem;color:#777">/ month</span>'}</div>
     ${groupMode ? `<div class="group-line">${groupLine(l)}</div>` : ''}
     <div class="detail-title">${kindBadge(l)}${esc(cleanTitle(l))}</div>
+    <div id="ad-summary" class="ad-summary" hidden></div>
     <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
     ${commuteGrid(l)}
     <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)}</div>
@@ -1239,6 +1248,7 @@ function showDetail(l) {
   if (FD[l.id] && viewMode[l.id] === 'followup') renderDraft(l.id, FD[l.id], 'followup');
   else if (D()[l.id]) renderDraft(l.id, D()[l.id]);
   loadSent(l);
+  loadSummary(l);
   // /listings omits raw_text to keep the payload small; fetch it for the detail view.
   if (!l.raw_text && l.has_raw_text) {
     api(`/listings/${l.id}`).then(full => {
@@ -1508,17 +1518,54 @@ function guessLang(text) {
   return de === en ? null : de > en ? 'de' : 'en';
 }
 const LANG_NAME = { de: 'German', en: 'English' };
+const draftOpts = {}, GEN = {}, SUM = {};   // per-listing tone/lang choice, last generated text, ad summaries
+const LEVEL_RANK = ['native', 'near-native', 'fluent', 'advanced', 'c2', 'c1', 'b2', 'intermediate', 'b1', 'a2', 'basic', 'a1'];
+function strongestLang() {   // 'de' | 'en' | null, from the profile's languages
+  let best = null, bi = 99;
+  for (const x of (_profile.languages || [])) {
+    const i = LEVEL_RANK.indexOf(String(x.level || '').toLowerCase()), r = i < 0 ? 50 : i;
+    const code = /^(german|deutsch|de)$/i.test(x.lang) ? 'de' : /^(english|englisch|en)$/i.test(x.lang) ? 'en' : null;
+    if (r < bi) { bi = r; best = code; }
+  }
+  return best;
+}
+function draftOptsFor(id) { return draftOpts[id] || (draftOpts[id] = { tone: 'warm', lang: 'auto' }); }
+function setDraftOpt(id, key, val) {
+  const o = draftOptsFor(id), old = o[key]; if (old === val) return;
+  o[key] = val;
+  const ta = $('draft-text');
+  if (ta && ta.value.trim() && ta.value !== GEN[id]) {   // edited: only regenerate on confirm
+    if (!confirm('Regenerate with this option? Your edits in the box will be replaced (and this uses API credits).')) { o[key] = old; renderDraft(id, ta.value); return; }
+  }
+  draftMessage(id, true);
+}
+function draftOptsHtml(id, l) {
+  const o = draftOptsFor(id), adLang = ext(l).language, mine = strongestLang();
+  const seg = (key, items) => `<span class="seg" role="group">` + items.map(([v, t]) =>
+    `<button type="button" aria-pressed="${o[key] === v}" onclick="setDraftOpt(${id},'${key}','${v}')">${t}</button>`).join('') + `</span>`;
+  const showLang = (adLang === 'de' || adLang === 'en') && mine && adLang !== mine;
+  return `<div class="draft-opts"><span class="seg-label">Tone</span>${seg('tone', [['warm', 'Warm'], ['short', 'Short']])}` +
+    (showLang ? `<span class="seg-label">Language</span>${seg('lang', [['auto', 'Ad (' + adLang.toUpperCase() + ')'], [mine, mine.toUpperCase()]])}` : '') + `</div>`;
+}
+async function loadSummary(l) {
+  const box = $('ad-summary'), lang = ext(l).language;
+  if (!box || groupMode || !lang || lang === 'en') return;
+  const show = t => { const b = $('ad-summary'); if (b && selectedId === l.id && t) { b.innerHTML = '<span class="lbl">summary</span>'; b.append(t); b.hidden = false; } };
+  if (l.id in SUM) { show(SUM[l.id]); return; }
+  try { const r = await api(`/listings/${l.id}/summary`); SUM[l.id] = r && r.summary || null; show(SUM[l.id]); }
+  catch (_) { /* hide on any error */ }
+}
 
-async function draftMessage(id) {
+async function draftMessage(id, fromOpt = false) {
   const btn = $('draft-btn'), area = $('draft-area');
   if (!btn || !area || selectedId !== id) return;
   if (groupMode && !_profile.group) { toast('Set up your group first (size and budget), then draft.'); openGroup(); return; }
-  if (D()[id] && !confirm('Redraft? Your current text in the box will be replaced (and this uses API credits).')) return;
+  if (!fromOpt && D()[id] && !confirm('Redraft? Your current text in the box will be replaced (and this uses API credits).')) return;
   btn.disabled = true; btn.textContent = 'Drafting…';
   area.innerHTML = `<div class="note-inline">Claude is writing ${groupMode ? 'a group application' : 'a message'} in the ad's language…</div>`;
   try {
-    const body = await api(groupMode ? `/group/draft/${id}` : `/draft/${id}`, { method: 'POST' });
-    D()[id] = body.draft;
+    const body = await api(groupMode ? `/group/draft/${id}` : `/draft/${id}?tone=${draftOptsFor(id).tone}&lang=${draftOptsFor(id).lang}`, { method: 'POST' });
+    D()[id] = body.draft; if (!groupMode) GEN[id] = body.draft;
     if (selectedId === id) renderDraft(id, body.draft);
   } catch (e) {
     if (selectedId === id) { area.innerHTML = '<div class="draft-error"></div>'; area.firstChild.textContent = '✗ ' + e.message; }
@@ -1540,7 +1587,7 @@ function renderChecklist(id) {
   const box = $('draft-check'), ta = $('draft-text'); if (!box || !ta) return;
   const items = window.WGChecklist ? WGChecklist.items(ext(byId[id] || {})) : [];
   if (!items.length) { box.innerHTML = ''; return; }
-  const rows = items.map(it => ({ it, r: WGChecklist.check(it, ta.value) }));
+  const rows = items.map(it => ({ it, r: WGChecklist.check(it, ta.value, ext(byId[id] || {})) }));
   const done = rows.filter(x => x.r.ok).length;
   box.innerHTML = `<div class="ck-wrap"><div class="ck-head">What the ad asked for · ${done}/${rows.length} covered</div><ul class="ck">` +
     rows.map(({ it, r }) => `<li class="${r.ok ? 'ok' : 'miss'}"><span class="box" aria-hidden="true">${r.ok ? '✓' : '!'}</span><span class="t">${esc(it.text)}</span>` +
@@ -1554,6 +1601,7 @@ function renderDraft(id, text, mode = 'first') {
   $('draft-area').innerHTML = `
     <div id="draft-box">
       <div class="draft-head"><span>${fu ? 'Follow-up draft' : 'Draft'}</span><span class="lang-tag" id="draft-lang"></span><span class="lang-warn" id="draft-warn"></span><span style="margin-left:auto" id="draft-count"></span></div>
+      ${!fu && !groupMode ? draftOptsHtml(id, l) : ''}
       <textarea id="draft-text" spellcheck="true" aria-label="Draft message — editable" style="${fu ? 'min-height:120px' : ''}"></textarea>
       <div id="draft-check"></div>
       <div class="draft-actions">
