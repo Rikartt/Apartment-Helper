@@ -1,5 +1,12 @@
 # Changelog
 
+## Main review (after merging the six blocks)
+
+### Fixed
+- Listing age ("2 days ago", fresh-ad chip, Message-today boost) read the normalised UTC `listed_at` as local time, and Safari could not parse it at all.
+- `/group/listings`: the "no WG / students" and scam text checks never saw the ad body (it was stripped before scoring); flats now carry `followup_due` / `days_since_sent` / `sent_at`, so the Follow-ups filter and "Follow up?" chip work in group mode.
+- Top 5 no longer suggests low-trust (likely scam) listings.
+
 ## Block C: UI polish
 
 ### Improved
