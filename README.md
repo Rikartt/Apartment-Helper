@@ -84,7 +84,8 @@ Mark each listing **Sent**, **Replied** or **Skipped**. The default "To do" view
 ### Fresh listings
 - The server re-ingests in the background every `WGP_INGEST_INTERVAL_MIN` minutes (default 45, jittered).
 - Listings first seen since your last visit get a **NEW** badge, there is a **New only** toggle, and a notice appears when a background ingest adds listings.
-- A **Message today** strip highlights the best listings you haven't contacted yet.
+- A **Message today** strip highlights the best listings you haven't contacted yet. It uses your filters (rent, commute, type, trust, priority/premium) but not the Show tab or New only, so it stays put while you switch views.
+- **Paid placements**: listings a source marks as paid or prioritised (e.g. Flatfox Priority, premium/top ads) get a purple PRIORITY or PREMIUM chip. Flatfox Priority means only paying Priority members can apply until the date on the chip; after it the listing counts as normal again. "Hide priority/premium" in More filters hides them all (remembered in your browser). For now this is one switch for every kind; separate filters per type may follow.
 - **Gone listings**: when a source stops returning a listing it is marked gone and hidden (`GET /listings?include_gone=1` shows them). To avoid false alarms, a listing is only marked gone after two consecutive healthy runs, and runs that returned under 50% of the previous count or were truncated are ignored.
 
 ### Group mode
@@ -170,7 +171,7 @@ All are optional except the API key if you want Claude features. Set them in `.e
 | `WGP_INGEST_INTERVAL_MIN` | `45` | Minutes between background ingests; `0` = off |
 | `WGP_COMMUTE_BACKGROUND` | `1` | `0` stops the background timetable lookups after ingests (listings then keep estimates until you run `python -m backend.commute`) |
 | `WGPENDLER_INCLUDE_APARTMENTS` | `1` | `0` stops Flatfox/Homegate from collecting whole flats (needed for group mode) |
-| `WGP_FULL_REFRESH_HOURS` | `24` | Flatfox/Homegate re-fetch every ad's details at most this often; runs in between only fetch new ads and ads whose price changed. `0` = every run is a full refresh |
+| `WGP_FULL_REFRESH_HOURS` | `24` | Flatfox/Homegate re-fetch every ad's details at most this often; runs in between only fetch new ads (Homegate also ads whose price changed). `0` = every run is a full refresh |
 | `WGPENDLER_GEOCACHE` | `geocache.sqlite` in repo root | Path of the address-to-coordinates cache |
 | `WGP_NTFY_TOPIC` | none | ntfy topic for phone alerts |
 | `WGP_NTFY_SERVER` | `https://ntfy.sh` | ntfy server |
@@ -193,7 +194,7 @@ All are optional except the API key if you want Claude features. Set them in `.e
 
 ### Incremental ingest and listing dates
 
-Flatfox and Homegate keep a per-source record of ads whose details were already fetched, with their price (tables `source_known`, `source_state`). A periodic run fetches the cheap list (Flatfox pin tiles, Homegate result pages) every time, but only fetches/geocodes new ads and ads whose price changed. Ads present in the list but not re-fetched still count as seen, so gone detection works as before. A full refresh happens at most every `WGP_FULL_REFRESH_HOURS` (edits that leave the price unchanged show up then).
+Flatfox and Homegate keep a per-source record of ads whose details were already fetched, with their price (tables `source_known`, `source_state`). A periodic run fetches the cheap list (Flatfox pin tiles, Homegate result pages) every time, but only fetches/geocodes new ads (Homegate also re-reads ads whose price changed; Flatfox's pin prices are not reliable enough for that, since the same ad comes back at different prices per session). Ads present in the list but not re-fetched still count as seen, so gone detection works as before. A full refresh happens at most every `WGP_FULL_REFRESH_HOURS`, and that is when other edits (including Flatfox price changes) show up.
 
 `listed_at` (stored as UTC `YYYY-MM-DD HH:MM:SS`, used for recency) per source:
 

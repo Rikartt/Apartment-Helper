@@ -2,7 +2,7 @@ import os
 import re
 import time
 import httpx
-from .base import BaseAdapter, load_known, norm_dt
+from .base import BaseAdapter, load_known, norm_dt, promo_label, utc_text
 from ..commute import estimate_commute, ETH_ZENTRUM, ETH_HOENGGERBERG
 
 SEARCH_PAGE = "https://flatfox.ch/en/search/"
@@ -49,8 +49,12 @@ SKIPPED = "#skip"   # known-marker suffix for pins whose details we fetched but 
 
 
 def _marker(pin: dict) -> str:
-    """Change marker of a pin. The pin API exposes no updated-at, only the price."""
-    return "" if pin.get("price_display") is None else str(pin["price_display"])
+    """Change marker of a pin: constant. The pin API has no updated-at, and its price is not
+    usable either: live (2026-10-19) about a third of the pins came back with a different
+    price_display per session (e.g. 2100 vs 2720, ~x1.29) for the same ad, so every run
+    re-fetched ~1800 ads as "changed". Incremental runs now fetch only new pins; price and
+    text edits arrive with the full refresh (WGP_FULL_REFRESH_HOURS, default 24)."""
+    return ""
 
 
 class FlatfoxAdapter(BaseAdapter):
@@ -210,4 +214,10 @@ class FlatfoxAdapter(BaseAdapter):
             "kind":         "wg_room" if l.get("object_category") == "SHARED" else "apartment",
             "rooms":        _num(l.get("number_of_rooms")),
             "living_area_m2": _num(l.get("surface_living")),
+            # Flatfox Priority: only paying Priority members can apply until this time (the
+            # field is null for normal ads). Stored with its end, so it expires on its own.
+            "promo":        ("Flatfox Priority" if l.get("flatfox_priority_exclusive_until")
+                             else promo_label("flatfox", l, raw_text)),
+            "promo_until":  utc_text(l.get("flatfox_priority_exclusive_until")),
+            "photo_count":  len(l["images"]) if isinstance(l.get("images"), list) else None,
         }

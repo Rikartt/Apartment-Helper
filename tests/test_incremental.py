@@ -88,16 +88,17 @@ def test_flatfox_first_run_fetches_everything_then_only_changes(flatfox, db):
     info = r["sources"]["flatfox"]
     assert info["ok"] and info["fetched"] == 3 and info["refetched"] == 0 and info["new"] == 0
 
-    # a new pin and a price change: exactly those two are fetched
+    # a new pin is fetched; a pin price is not a change signal (the pin API reports the
+    # same ad at different prices per session), so pin 2 waits for the full refresh
     pins2 = [_pin(1), _pin(2, 950), _pin(3), _pin(4)]
     details[2] = _detail(2, 950)
     details[4] = _detail(4)
     fake = flatfox(pins2, details)
     r = _run()
-    assert sorted(sum(fake.detail_calls, [])) == [2, 4]
+    assert sorted(sum(fake.detail_calls, [])) == [4]
     assert r["new"] == 1
     rows = {l["external_id"]: l for l in db.get_all_listings()}
-    assert rows["2"]["rent_chf"] == 950 and len(rows) == 4
+    assert rows["2"]["rent_chf"] == 900 and len(rows) == 4
 
 
 def test_flatfox_gone_detection_still_works_for_unfetched_pins(flatfox, db):
@@ -155,7 +156,7 @@ def test_flatfox_failed_detail_batch_is_retried(flatfox, db):
     details = {1: _detail(1)}                                   # pk 2 missing from the response
     flatfox(pins, details)
     _run()
-    assert db.get_known("flatfox") == {"1": "900"}              # 2 is not marked known
+    assert db.get_known("flatfox") == {"1": ""}                 # 2 is not marked known
     details[2] = _detail(2)
     fake = flatfox(pins, details); _run()
     assert fake.detail_calls == [[2]]
@@ -299,3 +300,18 @@ def test_throttle_spaces_calls_across_threads(monkeypatch):
     stamps.sort()
     gaps = [b - a for a, b in zip(stamps, stamps[1:])]
     assert all(g >= 0.17 for g in gaps)          # serialised even with 4 threads
+
+
+def test_flatfox_pin_price_is_not_a_change_signal(flatfox, db, monkeypatch):
+    """Live (2026-10-19) about a third of pins came back at a different price_display per
+    session for the same ad (e.g. 2100 vs 2720). That must not cause re-fetches; the real
+    price arrives with the daily full refresh."""
+    details = {1: _detail(1, 2100)}
+    flatfox([_pin(1, 2100)], details); _run()
+    for price in (2720, 2100, 2720):
+        fake = flatfox([_pin(1, price)], details); r = _run()
+        assert fake.detail_calls == [] and r["sources"]["flatfox"]["fetched"] == 1
+    details[1] = _detail(1, 1950)                                # real change on Flatfox
+    monkeypatch.setenv("WGP_FULL_REFRESH_HOURS", "0")            # the daily full refresh
+    flatfox([_pin(1, 2720)], details); _run()
+    assert db.get_all_listings()[0]["rent_chf"] == 1950

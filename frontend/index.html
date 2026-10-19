@@ -152,6 +152,8 @@
   .chips { margin-top:5px; display:flex; flex-wrap:wrap; gap:3px; }
   .chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; background:#10261a; color:#66bb6a; border:1px solid #1a4a20; white-space:nowrap; }
   .chip.bad { background:#2a1010; color:#e57373; border-color:#5a1010; }
+  .promo-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid #6a4a8a; color:#c39be6; background:#1c1226; letter-spacing:.06em; text-transform:uppercase; }
+  .chk-note { font-size:var(--fs-xs); color:var(--dim); flex-basis:100%; margin-top:-4px; }
   .trust-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid; }
   .trust-chip.high { background:#10261a; color:#66bb6a; border-color:#1a4a20; }
   .trust-chip.medium { background:#2a2000; color:var(--amber); border-color:#5a4a10; }
@@ -524,6 +526,8 @@
     </div>
     <label class="chk"><input type="checkbox" id="hideDeal" onchange="applyFilters()"> Hide dealbreakers</label>
     <label class="chk" title="Listings with a trust score under 50 (possible scams) are hidden by default"><input type="checkbox" id="showLow" onchange="applyFilters()"> Show low-trust</label>
+    <label class="chk" title="Paid placements such as Flatfox Priority or premium/top ads"><input type="checkbox" id="hidePromo" onchange="savePromo();applyFilters()"> Hide priority/premium</label>
+    <div class="chk-note">Priority/premium covers all paid placements (e.g. Flatfox Priority) for now; separate filters per type may follow.</div>
   </div>
 </div>
 
@@ -691,6 +695,7 @@ let byId = {};
 let markers = {};          // id -> L.Marker (cached)
 let shown = new Set();     // ids currently in the cluster
 let selectedId = null;
+let _todayF = null;   // current list filters, reused by the Message today strip
 let _zoomingId = null;   // marker zoomToShowLayer is moving to; must not leave the cluster mid-zoom
 let campus = 'zentrum', mode = 'transit', sortMode = 'relevance', posterFilter = 'all', showFilter = 'todo', kindFilter = 'wg';
 let loadState = 'loading'; // loading | ok | error
@@ -789,6 +794,18 @@ function scoreChip(s) {
   const cls = s >= 72 ? 'score-high' : s >= 55 ? 'score-mid' : 'score-low';   // fit now spans ~30-95
   return `<span class="badge ${cls}" title="Fit score: how well this matches your profile (0–100)"><i>FIT</i>${s}</span>`;
 }
+// Paid placement still in force? Flatfox Priority is time-limited (promo_until, UTC): after
+// that date anyone can apply, so the listing counts as normal again.
+function promoUntil(l) { const t = l.promo_until ? Date.parse(String(l.promo_until).replace(' ', 'T') + 'Z') : NaN; return isNaN(t) ? null : t; }
+function promoActive(l) { if (!l.promo) return false; const t = promoUntil(l); return t == null || t > Date.now(); }
+function promoChip(l) {
+  if (!promoActive(l)) return '';
+  const t = promoUntil(l), until = t ? new Date(t).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : null;
+  const tip = /flatfox priority/i.test(l.promo) ? `Flatfox Priority: only paying Priority members can apply${until ? ' until ' + until : ''}` : `${l.promo}: a paid placement on the source site`;
+  return `<span class="promo-chip" title="${esc(tip)}">${/priority/i.test(l.promo) ? 'Priority' : 'Premium'}${until ? ' · ' + esc(until) : ''}</span>`;
+}
+function savePromo() { try { localStorage.setItem('wgp_hide_promo', $('hidePromo').checked ? '1' : '0'); } catch (_) {} }
+try { $('hidePromo').checked = localStorage.getItem('wgp_hide_promo') === '1'; } catch (_) {}
 function trustChip(l) {
   if (!l.trust_level) return '';
   const tip = `Trust ${l.trust_score}/100 (${l.trust_level})` + ((l.trust_reasons || []).length ? ': ' + l.trust_reasons.join('; ') : ': no warning signs found');
@@ -881,7 +898,7 @@ function setNewOnly(v) { newOnly = !!v; $('btn-new-only').classList.toggle('acti
 function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
 function resetFilters() {
   $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
-  $('maxCommute').value = 60; $('hideDeal').checked = false; $('showLow').checked = false;
+  $('maxCommute').value = 60; $('hideDeal').checked = false; $('showLow').checked = false; $('hidePromo').checked = false; savePromo();
   setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance'); setNewOnly(false);
   applyModeUI();
 }
@@ -921,10 +938,11 @@ mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
 
 function passes(l, f) {
   if (l.trust_level === 'low' && !f.showLow) return false;
+  if (f.hidePromo && promoActive(l)) return false;
   if (priceOf(l) > f.maxRent) return false;
   if (f.filterCommute && commuteMin(l) > f.maxCommute) return false;
   const kind = l.kind || 'wg_room';
-  if (groupMode) return (kind === 'apartment') && (!f.hideDeal || !l._deal.length) && (!newOnly || isNew(l)) && statusOk(l);
+  if (groupMode) return (kind === 'apartment') && (!f.hideDeal || !l._deal.length) && (f.forToday || ((!newOnly || isNew(l)) && statusOk(l)));
   if (kind === 'apartment') return false;   // whole flats only appear in group mode
   if (kindFilter === 'wg' && kind !== 'wg_room') return false;
   if (kindFilter === 'studio' && kind === 'apartment') return false;
@@ -933,8 +951,8 @@ function passes(l, f) {
     if (posterFilter === 'private' && pt === 'agency') return false;
     if (posterFilter === 'agency' && pt !== 'agency') return false;
   }
-  if (newOnly && !isNew(l)) return false;
-  if (!statusOk(l)) return false;
+  if (!f.forToday && newOnly && !isNew(l)) return false;
+  if (!f.forToday && !statusOk(l)) return false;
   if (f.hideDeal && l._deal.length) return false;
   return true;
 }
@@ -964,14 +982,15 @@ function applyFilters() {
   const maxRent = parseInt($('maxRent').value), maxCommute = parseInt($('maxCommute').value);
   $('rentLabel').textContent = `${maxRent} CHF`;
   $('commuteLabel').textContent = maxCommute >= 60 ? 'any' : `≤ ${maxCommute} min`;
-  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0) + ($('showLow').checked ? 1 : 0);
+  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0) + ($('showLow').checked ? 1 : 0) + ($('hidePromo').checked ? 1 : 0);
   $('more-count').textContent = nMore ? `(${nMore}) ` : '';
   syncPressed();
   const nFu = allListings.filter(l => l.followup_due).length, fb = $('btn-show-followup');
   if (fb) fb.textContent = nFu ? `Follow-ups (${nFu})` : 'Follow-ups';
   cancelAnimationFrame(_raf);
   _raf = requestAnimationFrame(() => {
-    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked, showLow: $('showLow').checked };
+    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked, showLow: $('showLow').checked, hidePromo: $('hidePromo').checked };
+    _todayF = f;
     renderAll(allListings.filter(l => passes(l, f)).sort(sortFn));
   });
 }
@@ -1050,7 +1069,7 @@ function cardHtml(l) {
       <div class="card-top">
         <span class="card-dot" style="background:${deal.length ? '#777' : tier.color}" title="${tier.label}"></span>
         <span class="card-rent">${headPrice(l)}</span>
-        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${trustChip(l)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
+        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${trustChip(l)}${promoChip(l)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
         ${l.followup_due ? `<span class="fu-chip" title="Sent ${l.days_since_sent != null ? Math.floor(l.days_since_sent) + ' days ago' : 'a while ago'} with no reply">Follow up?</span>` : ''}
         ${l.status ? `<span class="stbadge ${l.status}">${STATUS_LABEL[l.status]}</span>` : ''}
       </div>
@@ -1094,19 +1113,24 @@ function todayPicks(list) {
 }
 let todayOpen = true;
 try { const v = localStorage.getItem('wgp_today'); todayOpen = v == null ? !window.matchMedia('(max-width:760px)').matches : v === '1'; } catch (_) {}
-function renderToday(list) {
+// Picks come from every listing that passes your filters (rent, commute, type, trust,
+// priority/premium), whatever the Show tab or New only say; listings you already acted on
+// are skipped in todayPicks. It used to use the visible list and hide itself outside
+// "To do", with New only on, or below 2 picks, so it seemed to come and go.
+function renderToday() {
   const box = $('today');
-  const picks = (loadState === 'ok' && showFilter === 'todo' && !newOnly) ? todayPicks(list) : [];
-  if (picks.length < 2) { box.hidden = true; return; }
+  const pool = _todayF ? allListings.filter(l => passes(l, { ..._todayF, forToday: true })) : [];
+  const picks = loadState === 'ok' ? todayPicks(pool) : [];
+  if (!picks.length) { box.hidden = true; return; }
   const c = campus, m = mode;
   box.hidden = false;
-  box.innerHTML = `<button class="today-head" aria-expanded="${todayOpen}" onclick="toggleToday()">${todayOpen ? '▾' : '▸'} Message today <small>${picks.length} best fresh picks</small></button>` +
+  box.innerHTML = `<button class="today-head" aria-expanded="${todayOpen}" onclick="toggleToday()">${todayOpen ? '▾' : '▸'} Message today <small>${picks.length === 1 ? '1 best fresh pick' : picks.length + ' best fresh picks'}</small></button>` +
     (todayOpen ? picks.map((l, i) => {
       const mins = commuteMin(l), shown = (groupMode || m === 'transit') ? tMin(l, mins) : mins;
       return `<button class="today-row" data-id="${l.id}"><span class="rk">${i + 1}</span><span class="pr">${fmtChf(priceOf(l))}</span><span class="tt">${esc(cleanTitle(l))}${isNew(l) ? '<span class="nw">NEW</span>' : ''}</span><span class="mn ${!groupMode && m === 'bike' ? 'bike' : ''}">${mins < 999 ? shown + ' min' : ''}</span></button>`;
     }).join('') : '');
 }
-function toggleToday() { todayOpen = !todayOpen; try { localStorage.setItem('wgp_today', todayOpen ? '1' : '0'); } catch (_) {} renderToday(curList); }
+function toggleToday() { todayOpen = !todayOpen; try { localStorage.setItem('wgp_today', todayOpen ? '1' : '0'); } catch (_) {} renderToday(); }
 $('today').addEventListener('click', e => { const r = e.target.closest('.today-row'); if (r) { ensureRendered(+r.dataset.id); selectListing(+r.dataset.id); } });
 
 function moreBtnHtml() {
@@ -1167,7 +1191,7 @@ function renderAll(listings) {
   const dealN = listings.filter(l => l._deal.length).length;
   const gTag = groupMode && groupInfo?.group ? `group of <b>${groupInfo.group.size}</b> · CHF ${fmtChf(groupInfo.group.budget_per_person_chf)} pp<br>` : '';
   head.innerHTML = `${gTag}<b>${listings.length}</b> ${groupMode ? 'apartment' : 'listing'}${listings.length === 1 ? '' : 's'} · ${groupMode && sortMode === 'relevance' ? 'best = group fit score' : esc(SORT_DESC[sortMode])}${dealN ? ` · ${dealN} dealbreaker${dealN === 1 ? '' : 's'} last` : ''}`;
-  renderToday(listings);
+  renderToday();
   if (!listings.length) {
     renderedN = 0;
     if (!total) {
@@ -1294,7 +1318,7 @@ function showDetail(l) {
     <div id="ad-summary" class="ad-summary" hidden></div>
     <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
     ${commuteGrid(l)}
-    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)}</div>
+    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)} ${promoChip(l)}</div>
     ${deal.length ? `<div class="chips">${deal.map(d => `<span class="chip bad">✗ ${esc(d)}</span>`).join('')}</div>`
       : reasons.length ? `<div class="chips">${reasons.map(r => `<span class="chip">✓ ${esc(r)}</span>`).join('')}</div>` : ''}
     <div class="detail-section"><div class="detail-section-label">Track</div><div class="card-actions" id="detail-status" style="margin-top:0">${statusBar(l)}</div></div>
