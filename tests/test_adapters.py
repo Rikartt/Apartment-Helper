@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 
 from tests.conftest import FIXTURES
 from backend.ingestion import flatfox_adapter, wgzimmer_adapter, ronorp_adapter, homegate_adapter
+from backend.ingestion.base import norm_dt
 from backend.ingestion.flatfox_adapter import FlatfoxAdapter
 from backend.ingestion.wgzimmer_adapter import WGZimmerAdapter
 from backend.ingestion.ronorp_adapter import RonorpAdapter
@@ -41,7 +42,7 @@ def test_flatfox_to_ad():
         assert ad["source"] == "flatfox" and ad["external_id"] == str(d["pk"])
         assert ad["rent_chf"] == d["rent_gross"]
         assert ad["available_from"] == (d["moving_date"] or "flexible")
-        assert ad["listed_at"] == d["published"]
+        assert ad["listed_at"] == norm_dt(d["published"])  # UTC-normalised
         assert not ad["address"].startswith(",")
 
 
@@ -162,6 +163,7 @@ def test_homegate_fetch_stops_on_http_error(monkeypatch):
 def test_homegate_fetch_paginates_and_dedupes(monkeypatch):
     page = html("homegate_results.html")
     monkeypatch.setattr(homegate_adapter, "_geocode", lambda a: (47.37, 8.52))
+    monkeypatch.setattr(homegate_adapter, "_geocode_many", lambda addrs: {x: (47.37, 8.52) for x in addrs})
     monkeypatch.setattr(homegate_adapter.time, "sleep", lambda s: None)
     class C:
         def __init__(self, *a, **k): pass
