@@ -1699,7 +1699,7 @@ document.addEventListener('keydown', e => {
   if (k === 'j' || k === 'ArrowDown' && t === document.body) { e.preventDefault(); step(1); }
   else if (k === 'k' || k === 'ArrowUp' && t === document.body) { e.preventDefault(); step(-1); }
   else if (k === '?') showHelp();
-  else if (k === 'Enter' && !detail && cursorId != null && (t === document.body || t.classList?.contains('card'))) { e.preventDefault(); selectListing(cursorId); }
+  else if (k === 'Enter' && !detail && cursorId != null && !t.closest?.('button, a, summary, select')) { e.preventDefault(); selectListing(cursorId); }   // body, card or the (focusable) map
   else if (k === 'Enter' && t.classList?.contains('card')) { e.preventDefault(); selectListing(+t.dataset.id); }
   else if (target != null && (k === 's' || k === 'x')) setStatus(target, k === 's' ? 'sent' : 'rejected');
   else if (target != null && k === 'o') { const u = byId[target]?.url; if (/^https?:\/\//i.test(u || '')) window.open(u, '_blank', 'noopener'); }
