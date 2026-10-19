@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 
 import httpx
 
+from . import trust
 from .db import get_conn, get_all_listings, utc_now
 from .scoring import score_detail, load_profile, _best_transit
 from .group import get_group, group_detail, validate_group
