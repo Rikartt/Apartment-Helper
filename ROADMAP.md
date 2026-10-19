@@ -27,7 +27,7 @@ Each block is sized for one working session with a few parallel agents.
 11. ~~**Focus and keyboard details.**~~ Done (see CHANGELOG). Skip Leaflet controls in the tab order, keep Esc in the draft textarea from closing the detail view, and remove the pin of a listing hidden by filters after closing it.
 12. ~~**Ingest progress.**~~ Done (see CHANGELOG). A per-source progress bar in the sync indicator. `/group/listings` should return a total ("595 of 3,325").
 13. ~~**Onboarding.**~~ Done (see CHANGELOG). A short first-run walkthrough: profile, then group (optional), then alerts (optional).
-14. **Map.** Partly done: the commute rings are in (see CHANGELOG); the "draw area" filter is still open. Commute-time isochrone shading around the selected campus, and a "draw area" filter.
+14. ~~**Map.**~~ Done (see CHANGELOG). Commute-time isochrone shading around the selected campus, and a "draw area" filter.
 
 
 ## Block D: reach and robustness

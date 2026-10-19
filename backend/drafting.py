@@ -1,5 +1,6 @@
 """Phase 5: draft a first message to a WG poster, for the user to review and send."""
 import json
+import re
 from datetime import date
 
 from . import llm
@@ -54,6 +55,31 @@ def language_choice(lang: str | None, default: str) -> str:
     return default
 
 
+# Function words that give away a short message's language. Same lists as guessLang() in
+# frontend/index.html, so the follow-up and the draft's language tag agree.
+_DE_WORDS = frozenset("ich und die der das wir ein eine mit für bin hoi grüsse liebe zimmer nicht".split())
+_EN_WORDS = frozenset("i and the we you with for am hi hello room not my is regards".split())
+
+
+def text_language(text: str | None) -> str | None:
+    """'de', 'en' or None (no clear winner) for a message the applicant wrote."""
+    words = re.sub(r"[^a-zäöüß ]", " ", (text or "").lower()).split()
+    de = sum(w in _DE_WORDS for w in words)
+    en = sum(w in _EN_WORDS for w in words)
+    return None if de == en else "de" if de > en else "en"
+
+
+def followup_language(first_message: str | None, ad_language: str) -> tuple[str, str | None]:
+    """What goes after "Write in" in FOLLOWUP_SYSTEM_PROMPT, plus the language code used.
+    A follow-up continues the conversation the applicant started, so it uses the language
+    of their sent first message (e.g. English on a German ad if they chose lang=en). If
+    that can't be told, it stays in the ad's language, exactly as before."""
+    code = text_language(first_message)
+    if code:
+        return f"{LANG_NAMES[code]} (the language of the applicant's first message)", code
+    return f"the ad's language ({ad_language})", None
+
+
 # The length/tone rule block. "warm" is the original behaviour, unchanged.
 TONE_RULES = {
     "warm": f"""- 4-7 sentences. Warm, direct, not gushing. Include: who they are, why they fit what the ad said, \
@@ -64,7 +90,7 @@ when they can move in {MOVE_IN_RULE} and how long they want to stay, and a clear
 
 FOLLOWUP_SYSTEM_PROMPT = """You draft a SHORT follow-up to a housing-ad poster (WG room or whole flat) who has not answered the \
 applicant's first message yet. Rules:
-- Write in the ad's language ({language}), at the applicant's real level: simple and natural.
+- Write in {language}, at the applicant's real level: simple and natural.
 - 2-3 sentences. Polite, friendly, zero pressure; no guilt-tripping, no "as I wrote before".
 - Do NOT repeat the first message: do not re-introduce the applicant or restate their \
 background, and do not copy its phrases. Just refer lightly to having written earlier, \
@@ -95,8 +121,9 @@ class DraftError(llm.LLMError):
     pass
 
 
-def build_followup_prompt(listing: dict, first_message: str, language: str) -> tuple[str, str]:
-    """(system, user) for a follow-up draft. Kept small on purpose: the ad title and the
+def build_followup_prompt(listing: dict, first_message: str, ad_language: str) -> tuple[str, str]:
+    """(system, user) for a follow-up draft, written in the first message's language
+    (`ad_language` if that can't be told). Kept small on purpose: the ad title and the
     first message are all the model needs."""
     user = f"""THE AD: {listing.get("title", "")}, {listing.get("address", "")}
 
@@ -104,7 +131,7 @@ MY FIRST MESSAGE (sent {listing.get("last_sent_at") or "a few days ago"}, no rep
 <<<
 {first_message}
 >>>"""
-    return FOLLOWUP_SYSTEM_PROMPT.format(language=language), user
+    return FOLLOWUP_SYSTEM_PROMPT.format(language=followup_language(first_message, ad_language)[0]), user
 
 
 def build_system_prompt(lang_code: str | None, tone: str = "warm", lang: str = "auto") -> str:

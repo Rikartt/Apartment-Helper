@@ -13,6 +13,8 @@ zero Anthropic calls), then drives headless Chromium at 1440x900 and 390x844 and
   sync line with a mocked running /ingest/status            a second Esc closes it
   reply stats page (and the menu link to it)             group mode draft tone/language toggles
   no console errors on any page                          and the follow-up draft button
+  draw-area map filter (mouse at 1440, touch taps at 390): list, pins, Message today, More
+     filters count, kept over a reload, Esc cancels drawing without closing the detail, reset
 
 Needs Playwright (`pip install playwright`) and a Chromium. It uses Playwright's own browser
 (PLAYWRIGHT_BROWSERS_PATH is honoured), else WGP_CHROMIUM, else /opt/pw-browsers/chromium.
@@ -165,9 +167,9 @@ class Pages:
             return route.fulfill(status=200, body=BLANK_PNG, content_type="image/png")
         return route.abort()
 
-    def new(self, w: int, h: int, tour_done: bool = True):
+    def new(self, w: int, h: int, tour_done: bool = True, touch: bool = False):
         ctx = self.browser.new_context(viewport={"width": w, "height": h}, device_scale_factor=1,
-                                       service_workers="block")
+                                       service_workers="block", has_touch=touch, is_mobile=touch)
         if tour_done:
             ctx.add_init_script("try{localStorage.setItem('wgp_tour','done')}catch(e){}")
         ctx.route("**/*", self._other)
@@ -451,9 +453,117 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         check(f"{tag} follow-up draft via /group/draft/{fid}?followup=1",
               any(f"POST /group/draft/{fid}?followup=1" in r for r in pg.reqs)
               and "Follow-up draft" in pg.text_content("#draft-box .draft-head"))
+        warn = pg.text_content("#draft-warn")
+        check(f"{tag} follow-up language is checked against the first message", warn == "matches your first message",
+              warn)
         pg.evaluate("$('draft-box').scrollIntoView({block:'nearest'})")
         pages.shot(pg, f"{tag}-11-group-followup")
     check(f"{tag} group page: no console errors", not pg.errs, "; ".join(pg.errs[:3]))
+    pg.context.close()
+
+
+AREA_JS = """() => {   // pixel box (page coords) around the densest bit of the current list
+  const box = $('map').getBoundingClientRect(), ctl = document.querySelector('.area-ctl').getBoundingClientRect();
+  const clearOfCtl = p => box.left + p.x + 45 < ctl.left - 10 || box.top + p.y - 35 > ctl.bottom + 50;   // + room for the tip
+  const pts = curList.map(l => map.latLngToContainerPoint([l.lat, l.lng]))
+    .filter(p => p.x > 50 && p.x < box.width - 50 && p.y > 45 && p.y < box.height - 45 && clearOfCtl(p));
+  let best = null, bestN = -1;
+  for (const c of pts) { const n = pts.filter(p => Math.abs(p.x - c.x) < 45 && Math.abs(p.y - c.y) < 35).length; if (n > bestN) { best = c; bestN = n; } }
+  const x0 = best.x - 45, x1 = best.x + 45, y0 = best.y - 35, y1 = best.y + 35;
+  return { corners: [[x0, y0], [x1, y0], [x1, y1], [x0, y1]].map(([x, y]) => [box.left + x, box.top + y]), n: bestN };
+}"""
+
+
+def run_area(pages: Pages, base: str, w: int, h: int):
+    tag, touch = str(w), w <= 760
+    pg = pages.new(w, h, touch=touch)
+    with step(f"{tag} draw area", pg, pages):
+        wait_list(pg, base)
+        btn = pg.locator(".area-ctl button#area-draw")
+        check(f"{tag} 'Draw area' is a real button with an aria-label",
+              btn.count() == 1 and bool(btn.get_attribute("aria-label")))
+        before = pg.evaluate("curList.map(l => l.id)")
+        if touch:
+            btn.tap()
+        else:
+            btn.click()
+        box = pg.evaluate(AREA_JS)   # after the Done/Cancel row and tip have appeared
+        check(f"{tag} draw mode on (crosshair class, Done/Cancel shown)",
+              pg.evaluate("drawPts !== null && $('map').classList.contains('drawing')") and pg.is_visible("#area-cancel"))
+        c = box["corners"]
+        pages.shot(pg, f"{tag}-12a-draw-mode")
+        if touch:   # taps; tapping the first point again closes the shape
+            for x, y in c + [c[0]]:
+                pg.touchscreen.tap(x, y)
+                pg.wait_for_timeout(450)   # a human pace; quicker taps can merge into a double-tap
+        else:       # clicks; a double-click on the last corner closes it
+            for x, y in c[:3]:
+                pg.mouse.click(x, y)
+                pg.wait_for_timeout(80)
+            pg.mouse.dblclick(*c[3])
+        pg.wait_for_function("area && !drawPts", timeout=3000)
+        pg.wait_for_timeout(400)
+        after = pg.evaluate("curList.map(l => l.id)")
+        check(f"{tag} area closes with {'a tap on the first point' if touch else 'a double-click'} (4 corners)",
+              pg.evaluate("area.length") == 4, pg.evaluate("JSON.stringify(area)"))
+        check(f"{tag} list shrinks to the listings inside the area",
+              0 < len(after) < len(before) and set(after) <= set(before), f"{len(after)} of {len(before)}")
+        check(f"{tag} ...exactly those inside",
+              pg.evaluate("curList.every(l => WGGeo.pointInPolygon(l.lat, l.lng, area))")
+              and pg.evaluate(f"{json.dumps(before)}.filter(id => WGGeo.pointInPolygon(byId[id].lat, byId[id].lng, area)).length")
+              == len(after))
+        check(f"{tag} pins outside the area leave the map",
+              pg.evaluate("[...shown].every(id => inArea(byId[id])) && shown.size === curList.length"))
+        check(f"{tag} Message today only picks inside the area",
+              pg.evaluate("[...document.querySelectorAll('.today-row')].every(r => inArea(byId[+r.dataset.id]))"))
+        check(f"{tag} area counts in 'More filters (n)' and the list header",
+              pg.text_content("#more-count").strip() == "(1)" and "in drawn area" in pg.text_content("#sh-summary"))
+        check(f"{tag} dashed area outline drawn, 'Clear area' button shown",
+              pg.evaluate("areaLayer.getLayers().length") == 1 and pg.is_visible("#area-clear"))
+        pages.shot(pg, f"{tag}-12b-draw-area")
+        # kept over a reload
+        pg.reload(wait_until="domcontentloaded")
+        pg.wait_for_function("loadState === 'ok' && /\\d+ of \\d+/.test($('count').textContent)", timeout=20000)
+        pg.wait_for_timeout(400)
+        check(f"{tag} area remembered after a reload",
+              sorted(pg.evaluate("curList.map(l => l.id)")) == sorted(after) and pg.is_visible("#area-clear"))
+        # Clear area
+        if touch:
+            pg.locator("#area-clear").tap()
+        else:
+            pg.click("#area-clear")
+        pg.wait_for_timeout(400)
+        check(f"{tag} 'Clear area' restores the full list",
+              pg.evaluate("curList.length") == len(before) and pg.evaluate("localStorage.getItem('wgp_area')") is None
+              and pg.text_content("#more-count").strip() == "")
+        # Esc while drawing cancels the drawing only; the open detail stays
+        pg.evaluate(f"selectListing({before[0]})")
+        pg.wait_for_function("$('detail-view').classList.contains('open')", timeout=5000)
+        pg.evaluate("startDraw()")
+        pg.keyboard.press("Escape")
+        pg.wait_for_timeout(200)
+        check(f"{tag} Esc while drawing cancels it and keeps the detail open",
+              pg.evaluate("drawPts === null && !area && !$('map').classList.contains('drawing')") and is_open(pg))
+        pg.keyboard.press("Escape")
+        pg.wait_for_timeout(300)
+        check(f"{tag} ...a second Esc closes the detail", not is_open(pg))
+        # reset clears an area
+        pg.evaluate("setArea(" + json.dumps([[47.37, 8.53], [47.37, 8.55], [47.39, 8.55], [47.39, 8.53]]) + ")")
+        pg.evaluate("$('hidePromo').checked = true; $('hideTerm').checked = true; savePromo(); applyFilters()")
+        pg.wait_for_timeout(400)
+        check(f"{tag} setArea filters the list", pg.evaluate("curList.length") < len(before))
+        check(f"{tag} alert filters saved on the server",
+              get_json(base, "/notify/status").get("filters", {}).get("hide_promo") is True,
+              get_json(base, "/notify/status"))
+        pg.evaluate("resetFilters()")
+        pg.wait_for_timeout(600)
+        st = get_json(base, "/notify/status").get("filters", {})
+        check(f"{tag} reset also clears the server alert filters",
+              st.get("hide_promo") is False and st.get("hide_fixed_term") is False, st)
+        check(f"{tag} reset clears the area",
+              pg.evaluate("area === null && areaLayer.getLayers().length === 0") and pg.evaluate("curList.length") == len(before)
+              and pg.evaluate("localStorage.getItem('wgp_area')") is None)
+    check(f"{tag} draw-area page: no console errors", not pg.errs, "; ".join(pg.errs[:3]))
     pg.context.close()
 
 
@@ -524,6 +634,7 @@ def main(argv=None) -> int:
             pages = Pages(browser, base, local_cdn, out)
             for w, h in SIZES:
                 run_size(pages, base, w, h, api)
+                run_area(pages, base, w, h)
             browser.close()
         if pages.external:
             print(f"[ui] blocked external hosts (answered offline): {sorted(pages.external)}")

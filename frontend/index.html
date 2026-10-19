@@ -337,6 +337,18 @@
   .map-legend .eth-marker { width:10px; height:10px; box-shadow:none; margin:0 4px; }
   .ring-label span { font-size:var(--fs-xs); background:#111c; padding:0 3px; opacity:.8; white-space:nowrap; letter-spacing:.04em; }
   .map-legend hr { border:none; border-top:1px solid #2a2a2a; margin:4px 0; }
+  /* draw-area control: console-style buttons on the map (top right) */
+  .area-ctl { display:flex; flex-direction:column; align-items:flex-end; gap:4px; }
+  .area-ctl .row { display:flex; gap:4px; }
+  .area-ctl button { background:#111e; border:1px solid var(--line); color:#bbb; font:inherit; font-size:var(--fs-sm); letter-spacing:.06em; text-transform:uppercase; padding:5px 9px; cursor:pointer; box-shadow:0 2px 8px #0008; white-space:nowrap; }
+  .area-ctl button:hover { border-color:#666; color:var(--txt); }
+  .area-ctl button.on { border-color:var(--amber); color:var(--amber); }
+  .area-ctl button:disabled { opacity:.45; cursor:default; }
+  .area-ctl .area-tip { background:#111e; border:1px solid #5a4400; color:var(--amber); font-size:var(--fs-xs); letter-spacing:.04em; padding:3px 7px; max-width:230px; text-align:right; line-height:1.4; }
+  #map.drawing { cursor:crosshair; }
+  #map.drawing .leaflet-grab, #map.drawing .leaflet-interactive { cursor:crosshair; }
+  #map.drawing .leaflet-marker-pane { pointer-events:none; }   /* taps on pins add points while drawing */
+  #map.drawing .leaflet-marker-pane * { pointer-events:none; }
 
   @media (max-width:760px) {
     #topbar { padding:6px 10px; gap:6px 8px; flex-wrap:wrap; }
@@ -370,6 +382,8 @@
     .sh-row .seg button { flex:0 0 auto; height:30px; padding:0 9px; }
     #more-menu { right:0; }
     .leaflet-control-zoom { display:none; }
+    .area-ctl button { padding:5px 8px; letter-spacing:.03em; }
+    .area-ctl .area-tip { max-width:none; padding:2px 6px; }
     #hint, #newnotice { padding:5px 10px; font-size:var(--fs-sm); gap:8px; }
     #hint.on { flex-wrap:wrap; row-gap:5px; }   /* step + ✕, then the text, then the buttons */
     #hint #hint-step { order:1; } #hint #hint-x { order:2; }
@@ -598,6 +612,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="checklist.js"></script>
+<script src="geo.js"></script>
 <script>
 const ETH_ZENTRUM      = [47.3769, 8.5481];
 const ETH_HOENGGERBERG = [47.4083, 8.5075];
@@ -690,6 +705,96 @@ legend.onAdd = () => {
 legend.addTo(map);
 const syncZoomClass = () => $('map').classList.toggle('z-far', map.getZoom() <= 14);
 map.on('zoomend', syncZoomClass); syncZoomClass();
+
+// ── Draw area: a polygon filter drawn on the map (plain Leaflet, geo.js does the maths) ──
+// Click/tap points; the first point, a double-click or DONE closes it; Esc or CANCEL aborts.
+// The area is kept in localStorage and acts as a list filter through passes().
+const AREA_KEY = 'wgp_area';
+const AREA_STYLE = { color: '#ffc107', weight: 1.5, opacity: .9, dashArray: '5 5', fill: true, fillColor: '#ffc107', fillOpacity: .04, interactive: false };
+let area = null;          // [[lat, lng], ...] or null
+let drawPts = null;       // points while drawing, else null
+const areaLayer = L.layerGroup().addTo(map);
+const drawLayer = L.layerGroup().addTo(map);
+try { area = WGGeo.cleanPolygon(JSON.parse(localStorage.getItem(AREA_KEY) || 'null')); } catch (_) { area = null; }
+function inArea(l) { return !area || WGGeo.pointInPolygon(l.lat, l.lng, area); }
+function saveArea() { try { area ? localStorage.setItem(AREA_KEY, JSON.stringify(area)) : localStorage.removeItem(AREA_KEY); } catch (_) {} }
+function drawAreaShape() { areaLayer.clearLayers(); if (area) L.polygon(area, AREA_STYLE).addTo(areaLayer); }
+const areaCtl = L.control({ position: 'topright' });
+areaCtl.onAdd = () => {
+  const div = L.DomUtil.create('div', 'area-ctl');
+  L.DomEvent.disableClickPropagation(div); L.DomEvent.disableScrollPropagation(div);
+  return div;
+};
+areaCtl.addTo(map);
+function renderAreaCtl() {
+  const div = areaCtl.getContainer();
+  if (drawPts) {
+    const n = drawPts.length;
+    div.innerHTML = `<div class="row"><button type="button" id="area-done" class="on" aria-label="Finish the area (${n} point${n === 1 ? '' : 's'})" ${n < 3 ? 'disabled' : ''}>✓ Done</button>`
+      + `<button type="button" id="area-cancel" aria-label="Cancel drawing (Esc)">✕ Cancel</button></div>`
+      + `<div class="area-tip" role="status">${n < 3 ? `Add corners on the map · ${n}/3` : `${n} corners · first point or Done closes`}</div>`;
+    $('area-done').onclick = finishDraw; $('area-cancel').onclick = cancelDraw;
+  } else if (area) {
+    div.innerHTML = `<div class="row"><button type="button" id="area-draw" aria-label="Draw a new area">✎ Redraw</button><button type="button" id="area-clear" class="on" aria-label="Clear the drawn area filter">✕ Clear area</button></div>`;
+    $('area-draw').onclick = startDraw; $('area-clear').onclick = () => clearArea(true);
+  } else {
+    div.innerHTML = '<button type="button" id="area-draw" aria-label="Draw an area on the map to filter listings">✎ Draw area</button>';
+    $('area-draw').onclick = startDraw;
+  }
+}
+function drawPreview(cursor) {
+  drawLayer.clearLayers();
+  if (!drawPts || !drawPts.length) return;
+  const line = cursor ? [...drawPts, cursor] : drawPts;
+  L.polyline(line, { ...AREA_STYLE, fill: false }).addTo(drawLayer);
+  if (drawPts.length >= 3) L.polyline([line[line.length - 1], drawPts[0]], { ...AREA_STYLE, fill: false, opacity: .35 }).addTo(drawLayer);
+  drawPts.forEach((p, i) => L.circleMarker(p, { radius: i === 0 ? 6 : 3.5, color: '#ffc107', weight: 1.5, fillColor: '#111', fillOpacity: 1, interactive: false }).addTo(drawLayer));
+}
+function startDraw() {
+  if (drawPts) return;
+  drawPts = [];
+  map.doubleClickZoom.disable();
+  $('map').classList.add('drawing');
+  map.closePopup();
+  renderAreaCtl(); drawPreview();
+  $('area-cancel')?.focus();
+}
+function endDraw() {
+  drawPts = null; drawLayer.clearLayers();
+  map.doubleClickZoom.enable();
+  $('map').classList.remove('drawing');
+  renderAreaCtl();
+}
+function cancelDraw() { endDraw(); $('area-draw')?.focus(); }
+function finishDraw() {
+  const poly = WGGeo.cleanPolygon(drawPts);
+  if (!poly) return;
+  area = poly; saveArea(); endDraw(); drawAreaShape();
+  applyFilters();
+  $('area-clear')?.focus();
+}
+function setArea(poly) {   // also used by the UI smoke test
+  area = WGGeo.cleanPolygon(poly); saveArea(); drawAreaShape(); renderAreaCtl(); applyFilters();
+}
+function clearArea(apply) {
+  if (drawPts) endDraw();
+  area = null; saveArea(); drawAreaShape(); renderAreaCtl();
+  if (apply) { applyFilters(); $('area-draw')?.focus(); }
+}
+map.on('click', e => {
+  // the control re-renders on click, so a click on its (now detached) button can reach the map: skip it
+  const t = e.originalEvent?.target;
+  if (!drawPts || (t && (!t.isConnected || t.closest('.area-ctl')))) return;
+  const pt = map.latLngToContainerPoint(e.latlng);
+  const near = p => pt.distanceTo(map.latLngToContainerPoint(p)) < 14;
+  if (drawPts.length >= 3 && near(drawPts[0])) return finishDraw();       // closed on the first point
+  if (drawPts.length && near(drawPts[drawPts.length - 1])) return;         // second click of a double-click
+  drawPts.push([e.latlng.lat, e.latlng.lng]);
+  renderAreaCtl(); drawPreview();
+});
+map.on('dblclick', () => { if (drawPts && drawPts.length >= 3) finishDraw(); });
+map.on('mousemove', e => { if (drawPts && drawPts.length) drawPreview([e.latlng.lat, e.latlng.lng]); });
+renderAreaCtl(); drawAreaShape();
 
 // ── State ────────────────────────────────────────────────────────────────────
 let allListings = [];
@@ -928,6 +1033,7 @@ function setNewOnly(v) { newOnly = !!v; $('btn-new-only').classList.toggle('acti
 function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
 function resetFilters() {
   $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
+  clearArea(false);
   $('maxCommute').value = 60; $('hideDeal').checked = false; $('showLow').checked = false; $('hidePromo').checked = false; $('hideTerm').checked = false; savePromo();
   setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance'); setNewOnly(false);
   applyModeUI();
@@ -967,6 +1073,7 @@ function syncFilterCollapse() { $('filters').classList.toggle('collapsed', mq.ma
 mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
 
 function passes(l, f) {
+  if (!inArea(l)) return false;   // drawn map area (also applies to Message today)
   if (l.trust_level === 'low' && !f.showLow) return false;
   if (f.hidePromo && promoActive(l)) return false;
   if (f.hideTerm && isFixedTerm(l)) return false;
@@ -1013,7 +1120,7 @@ function applyFilters() {
   const maxRent = parseInt($('maxRent').value), maxCommute = parseInt($('maxCommute').value);
   $('rentLabel').textContent = `${maxRent} CHF`;
   $('commuteLabel').textContent = maxCommute >= 60 ? 'any' : `≤ ${maxCommute} min`;
-  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0) + ($('showLow').checked ? 1 : 0) + ($('hidePromo').checked ? 1 : 0) + ($('hideTerm').checked ? 1 : 0);
+  const nMore = (area ? 1 : 0) + (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0) + ($('showLow').checked ? 1 : 0) + ($('hidePromo').checked ? 1 : 0) + ($('hideTerm').checked ? 1 : 0);
   $('more-count').textContent = nMore ? `(${nMore}) ` : '';
   syncPressed();
   const nFu = allListings.filter(l => l.followup_due).length, fb = $('btn-show-followup');
@@ -1221,7 +1328,7 @@ function renderAll(listings) {
   }
   const dealN = listings.filter(l => l._deal.length).length;
   const gTag = groupMode && groupInfo?.group ? `group of <b>${groupInfo.group.size}</b> · CHF ${fmtChf(groupInfo.group.budget_per_person_chf)} pp<br>` : '';
-  head.innerHTML = `${gTag}<b>${listings.length}</b> ${groupMode ? 'apartment' : 'listing'}${listings.length === 1 ? '' : 's'} · ${groupMode && sortMode === 'relevance' ? 'best = group fit score' : esc(SORT_DESC[sortMode])}${dealN ? ` · ${dealN} dealbreaker${dealN === 1 ? '' : 's'} last` : ''}`;
+  head.innerHTML = `${gTag}<b>${listings.length}</b> ${groupMode ? 'apartment' : 'listing'}${listings.length === 1 ? '' : 's'} · ${groupMode && sortMode === 'relevance' ? 'best = group fit score' : esc(SORT_DESC[sortMode])}${area ? ' · in drawn area' : ''}${dealN ? ` · ${dealN} dealbreaker${dealN === 1 ? '' : 's'} last` : ''}`;
   renderToday();
   if (!listings.length) {
     renderedN = 0;
@@ -1776,7 +1883,10 @@ function renderDraft(id, text, mode = 'first') {
   const meta = () => {
     const lang = guessLang(ta.value), adLang = ext(l).language || guessLang(l.raw_text);
     $('draft-lang').textContent = lang ? (LANG_NAME[lang] || lang).toUpperCase() : 'LANGUAGE ?';
-    $('draft-warn').textContent = lang && adLang && lang !== adLang ? `ad looks ${LANG_NAME[adLang] || adLang}` : lang && adLang ? 'matches the ad' : '';
+    // a follow-up continues the conversation: compare with the first message you sent, not the ad
+    const firstLang = fu ? guessLang(((l.messages || []).filter(m => m.kind === 'first').pop() || {}).text) : null;
+    $('draft-warn').textContent = firstLang ? (lang && lang !== firstLang ? `first message was ${LANG_NAME[firstLang]}` : lang ? 'matches your first message' : '')
+      : lang && adLang && lang !== adLang ? `ad looks ${LANG_NAME[adLang] || adLang}` : lang && adLang ? 'matches the ad' : '';
     $('draft-count').textContent = `${ta.value.trim().split(/\s+/).filter(Boolean).length} words`;
   };
   meta();
@@ -1889,6 +1999,7 @@ function step(delta) {
 }
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (drawPts) { e.preventDefault(); cancelDraw(); return; }   // cancel the area being drawn; the detail stays open
     if (e.target.id === 'draft-text') { e.target.blur(); return; }   // leave the textarea first; a second Esc closes the detail
     if (!$('more-menu').hidden) closeMenu();
     else if (!$('help-modal').hidden) closeHelp();

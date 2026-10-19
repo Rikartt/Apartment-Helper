@@ -51,6 +51,9 @@ A short first-run walkthrough (profile, then group and phone alerts, both option
 ### Trust score (scam check)
 Each listing gets a 0-100 trust score with a reason for every deduction, computed locally (no API): price far below comparable listings nearby, scam phrases (payment before viewing, keys by post, "I am abroad", contact only via WhatsApp; DE/EN/FR/IT), the same description at another address or price, no house number or photos, agency poster, and red flags from Extract. High is 75+, medium 50-74, low under 50. A shield chip shows the score on cards and in the detail view. Low-trust listings are hidden by default ("Show low-trust" in More filters), get a warning above the draft button, and are left out of phone alerts, Top 5 and the Message today strip.
 
+### Draw area (map filter)
+**✎ Draw area** (top right of the map) limits the list to a part of town: click or tap the corners of an area, then close it on the first corner, with a double-click or with Done (Esc or Cancel aborts). Pins, the list, Message today and the count follow it, it counts in "More filters (n)", and it is remembered in this browser until you press **✕ Clear area** or **reset**. Top 5 is ranked on the server and ignores list filters, the area included.
+
 ### Claude actions and their cost
 Only these four call the Anthropic API. Costs are small but real; the default models are cheap ones for bulk work.
 
@@ -285,7 +288,7 @@ backend/   main.py (routes), db.py, ingest.py, ingestion/ (one adapter per sourc
            scoring.py, trust.py, learning.py, extraction.py, drafting.py, summary.py,
            group.py, notify.py, backup.py, access.py, llm.py, commute.py
 frontend/  index.html (Leaflet map UI, served at "/"), stats.html (reply stats),
-           checklist.js (draft checklist), manifest.json, sw.js, pwa.js, icons/
+           checklist.js (draft checklist), geo.js (draw-area maths), manifest.json, sw.js, pwa.js, icons/
 scripts/   phone-https.sh (optional Tailscale HTTPS helper)
 tools/     make_icons.py
 tests/     offline pytest suite + opt-in smoke_e2e.py
