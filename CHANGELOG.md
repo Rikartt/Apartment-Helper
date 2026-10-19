@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-19: draw an area on the map
+
+### New
+- "✎ Draw area" map button: click or tap corners to draw a polygon (close it on the first corner, with a double-click or Done; Esc or Cancel aborts, without closing an open listing). Only listings inside it stay in the list, on the map and in Message today; it counts in "More filters (n)", shows as a dashed amber outline, is kept in localStorage, and "✕ Clear area" or reset removes it. Pins ignore taps while drawing, so corners can go on top of them. Plain Leaflet, no new library; the point-in-polygon test is in `frontend/geo.js` (node unit tests in `tests/test_geo.py`, browser checks at both sizes in `tests/ui_smoke.py`).
+
 ## 2026-10-19: follow-ups in the language of your first message
 
 ### Changed

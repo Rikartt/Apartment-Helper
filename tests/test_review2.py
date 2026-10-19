@@ -15,10 +15,10 @@ FRONT = Path(__file__).resolve().parent.parent / "frontend"
 def test_sw_precaches_every_script_index_loads():
     sw = (FRONT / "sw.js").read_text()
     shell = sw.split("SHELL_URLS = [")[1].split("]")[0]
-    for f in ("/pwa.js", "/checklist.js"):
+    for f in ("/pwa.js", "/checklist.js", "/geo.js"):
         assert f in shell
     html = (FRONT / "index.html").read_text()
-    assert 'src="/pwa.js"' in html and 'src="checklist.js"' in html
+    assert 'src="/pwa.js"' in html and 'src="checklist.js"' in html and 'src="geo.js"' in html
 
 
 def test_sw_does_not_cache_arbitrary_navigations_as_the_shell():
