@@ -707,13 +707,18 @@ function relevanceScore(l) { if (groupMode) return l.fit_score ?? 0; return Math
 function relevanceP(l) { return groupMode ? fitP(l) : (fitP(l) + (l.reply_score ?? 0)) / 2; }
 function commuteMin(l) { if (groupMode) return l.worst_commute_min ?? 999; return l[`${mode}_${campus}_min`] ?? 999; }
 
+// Transit minutes come from the timetable (transport.opendata.ch, 08:00 arrival, incl. walk)
+// or, until the background lookup has run, a straight-line estimate shown with a "~".
+function tMin(l, t) { return t == null ? '–' : (l.commute_source === 'timetable' ? '' : '~') + t; }
+function tTitle(l) { return l.commute_source === 'timetable' ? 'Public transport (timetable, weekday 08:00 arrival, incl. walk)' : 'Public transport (rough estimate; timetable lookup pending)'; }
+
 function commuteGrid(l) {
   const row = c => {
     const t = l[`transit_${c}_min`], b = l[`bike_${c}_min`];
     if (t == null && b == null) return '';
     const on = c === campus;
     return `<span class="cn ${on ? 'on' : ''}">${CAMPUS_NAME[c]}</span>
-      <span class="t ${on && mode === 'transit' ? 'on' : ''}" title="Public transport">${t ?? '–'} min</span>
+      <span class="t ${on && mode === 'transit' ? 'on' : ''}" title="${tTitle(l)}">${tMin(l, t)} min</span>
       <span class="b ${on && mode === 'bike' ? 'on' : ''}" title="Bike">${b ?? '–'} min</span><span></span>`;
   };
   const h = row('zentrum') + row('hoenggerberg');
@@ -722,7 +727,7 @@ function commuteGrid(l) {
 function commuteInline(l) {
   const t = l[`transit_${campus}_min`], b = l[`bike_${campus}_min`];
   const p = [];
-  if (t != null) p.push(`<span class="t">transit ${t} min</span>`);
+  if (t != null) p.push(`<span class="t" title="${tTitle(l)}">transit ${tMin(l, t)} min</span>`);
   if (b != null) p.push(`<span class="b">bike ${b} min</span>`);
   return p.length ? `${CAMPUS_NAME[campus]}: ${p.join(' · ')}` : '';
 }
