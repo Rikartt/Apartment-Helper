@@ -12,7 +12,8 @@ API part (in-process, FastAPI TestClient against the same app the dev server run
   kept, except in the "fresh process" row (a server restart before the startup warm-up).
   warm = median of --repeat further calls. Covers /listings (as the UI asks for it, and
   the full list), /group/listings, /best (Top 5, fake LLM), /stats, the single-listing
-  endpoints (detail, status change), notify.pending_candidates and trust.annotate. Sizes are
+  endpoints (detail, status change: reply time, and reply + the background retrain it
+  schedules), notify.pending_candidates and trust.annotate. Sizes are
   the decoded JSON and, after "wire", what went over HTTP (the client sends
   Accept-Encoding: gzip like a browser).
 
@@ -67,6 +68,7 @@ def api_bench(db: Path, work: Path, repeat: int) -> list[tuple[str, float, float
     client = TestClient(m.app)
 
     def drop_caches():
+        learning.wait_idle(60)
         trust._cache["entry"] = None
         m._best_cache.clear()
         learning._cache.clear()
@@ -90,6 +92,15 @@ def api_bench(db: Path, work: Path, repeat: int) -> list[tuple[str, float, float
             return r
         return f
 
+    def post_and_retrain(path, body):
+        f = post(path, body)
+
+        def g():
+            r = f()
+            learning.wait_idle(60)   # what the phone does not wait for
+            return r
+        return g
+
     cases = [
         ("GET /listings?kind=wg_room,studio", http("/listings?kind=wg_room,studio")),
         ("GET /listings (all)", http("/listings")),
@@ -98,6 +109,8 @@ def api_bench(db: Path, work: Path, repeat: int) -> list[tuple[str, float, float
         ("GET /stats", http("/stats")),
         ("GET /listings/{id} (detail)", http(f"/listings/{one}")),
         ("POST /listings/{id}/status", post(f"/listings/{quiet}/status", {"status": None})),
+        ("  ... + background retrain done", post_and_retrain(f"/listings/{quiet}/status",
+                                                           {"status": None})),
         ("notify.pending_candidates()", lambda: notify.pending_candidates(now=None)),
         ("trust.annotate(all rows)", lambda: trust.annotate([dict(r) for r in universe])),
         ("trust.annotate, fresh process", "fresh"),
@@ -114,11 +127,13 @@ def api_bench(db: Path, work: Path, repeat: int) -> list[tuple[str, float, float
                 getattr(trust, attr, {}).clear()
             fn = cases[-2][1]
         learning.current_model()   # model load is per process, not per request
+        learning.wait_idle(60)     # a retrain left by the previous case must not skew this one
         t0 = time.perf_counter()
         res = fn()
         cold = _ms(t0)
         warm = []
         for _ in range(repeat):
+            learning.wait_idle(60)   # taps are seconds apart on a phone; time each one alone
             t0 = time.perf_counter()
             fn()
             warm.append(_ms(t0))

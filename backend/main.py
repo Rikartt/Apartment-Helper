@@ -354,7 +354,7 @@ def post_sent(listing_id: int, body: SentBody):
     if not text:
         return JSONResponse({"error": "message text is empty"}, status_code=422)
     msg = add_sent_message(listing_id, text, body.kind)
-    learning.refresh()
+    learning.schedule_refresh()   # retrain off the request path (instant buttons)
     if not msg:
         return JSONResponse({"error": "listing not found"}, status_code=404)
     l = _decorate(_with_trust([get_listing(listing_id, include_raw=False)])[0], _load_profile())
@@ -377,7 +377,7 @@ class StatusUpdate(BaseModel):
 def post_status(listing_id: int, body: StatusUpdate):
     if not set_status(listing_id, body.status):
         return JSONResponse({"error": "listing not found"}, status_code=404)
-    learning.refresh()
+    learning.schedule_refresh()   # retrain off the request path (instant buttons)
     return JSONResponse(_decorate(_with_trust([get_listing(listing_id, include_raw=False)])[0],
                                   _load_profile()))
 
@@ -484,7 +484,7 @@ def best_listings(hide_promo: bool = Query(False), hide_fixed_term: bool = Query
         blocks.append(
             f"LISTING {i+1} (id={l['id']}):\n"
             f"Title: {l.get('title','')}\n"
-            f"Rent: {l.get('rent_chf','')} CHF  Available: {l.get('available_from','')}\n"
+            f"Rent: {l.get('rent_chf','')} CHF  Available: {l.get('move_in_stated') or l.get('available_from','')}\n"
             f"Fit score: {l.get('fit_score','?')}  Reply likelihood: {l.get('reply_score','?')}%\n"
             f"Why it fits: {', '.join(l.get('match_reasons') or []) or 'unknown'}\n"
             f"Vibe: {', '.join(ext.get('vibe') or []) or 'unknown'}\n"

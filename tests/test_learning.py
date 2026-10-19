@@ -265,3 +265,121 @@ def test_sync_retries_after_a_failed_fit(db, monkeypatch):
     assert learning.sync(NOW) is None            # the failed attempt
     m = learning.sync(NOW)
     assert m is not None and m["n"] == 25
+
+
+# ---- background retrain (status buttons must not wait for a fit) ---------------------
+
+@pytest.fixture
+def background(monkeypatch):
+    """Real background worker (conftest turns it off for every other test), no quiet period."""
+    monkeypatch.setenv("WGP_LEARNING_BACKGROUND", "1")
+    monkeypatch.setattr(learning, "QUIET_S", 0.0)
+    yield
+    assert learning.wait_idle(10), "background retrain did not finish"
+
+
+def _blocking_refresh(monkeypatch):
+    """refresh() replaced by one that records its call and waits for `release`."""
+    import threading
+    started, release, calls = threading.Event(), threading.Event(), []
+
+    def slow(now=None):
+        calls.append(threading.current_thread().name)
+        started.set()
+        release.wait(10)
+    monkeypatch.setattr(learning, "refresh", slow)
+    return started, release, calls
+
+
+@pytest.mark.parametrize("call", ["status", "sent"])
+def test_endpoints_return_without_waiting_for_training(client, db, background, monkeypatch, call):
+    import time
+    seed(db, 25)
+    lid = db.get_all_listings()[0]["id"]
+    started, release, calls = _blocking_refresh(monkeypatch)
+    t0 = time.perf_counter()
+    if call == "status":
+        r = client.post(f"/listings/{lid}/status", json={"status": "replied"})
+    else:
+        r = client.post(f"/listings/{lid}/sent", json={"text": "Hallo", "kind": "followup"})
+    elapsed = time.perf_counter() - t0
+    assert r.status_code == 200
+    assert started.wait(5)                  # the retrain did start ...
+    assert not release.is_set() and elapsed < 2   # ... but the reply did not wait for it
+    release.set()
+    assert learning.wait_idle(5)
+    assert calls == ["learning-refresh"]    # once, on the worker thread
+
+
+def test_rapid_taps_coalesce_into_one_pending_retrain(db, background, monkeypatch):
+    started, release, calls = _blocking_refresh(monkeypatch)
+    assert learning.schedule_refresh() is True
+    assert started.wait(5)                  # first retrain running (blocked)
+    queued = [learning.schedule_refresh() for _ in range(10)]
+    assert queued == [True] + [False] * 9   # one waits behind it, the rest fold into that one
+    assert not learning.wait_idle(0.05)
+    release.set()
+    assert learning.wait_idle(5)
+    assert len(calls) == 2                  # 11 taps, 2 fits; the last starts after the last tap
+
+
+def test_retrain_waits_until_taps_go_quiet(db, background, monkeypatch):
+    """A burst of taps is not slowed by a fit in between: one retrain, after the last tap."""
+    import time
+    monkeypatch.setattr(learning, "QUIET_S", 0.3)
+    started, release, calls = _blocking_refresh(monkeypatch)
+    release.set()
+    last = None
+    for _ in range(4):
+        learning.schedule_refresh()
+        last = time.monotonic()
+        time.sleep(0.1)
+        assert not started.is_set()         # still inside the quiet period of the last tap
+    assert started.wait(5)
+    assert time.monotonic() - last >= 0.3
+    assert learning.wait_idle(5, flush=False) and len(calls) == 1
+
+
+def test_background_retrain_updates_model_and_stats(client, db, background):
+    seed(db, 25)
+    client.get("/stats")
+    assert learning.current_model()["n"] == 25
+    lid = next(l["id"] for l in db.get_all_listings() if l["status"] in ("sent", "replied"))
+    assert client.post(f"/listings/{lid}/status", json={"status": "rejected"}).status_code == 200
+    # no wait: /stats counts are read live, and sync() waits for (or does) the retrain
+    r = client.get("/stats").json()
+    assert r["resolved"] == 24 and r["learning"]["active"]
+    assert learning.current_model()["n"] == 24
+    assert learning.wait_idle(5)
+    assert learning.current_model()["n"] == 24 and learning.load_model()["n"] == 24
+
+
+def test_background_retrain_stays_on_the_db_it_was_asked_for(db, background, monkeypatch, tmp_path):
+    """The worker pins the DB file of the request, even if DB_PATH changes meanwhile."""
+    seed(db, 25)
+    path = db.DB_PATH
+    real = learning.refresh
+    started, release, _ = _blocking_refresh(monkeypatch)
+    blocked = learning.refresh
+    monkeypatch.setattr(learning, "refresh", lambda now=None: (blocked(), real())[1])
+    learning.schedule_refresh()
+    assert started.wait(5)
+    monkeypatch.setattr(db, "DB_PATH", tmp_path / "other.db")
+    release.set()
+    assert learning.wait_idle(5)
+    assert learning._cache[str(path)]["n"] == 25 and str(tmp_path / "other.db") not in learning._cache
+    monkeypatch.setattr(db, "DB_PATH", path)
+    assert learning.load_model()["n"] == 25
+
+
+def test_inline_mode_retrains_before_the_reply(client, db, monkeypatch):
+    """WGP_LEARNING_BACKGROUND=0 (the test default): schedule_refresh() is refresh()."""
+    import threading
+    calls = []
+    monkeypatch.setattr(learning, "refresh", lambda now=None: calls.append(threading.current_thread().name))
+    assert learning.schedule_refresh() is False
+    assert calls == [threading.current_thread().name]
+    seed(db, 25)
+    lid = db.get_all_listings()[0]["id"]
+    client.post(f"/listings/{lid}/status", json={"status": "rejected"})
+    assert len(calls) == 2 and not learning._pending and not learning._running

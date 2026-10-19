@@ -362,6 +362,25 @@ def run_size(pages: Pages, base: str, w: int, h: int, api: dict):
         pg.wait_for_timeout(300)
         check(f"{tag} Esc closes the detail", not is_open(pg))
 
+    with step(f"{tag} move-in from the ad text", pg, pages):
+        # seed: date field 2004-MM-DD (live Flatfox typo), text "Room available from 1 November"
+        mid = pg.evaluate("(allListings.find(l => l.move_in_stated && /^2004/.test(l.available_from)) || {}).id")
+        check(f"{tag} seed has a listing with an implausible date field", bool(mid))
+        if mid:
+            card = pg.evaluate(f"(() => {{ const l = byId[{mid}], d = document.createElement('div');"
+                               f" d.innerHTML = cardHtml(l); return [d.textContent, l.move_in_stated,"
+                               f" d.querySelector('.movein-text')?.title || ''] }})()")
+            check(f"{tag} card shows the text's move-in date, not the 2004 field",
+                  f"from {card[1]}*" in card[0] and "2004" not in card[0], card[0][:120])
+            check(f"{tag} card tooltip names the ad's date field", "2004" in card[2], card[2])
+            pg.evaluate(f"selectListing({mid})")
+            pg.wait_for_function("$('detail-view').classList.contains('open')", timeout=5000)
+            note = pg.text_content("#detail-view .movein-note") if pg.locator("#detail-view .movein-note").count() else ""
+            check(f"{tag} detail explains the date came from the ad text", "2004" in note, note)
+            pages.shot(pg, f"{tag}-04b-movein-detail")
+            pg.keyboard.press("Escape")
+            pg.wait_for_timeout(300)
+
     with step(f"{tag} draft", pg, pages):
         pg.evaluate(f"selectListing({de_pick})")
         pg.wait_for_function("$('detail-view').classList.contains('open')", timeout=5000)

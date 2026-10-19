@@ -247,10 +247,18 @@ def _make_ads(n: int, rnd: random.Random, now: datetime) -> list[dict]:
         if i % 7 == 2 and i not in scam_at:
             ad["fixed_term"] = True                # befristet / temporary let
             ad["raw_text"] = "Befristet bis Ende März. " + ad["raw_text"]
+        elif i % 11 == 6 and i not in scam_at:
+            # live Flatfox: a typo'd date field (2004-11-01) while the text says "from 1 November"
+            y, m, d = (int(x) for x in ad["available_from"].split("-"))
+            ad["raw_text"] = f"Room available from {d} {_MONTH_EN[m - 1]}. " + ad["raw_text"]
+            ad["available_from"] = f"2004-{m:02d}-{d:02d}"
         ad.update(commute_times(ad["lat"], ad["lng"]))
         ads.append(ad)
     return ads
 
+
+_MONTH_EN = ["January", "February", "March", "April", "May", "June", "July", "August",
+             "September", "October", "November", "December"]
 
 def _extracted(ad: dict, rnd: random.Random) -> dict:
     en = ad["_en"]

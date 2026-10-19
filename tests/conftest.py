@@ -22,8 +22,10 @@ class NetworkForbidden(BaseException):
 
 @pytest.fixture(autouse=True)
 def _forbid_live_commute_api(monkeypatch):
-    """No test may reach transport.opendata.ch; no background refresh threads either."""
+    """No test may reach transport.opendata.ch; no background refresh threads either
+    (commute lookups, learned-model retrains)."""
     monkeypatch.setenv("WGP_COMMUTE_BACKGROUND", "0")
+    monkeypatch.setenv("WGP_LEARNING_BACKGROUND", "0")   # retrain inline: deterministic tests
     from backend import commute
 
     def boom(*a, **k):

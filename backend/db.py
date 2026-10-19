@@ -2,7 +2,7 @@ import sqlite3
 import json
 from pathlib import Path
 
-from .term_dates import stated_end
+from .term_dates import effective_move_in, stated_end
 from .ingestion.base import MAX_PHOTOS
 
 DB_PATH = Path(__file__).parent.parent / "wgpendler.db"
@@ -37,6 +37,8 @@ NEW_COLUMNS = [
     # (raw_text is the ad text), so old rows fill in on the next details fetch, i.e. the regular
     # full refresh (WGP_FULL_REFRESH_HOURS). Deliberately NOT a forced refresh like promo.
     ("photos", "TEXT"),
+    ("move_in_stated", "TEXT"),         # ISO move-in date from the ad's text, set only when available_from
+                                        # lies long before publication (typo/last year); NULL = available_from holds
 ]
 
 VALID_STATUSES = ("sent", "replied", "rejected")
@@ -76,8 +78,9 @@ class _Conn(sqlite3.Connection):
             self.close()
 
 
-def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, timeout=30, factory=_Conn)
+def get_conn(path=None) -> sqlite3.Connection:
+    """A connection to `path`, or to DB_PATH (read at call time) when omitted."""
+    conn = sqlite3.connect(path or DB_PATH, timeout=30, factory=_Conn)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -123,6 +126,8 @@ def init_db():
                 conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {typedef}")
         if "term_end" not in existing:
             _backfill_term_end(conn)
+        if "move_in_stated" not in existing:
+            _backfill_move_in_stated(conn)
         if promo_was_missing:
             # rows stored before promo existed were never checked: make the next run of the
             # incremental sources a full refresh (the table may not exist yet on a new DB)
@@ -232,9 +237,10 @@ def trust_generation() -> int | None:
 def upsert_listing(ad: dict) -> bool:
     """Insert or update a listing. Returns True if it was a new row."""
     with get_conn() as conn:
-        existed = conn.execute(
-            "SELECT 1 FROM listings WHERE source = ? AND external_id = ?",
-            (ad["source"], ad["external_id"])).fetchone() is not None
+        row = conn.execute(
+            "SELECT created_at FROM listings WHERE source = ? AND external_id = ?",
+            (ad["source"], ad["external_id"])).fetchone()
+        existed, existing_created = row is not None, row[0] if row else None
         conn.execute("""
             INSERT INTO listings
                 (source, external_id, title, address, lat, lng, rent_chf,
@@ -242,8 +248,8 @@ def upsert_listing(ad: dict) -> bool:
                  bike_zentrum_min, transit_zentrum_min,
                  bike_hoenggerberg_min, transit_hoenggerberg_min,
                  listed_at, fit_score, reply_score, kind, rooms, living_area_m2, commute_source, promo,
-                 promo_until, photo_count, fixed_term, term_end, photos, last_seen_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
+                 promo_until, photo_count, fixed_term, term_end, photos, move_in_stated, last_seen_at)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,strftime('%Y-%m-%d %H:%M:%f','now'))
             ON CONFLICT(source, external_id) DO UPDATE SET
                 title                    = excluded.title,
                 address                  = excluded.address,
@@ -273,6 +279,7 @@ def upsert_listing(ad: dict) -> bool:
                 term_end       = excluded.term_end,
                 -- unknown this time (source sent no image list): keep what we had
                 photos         = COALESCE(excluded.photos, listings.photos),
+                move_in_stated = excluded.move_in_stated,
                 last_seen_at = strftime('%Y-%m-%d %H:%M:%f','now'),
                 missed_runs  = 0,
                 gone_at      = NULL
@@ -292,6 +299,9 @@ def upsert_listing(ad: dict) -> bool:
             None if ad.get("fixed_term") is None else int(bool(ad["fixed_term"])),
             ad.get("term_end") or stated_end(ad.get("title"), ad.get("raw_text")),
             _photos_json(ad.get("photos")),
+            effective_move_in(ad["available_from"],
+                              ad.get("listed_at") or existing_created or _today_iso(),
+                              ad.get("title"), ad.get("raw_text")),
         ))
         return not existed
 
@@ -404,6 +414,18 @@ def _list_columns(conn) -> tuple[str, ...]:
         cols = tuple(r[1] for r in conn.execute("PRAGMA table_info(listings)") if r[1] not in DETAIL_ONLY)
         _list_cols = (str(DB_PATH), cols)
     return _list_cols[1]
+def _backfill_move_in_stated(conn):
+    """Rows stored before move_in_stated existed: same rule as at ingest, from the stored
+    text and publication date (no refetch)."""
+    rows = conn.execute("SELECT id, available_from, COALESCE(listed_at, created_at), title, raw_text "
+                        "FROM listings WHERE raw_text != ''").fetchall()
+    conn.executemany("UPDATE listings SET move_in_stated = ? WHERE id = ?",
+                     [(m, r[0]) for r in rows if (m := effective_move_in(r[1], r[2], r[3], r[4]))])
+
+
+def _today_iso() -> str:
+    from datetime import date
+    return date.today().isoformat()
 
 
 def get_all_listings(include_raw: bool = True, include_gone: bool = False) -> list[dict]:
