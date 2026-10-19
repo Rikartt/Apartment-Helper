@@ -107,6 +107,20 @@ def _truthy(v) -> bool:
     return bool(v)
 
 
+# Fixed-term ("befristet") wording in an ad. "unbefristet" (open-ended) must not match.
+_FIXED_TERM = re.compile(
+    r"(?<!un)befrist|zwischenmiete|zwischennutzung|untermiete\b|\btempor[aä]r|\btemporary\b|"
+    r"\bsublet\b|\bsub-?let(ting)?\b|\bfixed[- ]term\b|\blimited (period|time)\b|"
+    r"\bf[uü]r (\d+|ein|zwei|drei|vier|f[uü]nf|sechs) (monate?|wochen)\b|\bfor (\d+|one|two|three|four|five|six) (months?|weeks)\b",
+    re.I)
+
+
+def fixed_term_from_text(text: str) -> bool | None:
+    """True if the ad text says it is fixed-term; None (unknown) otherwise. Text can say
+    'befristet' but cannot reliably prove the opposite, so this never returns False."""
+    return True if text and _FIXED_TERM.search(text) else None
+
+
 def promo_label(source: str, data: dict | None, text: str = "") -> str | None:
     """'Flatfox Priority', 'Homegate Premium', ... or None. Looks two levels deep."""
     kind = None

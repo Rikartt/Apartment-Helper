@@ -2,7 +2,7 @@ import os
 import re
 import time
 import httpx
-from .base import BaseAdapter, load_known, norm_dt, promo_label, utc_text
+from .base import BaseAdapter, load_known, norm_dt, promo_label, utc_text, fixed_term_from_text
 from ..commute import estimate_commute, ETH_ZENTRUM, ETH_HOENGGERBERG
 
 SEARCH_PAGE = "https://flatfox.ch/en/search/"
@@ -220,4 +220,7 @@ class FlatfoxAdapter(BaseAdapter):
                              else promo_label("flatfox", l, raw_text)),
             "promo_until":  utc_text(l.get("flatfox_priority_exclusive_until")),
             "photo_count":  len(l["images"]) if isinstance(l.get("images"), list) else None,
+            # Flatfox's own "temporary" flag (befristet); live, it matched the ad titles exactly
+            "fixed_term":   (bool(l["is_temporary"]) if isinstance(l.get("is_temporary"), bool)
+                             else fixed_term_from_text(raw_text)),
         }

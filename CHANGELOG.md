@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-10-19: hide befristet (fixed-term) lets
+
+### New
+- "Hide befristet" in More filters and a BEFRISTET chip. Uses Flatfox's own `is_temporary` flag (live: 17 of 50 sampled Flatfox ads; the flag matched the titles exactly), else ad wording (befristet but not unbefristet, Zwischenmiete, temporär, sublet, "für 6 Monate"; agrees with Flatfox's flag on all 50 sampled ads), else the duration from Extract. New `fixed_term` column; the first ingest after updating re-fetches details once to fill it.
+
 ## 2026-10-19: priority/premium filter, steadier Message today
 
 ### New

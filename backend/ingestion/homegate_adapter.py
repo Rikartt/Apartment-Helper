@@ -32,7 +32,7 @@ import os
 import httpx
 from bs4 import BeautifulSoup
 
-from .base import BaseAdapter, load_known, norm_dt, promo_label
+from .base import BaseAdapter, load_known, norm_dt, promo_label, fixed_term_from_text
 from .geocode import geocode as _geocode, geocode_many as _geocode_many
 
 SEARCH_BASE  = (
@@ -356,4 +356,5 @@ class HomegateAdapter(BaseAdapter):
             "rooms":          card.get("rooms"),
             "living_area_m2": float(card["space_m2"]) if card.get("space_m2") else None,
             "promo":          card.get("promo"),
+            "fixed_term":     fixed_term_from_text(raw_text),
         }

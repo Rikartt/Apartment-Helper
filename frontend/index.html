@@ -153,6 +153,7 @@
   .chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; background:#10261a; color:#66bb6a; border:1px solid #1a4a20; white-space:nowrap; }
   .chip.bad { background:#2a1010; color:#e57373; border-color:#5a1010; }
   .promo-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid #6a4a8a; color:#c39be6; background:#1c1226; letter-spacing:.06em; text-transform:uppercase; }
+  .term-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid #555; color:#bbb; background:#1c1c1c; letter-spacing:.06em; text-transform:uppercase; }
   .chk-note { font-size:var(--fs-xs); color:var(--dim); flex-basis:100%; margin-top:-4px; }
   .trust-chip { font-size:var(--fs-xs); padding:1px 5px; border-radius:2px; white-space:nowrap; cursor:help; border:1px solid; }
   .trust-chip.high { background:#10261a; color:#66bb6a; border-color:#1a4a20; }
@@ -527,6 +528,7 @@
     <label class="chk"><input type="checkbox" id="hideDeal" onchange="applyFilters()"> Hide dealbreakers</label>
     <label class="chk" title="Listings with a trust score under 50 (possible scams) are hidden by default"><input type="checkbox" id="showLow" onchange="applyFilters()"> Show low-trust</label>
     <label class="chk" title="Paid placements such as Flatfox Priority or premium/top ads"><input type="checkbox" id="hidePromo" onchange="savePromo();applyFilters()"> Hide priority/premium</label>
+    <label class="chk" title="Fixed-term / temporary lets (befristet, Zwischenmiete, sublet)"><input type="checkbox" id="hideTerm" onchange="savePromo();applyFilters()"> Hide befristet</label>
     <div class="chk-note">Priority/premium covers all paid placements (e.g. Flatfox Priority) for now; separate filters per type may follow.</div>
   </div>
 </div>
@@ -804,8 +806,17 @@ function promoChip(l) {
   const tip = /flatfox priority/i.test(l.promo) ? `Flatfox Priority: only paying Priority members can apply${until ? ' until ' + until : ''}` : `${l.promo}: a paid placement on the source site`;
   return `<span class="promo-chip" title="${esc(tip)}">${/priority/i.test(l.promo) ? 'Priority' : 'Premium'}${until ? ' · ' + esc(until) : ''}</span>`;
 }
-function savePromo() { try { localStorage.setItem('wgp_hide_promo', $('hidePromo').checked ? '1' : '0'); } catch (_) {} }
-try { $('hidePromo').checked = localStorage.getItem('wgp_hide_promo') === '1'; } catch (_) {}
+function savePromo() { try { localStorage.setItem('wgp_hide_promo', $('hidePromo').checked ? '1' : '0'); localStorage.setItem('wgp_hide_term', $('hideTerm').checked ? '1' : '0'); } catch (_) {} }
+try { $('hidePromo').checked = localStorage.getItem('wgp_hide_promo') === '1'; $('hideTerm').checked = localStorage.getItem('wgp_hide_term') === '1'; } catch (_) {}
+// Fixed-term (befristet): the source's own flag when it has one (Flatfox), else the ad text
+// match done at ingest, else the duration Claude extracted.
+function isFixedTerm(l) {
+  if (l.fixed_term === 1 || l.fixed_term === true) return true;
+  if (l.fixed_term === 0 || l.fixed_term === false) return false;
+  const d = ext(l).duration;
+  return d === 'fixed_term' || d === 'sublet';
+}
+function termChip(l) { return isFixedTerm(l) ? '<span class="term-chip" title="Fixed-term / temporary let (befristet)">befristet</span>' : ''; }
 function trustChip(l) {
   if (!l.trust_level) return '';
   const tip = `Trust ${l.trust_score}/100 (${l.trust_level})` + ((l.trust_reasons || []).length ? ': ' + l.trust_reasons.join('; ') : ': no warning signs found');
@@ -898,7 +909,7 @@ function setNewOnly(v) { newOnly = !!v; $('btn-new-only').classList.toggle('acti
 function setShow(v)   { showFilter = v; document.querySelectorAll('#show-seg button').forEach(b => b.classList.toggle('active', b.dataset.v === v)); applyFilters(); }
 function resetFilters() {
   $('maxRent').value = Math.min(1500, Math.max(400, Math.round(budget / 50) * 50));
-  $('maxCommute').value = 60; $('hideDeal').checked = false; $('showLow').checked = false; $('hidePromo').checked = false; savePromo();
+  $('maxCommute').value = 60; $('hideDeal').checked = false; $('showLow').checked = false; $('hidePromo').checked = false; $('hideTerm').checked = false; savePromo();
   setKind('wg'); setPoster('all'); setShow('todo'); setSort('relevance'); setNewOnly(false);
   applyModeUI();
 }
@@ -939,6 +950,7 @@ mq.addEventListener?.('change', syncFilterCollapse); syncFilterCollapse();
 function passes(l, f) {
   if (l.trust_level === 'low' && !f.showLow) return false;
   if (f.hidePromo && promoActive(l)) return false;
+  if (f.hideTerm && isFixedTerm(l)) return false;
   if (priceOf(l) > f.maxRent) return false;
   if (f.filterCommute && commuteMin(l) > f.maxCommute) return false;
   const kind = l.kind || 'wg_room';
@@ -982,14 +994,14 @@ function applyFilters() {
   const maxRent = parseInt($('maxRent').value), maxCommute = parseInt($('maxCommute').value);
   $('rentLabel').textContent = `${maxRent} CHF`;
   $('commuteLabel').textContent = maxCommute >= 60 ? 'any' : `≤ ${maxCommute} min`;
-  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0) + ($('showLow').checked ? 1 : 0) + ($('hidePromo').checked ? 1 : 0);
+  const nMore = (kindFilter !== 'wg' && !groupMode ? 1 : 0) + (posterFilter !== 'all' && !groupMode ? 1 : 0) + (newOnly ? 1 : 0) + ($('hideDeal').checked ? 1 : 0) + ($('showLow').checked ? 1 : 0) + ($('hidePromo').checked ? 1 : 0) + ($('hideTerm').checked ? 1 : 0);
   $('more-count').textContent = nMore ? `(${nMore}) ` : '';
   syncPressed();
   const nFu = allListings.filter(l => l.followup_due).length, fb = $('btn-show-followup');
   if (fb) fb.textContent = nFu ? `Follow-ups (${nFu})` : 'Follow-ups';
   cancelAnimationFrame(_raf);
   _raf = requestAnimationFrame(() => {
-    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked, showLow: $('showLow').checked, hidePromo: $('hidePromo').checked };
+    const f = { maxRent, maxCommute, filterCommute: maxCommute < 60, hideDeal: $('hideDeal').checked, showLow: $('showLow').checked, hidePromo: $('hidePromo').checked, hideTerm: $('hideTerm').checked };
     _todayF = f;
     renderAll(allListings.filter(l => passes(l, f)).sort(sortFn));
   });
@@ -1069,7 +1081,7 @@ function cardHtml(l) {
       <div class="card-top">
         <span class="card-dot" style="background:${deal.length ? '#777' : tier.color}" title="${tier.label}"></span>
         <span class="card-rent">${headPrice(l)}</span>
-        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${trustChip(l)}${promoChip(l)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
+        ${scoreChip(l.fit_score)}${replyChip(l.reply_score)}${trustChip(l)}${promoChip(l)}${termChip(l)}${isNew(l) ? '<span class="newbadge" title="First seen since your last visit">NEW</span>' : ''}
         ${l.followup_due ? `<span class="fu-chip" title="Sent ${l.days_since_sent != null ? Math.floor(l.days_since_sent) + ' days ago' : 'a while ago'} with no reply">Follow up?</span>` : ''}
         ${l.status ? `<span class="stbadge ${l.status}">${STATUS_LABEL[l.status]}</span>` : ''}
       </div>
@@ -1318,7 +1330,7 @@ function showDetail(l) {
     <div id="ad-summary" class="ad-summary" hidden></div>
     <div class="detail-addr">${esc(l.address)} · ${esc(l.source || '')}${ageLabel(l) ? ' · listed ' + ageLabel(l) : ''}</div>
     ${commuteGrid(l)}
-    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)} ${promoChip(l)}</div>
+    <div style="margin-top:7px">${scoreChip(l.fit_score)} ${replyChip(l.reply_score)} ${trustChip(l)} ${promoChip(l)} ${termChip(l)}</div>
     ${deal.length ? `<div class="chips">${deal.map(d => `<span class="chip bad">✗ ${esc(d)}</span>`).join('')}</div>`
       : reasons.length ? `<div class="chips">${reasons.map(r => `<span class="chip">✓ ${esc(r)}</span>`).join('')}</div>` : ''}
     <div class="detail-section"><div class="detail-section-label">Track</div><div class="card-actions" id="detail-status" style="margin-top:0">${statusBar(l)}</div></div>
