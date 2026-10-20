@@ -12,13 +12,13 @@ from fastapi import FastAPI, Query
 from fastapi.requests import Request
 from starlette.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 load_dotenv()
 
 from . import llm, notify, trust  # noqa: E402  (after load_dotenv so model env overrides apply)
 from .access import access_guard  # noqa: E402
+from .frontend import FrontendFiles  # noqa: E402
 from .db import (  # noqa: E402
     init_db, get_all_listings, get_listing, set_status, get_stats, update_scores,
     start_run, finish_run, recent_runs, last_ok_run_age_seconds,
@@ -640,4 +640,5 @@ def ingest_status():
                          "periodic": interval > 0, "recent_runs": runs})
 
 
-app.mount("/", StaticFiles(directory=FRONTEND_DIR, html=True), name="frontend")
+# no-cache + a build id in sw.js so a git pull + restart reaches installed PWAs (backend/frontend.py)
+app.mount("/", FrontendFiles(directory=FRONTEND_DIR, html=True), name="frontend")

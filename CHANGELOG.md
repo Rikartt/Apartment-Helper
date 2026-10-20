@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-10-19: code updates reach the installed app
+
+### Fixed
+- After `git pull` + restart, an installed PWA (phone, MacBook) kept showing the old index.html and JS for days: frontend files had no `Cache-Control`, so the browser treated them as fresh for ~10% of their age (3 days for a file untouched for a month) and the service worker's network-first fetch was answered from the HTTP cache; ordinary reloads fixed index.html but not geo.js/checklist.js/pwa.js. Reproduced in Chromium: three plain navigations and three reloads after an update all ran the old geo.js.
+- Every frontend file is now sent with `Cache-Control: no-cache` (ETag revalidation, unchanged files cost a 304), and the worker fetches/precaches the shell bypassing the HTTP cache. `sw.js` carries a build id (hash of `frontend/` at server start, `backend/frontend.py`), so each update installs a new worker with a fresh shell cache and drops the old one. Now the first navigation after an update shows the new version; offline still shows the (new) shell and `/listings` is still never cached.
+- Pages that were open during the update get a small "WGPendler was updated. Reload" toast (never an automatic reload, so a draft is not lost); an installed app that stays open checks for a new version when it comes back to the foreground (at most every 10 minutes).
+- Existing installs need one extra navigation (or a reload) once: the old worker still answers the first one.
+
 ## 2026-10-19: night review 2 (term dates)
 
 ### Fixed
@@ -17,7 +25,6 @@
 
 ### Notes
 - Street-less Flatfox ads cannot get their street back from the URL slug: when a poster hides the street, `street` is null and Flatfox builds `public_address` and the slug from postcode + place only ("8057-zurich"). 0 of 1,090 street-less ads in the live DB had a street in the slug; a live re-check of 50 showed the same.
-
 ## 2026-10-19: photos in the detail view
 
 ### Added

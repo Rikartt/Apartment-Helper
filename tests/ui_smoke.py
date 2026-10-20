@@ -24,6 +24,9 @@ zero Anthropic calls), then drives headless Chromium at 1440x900 and 390x844 and
   a11y: icon-only controls named, landmarks, map label, debounced count announcement, Space opens
      a card and focus moves in/back, ⋯ menu arrows + Esc, focus trap + Esc focus return in panels/modals,
      40px tap targets for primary actions at 390
+  code update with the service worker ON (own server on a temp copy, HTTP cache enabled): after
+     editing index.html/geo.js and restarting, the first plain navigation shows the new files, an
+     open page gets an "updated, Reload" notice, offline still shows the (new) shell, /listings 503
 
 Needs Playwright (`pip install playwright`) and a Chromium. It uses Playwright's own browser
 (PLAYWRIGHT_BROWSERS_PATH is honoured), else WGP_CHROMIUM, else /opt/pw-browsers/chromium.
@@ -873,6 +876,108 @@ def run_top5(pages: Pages, base: str, w: int, h: int):
     pg.context.close()
 
 
+def _start_dev(root: Path, port: int, work: Path, log):
+    proc = subprocess.Popen([sys.executable, str(root / "tools" / "dev_server.py"), "--port", str(port),
+                             "--work", str(work)], cwd=root, stdout=log, stderr=subprocess.STDOUT)
+    for _ in range(120):
+        if proc.poll() is not None:
+            break
+        try:
+            get_json(f"http://127.0.0.1:{port}", "/ingest/status")
+            break
+        except Exception:
+            time.sleep(0.5)
+    return proc
+
+
+def _stop(proc):
+    proc.terminate()
+    try:
+        proc.wait(10)
+    except Exception:
+        proc.kill()
+
+
+def run_sw_update(p, out: Path):
+    """Code update with the service worker ON (the other checks block it): a copy of the app whose
+    frontend files are 30 days old (so the browser's heuristic HTTP caching would kick in), loaded,
+    then edited and restarted like `git pull` + restart. Its own browser keeps the HTTP cache enabled
+    (Playwright routing would disable it), so unpkg/tiles are made to fail fast instead of routed;
+    page errors from the missing Leaflet are expected here and ignored."""
+    tmp = Path(tempfile.mkdtemp(prefix="wgp_sw_update_"))
+    app = tmp / "app"
+    shutil.copytree(ROOT, app, ignore=shutil.ignore_patterns(".git", "__pycache__", "*.db", "backups", "*.sqlite",
+                                                         ".env", "node_modules"))
+    old = time.time() - 30 * 86400
+    for f in (app / "frontend").rglob("*"):
+        os.utime(f, (old, old))
+    port = free_port()
+    base = f"http://127.0.0.1:{port}"
+    log = open(out / "server_sw_update.log", "w")
+    proc = _start_dev(app, port, tmp / "w", log)
+    exe = os.environ.get("WGP_CHROMIUM") or (str(FALLBACK_CHROMIUM) if FALLBACK_CHROMIUM.exists() else None)
+    browser = p.chromium.launch(executable_path=exe,
+                                args=["--host-resolver-rules=MAP unpkg.com ~NOTFOUND, MAP *.arcgisonline.com ~NOTFOUND"])
+    h1 = lambda pg: pg.inner_text("#topbar h1").strip().upper()   # noqa: E731
+    try:
+        ctx = browser.new_context(viewport={"width": 390, "height": 844}, service_workers="allow")
+        ctx.add_init_script("try{localStorage.setItem('wgp_tour','done')}catch(e){}")
+        pg = ctx.new_page()
+        with step("sw update: first load installs the worker", pg):
+            pg.goto(base + "/", wait_until="domcontentloaded")
+            pg.wait_for_function("navigator.serviceWorker.controller", timeout=15000)
+            pg.goto(base + "/", wait_until="domcontentloaded")
+            pg.wait_for_function("navigator.serviceWorker.controller", timeout=15000)
+            keys = pg.evaluate("caches.keys()")
+            check("sw update: shell cache is named after the build hash",
+                  any(re.fullmatch(r"wgp-shell-[0-9a-f]{12}", k) for k in keys), keys)
+            check("sw update: before the update the old title shows", h1(pg) == "WGPENDLER", h1(pg))
+        _stop(proc)
+        ix = app / "frontend" / "index.html"
+        ix.write_text(ix.read_text().replace("<h1>WGPendler</h1>", "<h1>WGPendler v2</h1>", 1))
+        geo = app / "frontend" / "geo.js"
+        geo.write_text(geo.read_text() + "\nwindow.__wgpGeoV2 = true;\n")
+        proc = _start_dev(app, port, tmp / "w", log)
+        with step("sw update: after git pull + restart", pg):
+            nav = ctx.new_page()   # like reopening the installed app: a plain navigation, no reload
+            nav.goto(base + "/", wait_until="domcontentloaded")
+            check("sw update: first navigation shows the new index.html", h1(nav) == "WGPENDLER V2", h1(nav))
+            check("sw update: first navigation runs the new geo.js", nav.evaluate("window.__wgpGeoV2 === true"))
+            nav.close()
+            pg.wait_for_selector("#sw-update", timeout=10000)
+            t = pg.locator("#sw-update")
+            check("sw update: the open page offers a reload", "updated" in t.inner_text().lower(), t.inner_text())
+            check("sw update: notice sits in the aria-live toast area",
+                  pg.evaluate("!!document.querySelector('#toasts #sw-update')"))
+            check("sw update: notice has a named dismiss button",
+                  t.locator("button[aria-label]").count() == 1)
+            pages_shot = out / "sw-update-toast-390.png"
+            pg.screenshot(path=str(pages_shot))
+            t.get_by_role("button", name="Reload").click()
+            pg.wait_for_function("document.querySelector('#topbar h1') && "
+                                 "/v2/i.test(document.querySelector('#topbar h1').textContent)", timeout=10000)
+            check("sw update: Reload shows the new version without the notice",
+                  pg.locator("#sw-update").count() == 0 and pg.evaluate("window.__wgpGeoV2 === true"))
+            keys = pg.evaluate("caches.keys()")
+            check("sw update: exactly one shell cache is left",
+                  len([k for k in keys if k.startswith("wgp-shell-")]) == 1, keys)
+            r = pg.evaluate("""async () => { const r = await fetch('/listings');
+                return [r.status, r.headers.get('content-encoding')]; }""")
+            check("sw update: /listings via the worker is fresh and gzipped", r == [200, "gzip"], r)
+        _stop(proc)
+        with step("sw update: offline after the update", pg):
+            off = ctx.new_page()
+            off.goto(base + "/", wait_until="domcontentloaded")
+            check("sw update: offline shell is the new version", h1(off) == "WGPENDLER V2", h1(off))
+            st = off.evaluate("async () => (await fetch('/listings')).status")
+            check("sw update: /listings is never served from cache offline", st == 503, st)
+    finally:
+        browser.close()
+        _stop(proc)
+        log.close()
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Opt-in browser smoke test of the WGPendler UI.")
     ap.add_argument("--out", help="screenshot folder (default: <system temp>/wgp-ui-smoke/<timestamp>)")
@@ -951,6 +1056,7 @@ def main(argv=None) -> int:
                 run_a11y(pages, base, w, h)
                 run_photos(pages, base, w, h, api)
             browser.close()
+            run_sw_update(p, out)
         if pages.external:
             print(f"[ui] blocked external hosts (answered offline): {sorted(pages.external)}")
     finally:
