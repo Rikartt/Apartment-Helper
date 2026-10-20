@@ -12,6 +12,12 @@
 - Live DB copy (4,213 ads): with values as the pre-#35 parser left them, 4 rows change (all `term_end`, all live, the "mid-Month" ads; their stored fit stays 0 because they are over budget for the solo profile, but group mode no longer marks them "Rental period already over"); the pass takes ~1.45 s once, later starts ~3 ms. The live DB still predates the columns: its first start fills 602 `term_end` and 18 `move_in_stated` (613 rows) in the same pass.
 - Bump `DERIVED_VERSION` with any change to `term_dates.py` that can derive a different date from the same text. New tests: `tests/test_derived_version.py`.
 
+## 2026-10-19: README and ROADMAP refresh
+
+### Changed
+- README rewritten after PRs #18-#36: every claim checked against the code, duplicates removed, a "Using it day to day" section added (update, filters, Top 5, Message today, drafts, alerts). Corrected: "too far" is not a dealbreaker (there is no commute dealbreaker); Message today also follows Hide befristet and the drawn area; phone alerts do not use the drawn area; Top 5 also leaves out low-trust ads and whole flats and still lists picks without a key; the UI smoke test list, keyboard table (Space, Esc while drawing) and project structure were out of date; the clone command now names the real repo.
+- ROADMAP: open items first (per-type paid-placement filters, group-mode Top 5, WGZimmer email-alert import, new sources), done work condensed.
+
 ## 2026-10-19: code updates reach the installed app
 
 ### Fixed
