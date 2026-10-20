@@ -1,43 +1,31 @@
 # WGPendler roadmap
 
-Phases 1–7 from the original brief are done (see CHANGELOG.md). This is the polish plan, in priority order.
-Each block is sized for one working session with a few parallel agents.
+Phases 1–7 from the original brief and polish blocks A–D are done, except item 16 (see CHANGELOG.md for details). Open items are at the top.
 
-## Block A: accuracy (highest impact)
-1. ~~**Real commute times.**~~ Done (see CHANGELOG). `backend/commute.py` estimates commute times from straight-line distance at 22 km/h, which ignores tram lines, transfers and the Hönggerberg hill. Use real timetable connections (transport.opendata.ch, free, rate-limited), with a weekday 8:00 arrival and caching per address. Keep the estimate as a fallback, and show which one a listing uses.
-2. ~~**Incremental ingest.**~~ Done (see CHANGELOG). Flatfox fetches details for every pin, which takes about 6 min per run. Only fetch new pins and pins whose price changed, so the periodic refresh takes seconds and alerts arrive sooner.
-3. ~~**Reliable listing dates.**~~ Done (see CHANGELOG). Many listings lack `listed_at`, so recency falls back to first-seen time. Parse the posting date from every source, so "fresh" really means fresh.
-4. ~~**Trust score (scam check).**~~ Done (see CHANGELOG). Today scams are only partly caught, by the extracted `red_flags` and implausible-price checks. Add a 0–100 trust score with a reason for each signal:
-   - price far below the area median for its size
-   - payment or deposit before viewing, or "I'm abroad, keys by post"
-   - contact only via WhatsApp or an external email
-   - the same text or photos posted under different addresses (a classic scam pattern)
-   - no street address, or a brand-new poster
-   Show a shield chip on each card, hide very low trust by default, warn in the draft panel, and never alert on low-trust ads.
-5. ~~**Homegate speed.**~~ Done (see CHANGELOG). Geocoding takes about 1 s per ad. Look addresses up in parallel through swisstopo (no 1 req/s limit) and skip ads already in the cache.
+## Open
+1. **Paid-placement filters per type.** Today one "Hide priority/premium" switch hides every kind. Split it per kind (Flatfox Priority, Homegate premium/top, ...) once we know which variants show up and which are worth keeping. Detection outside Flatfox Priority is a best-effort match until each field is confirmed.
+2. **Top 5 in group mode.** Top 5 is solo-only. A group version would rank whole flats by group fit and analyse them with the group's facts only.
+3. **WGZimmer via email alerts.** WGZimmer's search is behind reCAPTCHA, so it is not scraped. Its own email alerts could be imported instead. Waiting on the owner's first WGZimmer alert email to see the format.
+4. **New sources (item 16).** The review is done ([docs/sources-review.md](docs/sources-review.md)); no candidate clearly permits automated access yet. Next steps: read robots.txt and terms from a normal connection, ask students.ch and the UZH Alumni Marktplatz, and ask Flatfox whether low-rate personal use of its public endpoint is fine. Never bypass a captcha.
 
-## Block B: reply rate
-6. ~~**Learn from outcomes (Phase 6b).**~~ Done (see CHANGELOG). Once there are about 20 sent/replied marks, fit the scoring weights to what actually got replies, and show the reply rate by source, price band and message length on a small stats page.
-7. ~~**Draft variants.**~~ Done (see CHANGELOG). Offer 2 tones (short and warm). Show a German/English toggle when the ad's language differs from your strongest language.
-8. ~~**Ad summary.**~~ Done (see CHANGELOG). A one-line English summary for German ads in the detail view, using cached Haiku.
-9. ~~**Smarter checklist.**~~ Done (see CHANGELOG). Fewer false ambers for long hard requirements, and use extracted fields instead of keyword matching.
+## Done on 2026-10-19 (PRs #18–#36)
+- Hide priority/premium and Hide befristet filters, with chips; phone alerts follow them (`PUT /notify/filters`).
+- Befristet as a duration dealbreaker; befristet ads whose rental period is over are dealbreakers too.
+- Draw-area map filter.
+- Top 5 honours Hide priority/premium, Hide befristet and the drawn area; the analysis cache keeps the last 8 sets.
+- Group drafts get the Warm/Short and language toggles; follow-ups are written in the language of your first message.
+- Learning: no retraining loop on one-class outcomes, retry after a crash, retrain in the background so status taps return at once.
+- Performance on real-size data: gzip, slimmer list payload, cached trust for single listings, `tools/bench.py`.
+- Live-data fixes: Flatfox headlines as titles, faster trust scoring, amber warning chips in group mode, Flatfox postcodes and placeholder streets, move-in dates read from the ad text when the date field is implausible.
+- Accessibility pass: keyboard focus, contrast, screen-reader labels, 40 px tap targets on phones.
+- Photos in the detail view.
+- Code updates reach the installed PWA (no-cache headers, service-worker build id, "updated, Reload" notice).
 
-## Block C: UI polish
-10. ~~**Typography.**~~ Done (see CHANGELOG). Consolidate the many font sizes (.56–.8rem) into 4 steps, and keep the departure-board look.
-11. ~~**Focus and keyboard details.**~~ Done (see CHANGELOG). Skip Leaflet controls in the tab order, keep Esc in the draft textarea from closing the detail view, and remove the pin of a listing hidden by filters after closing it.
-12. ~~**Ingest progress.**~~ Done (see CHANGELOG). A per-source progress bar in the sync indicator. `/group/listings` should return a total ("595 of 3,325").
-13. ~~**Onboarding.**~~ Done (see CHANGELOG). A short first-run walkthrough: profile, then group (optional), then alerts (optional).
-14. ~~**Map.**~~ Done (see CHANGELOG). Commute-time isochrone shading around the selected campus, and a "draw area" filter.
-
-
-## Block D: reach and robustness
-15. ~~**Phone access over HTTPS.**~~ Done (see CHANGELOG). (e.g. `tailscale serve`), so the PWA installs fully and the access token isn't sent in plain text.
-16. **New sources.** Review the ToS and robots.txt of ETH/UZH housing offers and other student boards. Only add sources that permit automated access; never bypass a captcha.
-17. ~~**Database backups.**~~ Done (see CHANGELOG). A daily copy of `wgpendler.db` (keep 7), because statuses and sent messages are personal history.
-18. ~~**Group mode extras.**~~ Done (see CHANGELOG). Follow-up drafts for flats, and members' own budgets (not just an even split).
-
-## Next (from use)
-19. **Paid-placement filters per type.** One "Hide priority/premium" switch exists. Split it per kind (Flatfox Priority, Homegate premium/top, ...) once we know which variants show up and which are worth keeping. Detection is a best-effort match on the sources' data until each field is confirmed.
+## Done earlier (blocks A–D)
+- A, accuracy: real commute times, incremental ingest, reliable listing dates, trust score, faster Homegate geocoding.
+- B, reply rate: learning from outcomes with a stats page, draft tones and language toggle, ad summaries, smarter draft checklist.
+- C, UI polish: four font sizes, focus and keyboard fixes, ingest progress bar, first-run walkthrough, commute rings on the map.
+- D, reach and robustness: phone access over HTTPS (Tailscale helper), daily database backups, group-mode follow-ups and per-member budgets.
 
 ## Guardrails (unchanged)
 Draft-and-review only, never auto-send. No fabricated facts. Respect robots.txt, ToS and anti-bot measures. Secrets only in `.env`.
