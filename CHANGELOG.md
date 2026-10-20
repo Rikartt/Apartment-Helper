@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-10-19: README and ROADMAP refresh
+
+### Changed
+- README rewritten after PRs #18-#36: every claim checked against the code, duplicates removed, a "Using it day to day" section added (update, filters, Top 5, Message today, drafts, alerts). Corrected: "too far" is not a dealbreaker (there is no commute dealbreaker); Message today also follows Hide befristet and the drawn area; phone alerts do not use the drawn area; Top 5 also leaves out low-trust ads and whole flats and still lists picks without a key; the UI smoke test list, keyboard table (Space, Esc while drawing) and project structure were out of date; the clone command now names the real repo.
+- ROADMAP: open items first (per-type paid-placement filters, group-mode Top 5, WGZimmer email-alert import, new sources), done work condensed.
+
 ## 2026-10-19: code updates reach the installed app
 
 ### Fixed
