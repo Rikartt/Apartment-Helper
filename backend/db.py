@@ -2,7 +2,7 @@ import sqlite3
 import json
 from pathlib import Path
 
-from .term_dates import effective_move_in, stated_end
+from .term_dates import DERIVED_VERSION, effective_move_in, mentioned_dates, stated_end
 from .ingestion.base import MAX_PHOTOS
 
 DB_PATH = Path(__file__).parent.parent / "wgpendler.db"
@@ -124,10 +124,7 @@ def init_db():
         for col, typedef in NEW_COLUMNS:
             if col not in existing:
                 conn.execute(f"ALTER TABLE listings ADD COLUMN {col} {typedef}")
-        if "term_end" not in existing:
-            _backfill_term_end(conn)
-        if "move_in_stated" not in existing:
-            _backfill_move_in_stated(conn)
+        derived_was_missing = "term_end" not in existing or "move_in_stated" not in existing
         if promo_was_missing:
             # rows stored before promo existed were never checked: make the next run of the
             # incremental sources a full refresh (the table may not exist yet on a new DB)
@@ -202,9 +199,14 @@ def init_db():
         for stmt in INDEXES:
             conn.execute(stmt)
         _init_trust_gen(conn)
+        # rows stored before term_end / move_in_stated existed: read them from the text they
+        # already hold (no refetch needed, unlike promo/fixed_term), in the same single pass
+        changed = _rederive_if_stale(conn, force=derived_was_missing)
         conn.commit()
     global _list_cols
     _list_cols = None   # the schema may have just grown
+    if changed:
+        _rescore(changed)
 
 
 def _init_trust_gen(conn):
@@ -392,14 +394,6 @@ def strip_raw(d: dict) -> dict:
     return d
 
 
-def _backfill_term_end(conn):
-    """Rows stored before term_end existed: read the end from the text they already hold
-    (no refetch needed, unlike promo/fixed_term)."""
-    rows = conn.execute("SELECT id, title, raw_text FROM listings WHERE raw_text != ''").fetchall()
-    conn.executemany("UPDATE listings SET term_end = ? WHERE id = ?",
-                     [(e, r[0]) for r in rows if (e := stated_end(r[1], r[2]))])
-
-
 # Read only by the detail view (get_listing): every bulk read skips them. photos is ~2 KB of URLs
 # per Flatfox ad; reading and decoding it for ~4k rows cost ~70 ms per /listings (measured on the
 # live DB copy).
@@ -414,13 +408,61 @@ def _list_columns(conn) -> tuple[str, ...]:
         cols = tuple(r[1] for r in conn.execute("PRAGMA table_info(listings)") if r[1] not in DETAIL_ONLY)
         _list_cols = (str(DB_PATH), cols)
     return _list_cols[1]
-def _backfill_move_in_stated(conn):
-    """Rows stored before move_in_stated existed: same rule as at ingest, from the stored
-    text and publication date (no refetch)."""
-    rows = conn.execute("SELECT id, available_from, COALESCE(listed_at, created_at), title, raw_text "
-                        "FROM listings WHERE raw_text != ''").fetchall()
-    conn.executemany("UPDATE listings SET move_in_stated = ? WHERE id = ?",
-                     [(m, r[0]) for r in rows if (m := effective_move_in(r[1], r[2], r[3], r[4]))])
+
+
+_DERIVED_STATE = ("derived", "version")   # source_state row holding term_dates.DERIVED_VERSION
+
+
+def _rederive_if_stale(conn, force: bool = False) -> list[int]:
+    """When term_dates.DERIVED_VERSION differs from the one stored, re-derive term_end and
+    move_in_stated for every row from its stored text, exactly as upsert_listing does, and store
+    the version (`force`: the columns were just added, so every row needs them). One read, one
+    executemany over the rows that actually change (neither column is a TRUST_COLUMN, so
+    trust_gen stays put). A stored term_end that is no date the text mentions came from an
+    adapter (upsert keeps ad["term_end"]) and is kept. Returns the changed ids."""
+    row = conn.execute("SELECT value FROM source_state WHERE source = ? AND key = ?",
+                       _DERIVED_STATE).fetchone()
+    if row and row[0] == str(DERIVED_VERSION) and not force:
+        return []
+    updates = []
+    for r in conn.execute("SELECT id, title, raw_text, available_from, "
+                          "COALESCE(listed_at, created_at), term_end, move_in_stated FROM listings"):
+        lid, title, text, avail, published, old_end, old_move = r
+        end = stated_end(title, text)
+        if old_end and end != old_end and old_end not in mentioned_dates(title, text):
+            end = old_end
+        move = effective_move_in(avail, published, title, text)
+        if end != old_end or move != old_move:
+            updates.append((end, move, lid))
+    conn.executemany("UPDATE listings SET term_end = ?, move_in_stated = ? WHERE id = ?", updates)
+    conn.execute("INSERT INTO source_state (source, key, value) VALUES (?,?,?) "
+                 "ON CONFLICT(source, key) DO UPDATE SET value = excluded.value",
+                 (*_DERIVED_STATE, str(DERIVED_VERSION)))
+    if updates:
+        print(f"[db] term dates v{DERIVED_VERSION}: re-derived {len(updates)} listing(s)")
+    return [u[2] for u in updates]
+
+
+def _rescore(ids: list[int]):
+    """Stored fit/reply scores of re-derived rows (dates feed the 'Available too late' and
+    'Rental period already over' dealbreakers), as the profile save does for every row. Pages
+    score live anyway; this keeps the stored snapshot (learning's 'fit' feature) honest."""
+    from .scoring import load_profile, score_detail
+    try:
+        profile = load_profile()
+        with get_conn() as conn:
+            rows = []
+            for i in range(0, len(ids), 500):
+                chunk = ids[i:i + 500]
+                rows += conn.execute("SELECT * FROM listings WHERE id IN (" + ",".join("?" * len(chunk))
+                                     + ")", chunk).fetchall()
+        scored = []
+        for r in rows:
+            d = score_detail(_row_to_dict(r), profile)
+            scored.append((d["fit"], d["reply"], r["id"]))
+        update_scores(scored)
+    except Exception as e:   # a scoring hiccup must never keep the server from starting
+        print(f"[db] rescoring re-derived listings failed: {e}")
 
 
 def _today_iso() -> str:
