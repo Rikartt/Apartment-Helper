@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-10-20: parser fixes heal stored term dates at startup
+
+### Fixed
+- `term_end` / `move_in_stated` written by an older term-date parser stayed wrong until the ad's next full refresh (#35 notes). `backend/term_dates.py` now has `DERIVED_VERSION` (2); at startup `init_db` compares it with the version kept in `source_state` and, when it differs, re-derives both columns for every row from the text it already holds (same functions as ingest, no refetch), then stores the version. Same version: one indexed lookup, nothing else.
+- Rows that change get their stored fit/reply score recomputed (as a profile save does); pages scored live already. Neither column is a trust column, so the trust cache is not invalidated.
+- A stored `term_end` that is no date the ad's text mentions came from an adapter (`ad["term_end"]` wins at ingest) and is kept. No adapter sets it today.
+- The two one-off backfills of #30/#32 (when the columns are first added) are now that same single pass: an old DB like the live one migrates in ~1.6 s instead of two passes.
+
+### Notes
+- Live DB copy (4,213 ads): with values as the pre-#35 parser left them, 4 rows change (all `term_end`, all live, the "mid-Month" ads; their stored fit stays 0 because they are over budget for the solo profile, but group mode no longer marks them "Rental period already over"); the pass takes ~1.45 s once, later starts ~3 ms. The live DB still predates the columns: its first start fills 602 `term_end` and 18 `move_in_stated` (613 rows) in the same pass.
+- Bump `DERIVED_VERSION` with any change to `term_dates.py` that can derive a different date from the same text. New tests: `tests/test_derived_version.py`.
+
 ## 2026-10-19: code updates reach the installed app
 
 ### Fixed

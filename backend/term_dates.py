@@ -13,6 +13,12 @@ import calendar
 import re
 from datetime import date
 
+# Bump whenever a change here can give a different term_end / move_in_stated for the same text:
+# at startup db.init_db re-derives both columns for every stored row (from the text it already
+# holds) when the version stored in source_state differs, so a parser fix heals old rows at once
+# instead of on each ad's next full refresh. 1 = #30/#32, 2 = #35 fixes.
+DERIVED_VERSION = 2
+
 _MONTHS = {
     "jan": 1, "feb": 2, "fév": 2, "fev": 2, "mär": 3, "mae": 3, "mar": 3, "apr": 4, "avr": 4,
     "mai": 5, "may": 5, "jun": 6, "jui": 6, "jul": 7, "aug": 8, "aoû": 8, "aou": 8,
@@ -105,6 +111,13 @@ def stated_end_dates(text: str) -> list[date]:
             out.append(d)
         prev_end = end
     return out
+
+
+def mentioned_dates(*texts: str | None) -> set[str]:
+    """ISO dates of every dated mention (with a year) in the texts, whatever leads it: any
+    term_end this module ever derived is one of them, so a stored term_end outside this set
+    came from somewhere else (an adapter) and is not ours to re-derive."""
+    return {d.isoformat() for t in texts if t for _, _, d in _dates(t)}
 
 
 def stated_end(*texts: str | None) -> str | None:
